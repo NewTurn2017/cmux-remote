@@ -44,9 +44,19 @@ git checkout main
 git checkout -b m2-cmux-diff
 ```
 
-- [ ] **Step 4: Re-enable downstream targets in `Package.swift`**
+- [ ] **Step 4: Re-enable downstream targets + add deps in `Package.swift`**
 
-Edit `Package.swift`. Uncomment the four targets gated as `MILESTONE-GATED` in M1.6, leaving `RelayServer` alone (M3 turns that on); also re-add the `CMUXClient` and `RelayCore` library products. The targets array becomes:
+M1.8 trimmed all external package dependencies because they were unused at that point. M2 reintroduces only the deps consumed by `CMUXClient` + `RelayCore`. Add the following to the `dependencies:` array (replacing the MILESTONE-GATED comment block):
+
+```swift
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.4"),
+        // MILESTONE-GATED for M3: swift-nio-ssl, swift-argument-parser, swift-crypto, async-http-client
+    ],
+```
+
+Then uncomment the four targets gated as `MILESTONE-GATED` in M1, leaving `RelayServer` alone (M3 turns that on); also re-add the `CMUXClient` and `RelayCore` library products. The targets array becomes:
 
 ```swift
     targets: [
