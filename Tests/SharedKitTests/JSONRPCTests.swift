@@ -10,6 +10,8 @@ struct JSONRPCTests {
         let json = try #require(String(data: data, encoding: .utf8))
         #expect(json.contains("\"method\":\"workspace.list\""))
         #expect(json.contains("\"id\":1"))
+        let back = try JSONDecoder().decode(RPCRequest.self, from: data)
+        #expect(back == req)
     }
 
     @Test func okResponseDecodes() throws {
@@ -18,6 +20,7 @@ struct JSONRPCTests {
         #expect(resp.id == 1)
         #expect(resp.ok == true)
         #expect(resp.error == nil)
+        #expect(resp.result == .object(["workspaces": .array([])]))
     }
 
     @Test func errorResponseDecodes() throws {
