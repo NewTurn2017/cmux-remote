@@ -1,0 +1,10 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+ios/CmuxRemote.xcodeproj/project.xcworkspace/xcuserdata/
+ios/CmuxRemote.xcodeproj/xcuserdata/
+.DS_Store
+*.xcuserstate
+Package.resolved
