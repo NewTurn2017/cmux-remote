@@ -9,6 +9,10 @@ let package = Package(
     ],
     products: [
         .library(name: "SharedKit", targets: ["SharedKit"]),
+        // MILESTONE-GATED: re-enable in M2/M3 alongside the matching target
+        // .library(name: "CMUXClient", targets: ["CMUXClient"]),
+        // .library(name: "RelayCore",  targets: ["RelayCore"]),
+        // .executable(name: "cmux-relay", targets: ["RelayServer"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git",            from: "2.65.0"),
