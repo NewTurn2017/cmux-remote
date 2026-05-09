@@ -5,34 +5,46 @@ import Foundation
 @Suite("JSON-RPC envelope")
 struct JSONRPCTests {
     @Test func requestEncodesWithIdMethodParams() throws {
-        let req = RPCRequest(id: 1, method: "workspace.list", params: .object([:]))
+        let req = RPCRequest(id: "req-1", method: "workspace.list", params: .object([:]))
         let data = try JSONEncoder().encode(req)
         let json = try #require(String(data: data, encoding: .utf8))
         #expect(json.contains("\"method\":\"workspace.list\""))
-        #expect(json.contains("\"id\":1"))
+        #expect(json.contains("\"id\":\"req-1\""))
         let back = try JSONDecoder().decode(RPCRequest.self, from: data)
         #expect(back == req)
     }
 
-    @Test func okResponseDecodes() throws {
-        let raw = #"{"id":1,"ok":true,"result":{"workspaces":[]}}"#
+    @Test func okSuccessOmitsOkField() throws {
+        // cmux returns success without `ok`; only `result` is present.
+        let raw = #"{"id":"r1","result":{"workspaces":[]}}"#
         let resp = try JSONDecoder().decode(RPCResponse.self, from: Data(raw.utf8))
-        #expect(resp.id == 1)
-        #expect(resp.ok == true)
+        #expect(resp.id == "r1")
+        #expect(resp.ok == nil)
         #expect(resp.error == nil)
         #expect(resp.result == .object(["workspaces": .array([])]))
+        #expect(resp.isOk)
+    }
+
+    @Test func okExplicitTrueIsAlsoSuccess() throws {
+        // Some methods do echo `ok: true`; both shapes are accepted.
+        let raw = #"{"id":"r2","ok":true,"result":{"x":1}}"#
+        let resp = try JSONDecoder().decode(RPCResponse.self, from: Data(raw.utf8))
+        #expect(resp.ok == true)
+        #expect(resp.isOk)
     }
 
     @Test func errorResponseDecodes() throws {
-        let raw = #"{"id":2,"ok":false,"error":{"code":-32000,"message":"boom"}}"#
+        // cmux uses string error codes, not JSON-RPC 2.0 integers.
+        let raw = #"{"id":"r3","ok":false,"error":{"code":"method_not_found","message":"Unknown method"}}"#
         let resp = try JSONDecoder().decode(RPCResponse.self, from: Data(raw.utf8))
         #expect(resp.ok == false)
-        #expect(resp.error?.code == -32000)
-        #expect(resp.error?.message == "boom")
+        #expect(resp.error?.code == "method_not_found")
+        #expect(resp.error?.message == "Unknown method")
+        #expect(!resp.isOk)
     }
 
     @Test func paramsAcceptArbitraryShape() throws {
-        let raw = #"{"id":7,"method":"events.subscribe","params":{"categories":["notification"]}}"#
+        let raw = #"{"id":"r4","method":"events.subscribe","params":{"categories":["notification"]}}"#
         let req = try JSONDecoder().decode(RPCRequest.self, from: Data(raw.utf8))
         #expect(req.method == "events.subscribe")
         if case .object(let dict) = req.params,

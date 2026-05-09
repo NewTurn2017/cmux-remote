@@ -4,7 +4,7 @@
 
 **Goal:** Bring up `cmux-relay`, a single launchd-managed Mac daemon that authenticates phones via Tailscale identity, accepts WS connections, multiplexes JSON-RPC traffic to the local cmux socket, and exposes a CLI for device revocation. Plus a small SwiftUI menu-bar UI for "Devices" management.
 
-**Architecture:** swift-nio HTTP/1.1 server with `NIOWebSocketUpgrader`. Auth uses the **local tailscaled API** (`/var/run/tailscale/tailscaled.sock` or the macOS user-context equivalent) for `WhoIs(peerAddr)` — the spec mentions tsnet, but the practical, ship-now approach is to consult the host's already-running tailscaled and skip embedding a tsnet node. The relay still sits behind the user's tailnet because we bind on `0.0.0.0:4399` and Tailscale ACLs / Funnel-off keep the public out. Per-connection state in `Session`, fan-in/fan-out via `SessionManager`. One persistent `CmuxClient` connection to `/tmp/cmux.sock`. CLI is `swift-argument-parser`.
+**Architecture:** swift-nio HTTP/1.1 server with `NIOWebSocketUpgrader`. Auth uses the **local tailscaled API** (`/var/run/tailscale/tailscaled.sock` or the macOS user-context equivalent) for `WhoIs(peerAddr)` — the spec mentions tsnet, but the practical, ship-now approach is to consult the host's already-running tailscaled and skip embedding a tsnet node. The relay still sits behind the user's tailnet because we bind on `0.0.0.0:4399` and Tailscale ACLs / Funnel-off keep the public out. Per-connection state in `Session`, fan-in/fan-out via `SessionManager`. One persistent `CmuxClient` connection to the cmux UDS at `~/Library/Application Support/cmux/cmux.sock` (override `CMUX_SOCKET_PATH`). CLI is `swift-argument-parser`.
 
 **Tech Stack:** swift-nio (HTTP1, WebSocket, SSL), swift-argument-parser, swift-log, async-http-client (for the local tailscaled API call), SwiftUI MenuBarExtra (single binary, `setActivationPolicy(.accessory)`).
 
@@ -737,7 +737,7 @@ public final class CmuxConnection: @unchecked Sendable {
     private var lastBootId: String?
     private var client: CMUXClient?
 
-    public init(socketPath: String = "/tmp/cmux.sock",
+    public init(socketPath: String = cmuxSocketPath(),
                 group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1))
     {
         self.socketPath = socketPath; self.group = group
@@ -1364,7 +1364,7 @@ public final class WebSocketHandler: ChannelInboundHandler {
             let resp = RPCResponse(id: request.id, ok: true, result: result, error: nil)
             send(resp: resp, on: context)
         } catch {
-            let err = RPCError(code: -32000, message: String(describing: error))
+            let err = RPCError(code: "internal_error", message: String(describing: error))
             send(resp: RPCResponse(id: request.id, ok: false, error: err), on: context)
         }
     }
@@ -1611,7 +1611,7 @@ struct Serve: AsyncParsableCommand {
         let store = ConfigStore(url: URL(fileURLWithPath: config))
         try store.reload()
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
-        let conn = CmuxConnection(socketPath: "/tmp/cmux.sock", group: group)
+        let conn = CmuxConnection(socketPath: cmuxSocketPath(), group: group)
         let facade = CMUXFacadeImpl(connection: conn)
         let reader = CmuxSurfaceReader(connection: conn)
         let manager = SessionManager(reader: reader,
@@ -1812,7 +1812,7 @@ git commit -m "M3.13: relay smoke script (health endpoint)"
   <key>KeepAlive</key>        <true/>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>CMUX_SOCKET_PATH</key><string>/tmp/cmux.sock</string>
+    <key>CMUX_SOCKET_PATH</key><string>__SOCKET__</string>
   </dict>
   <key>StandardOutPath</key>  <string>__LOGDIR__/stdout.log</string>
   <key>StandardErrorPath</key><string>__LOGDIR__/stderr.log</string>
@@ -1832,9 +1832,11 @@ DEST=~/.cmuxremote
 LOG="$DEST/log"
 mkdir -p "$DEST/bin" "$LOG"
 cp "$BIN_SRC" "$DEST/bin/cmux-relay"
+SOCK="${CMUX_SOCKET_PATH:-$HOME/Library/Application Support/cmux/cmux.sock}"
 sed -e "s|__BIN__|$DEST/bin/cmux-relay|" \
     -e "s|__CONFIG__|$DEST/relay.json|" \
     -e "s|__LOGDIR__|$LOG|" \
+    -e "s|__SOCKET__|$SOCK|" \
     "$ROOT/scripts/relay.plist.tmpl" > ~/Library/LaunchAgents/com.genie.cmuxremote.plist
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.genie.cmuxremote.plist || true
 launchctl kickstart -k "gui/$(id -u)/com.genie.cmuxremote"

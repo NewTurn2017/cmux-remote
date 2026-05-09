@@ -120,18 +120,25 @@ WebSocket sub-protocol header: `Sec-WebSocket-Protocol: cmuxremote.v1, bearer.<d
 
 ### 6.2 JSON-RPC envelope
 
-Client → Server (request):
+This is the cmux-socket v2 envelope (NOT JSON-RPC 2.0). Verified against the cmux 2026-05 source at `manaflow-ai/cmux/CLI/cmux.swift`.
+
+Client → Server (request) — newline-delimited:
 ```json
-{ "id": 1, "method": "workspace.list", "params": {} }
-{ "id": 5, "method": "surface.subscribe", "params": { "surface_id": "...", "fps": 15 } }
-{ "id": 7, "method": "events.subscribe", "params": { "categories": ["notification","workspace","surface"] } }
+{ "id": "<uuid>", "method": "workspace.list", "params": {} }
+{ "id": "<uuid>", "method": "surface.subscribe", "params": { "surface_id": "...", "fps": 15 } }
+{ "id": "<uuid>", "method": "events.subscribe", "params": { "categories": ["notification","workspace","surface"] } }
 ```
 
-Server → Client (response):
+Server → Client (response) — newline-delimited:
 ```json
-{ "id": 1, "ok": true,  "result": { "workspaces": [...] } }
-{ "id": 2, "ok": false, "error": { "code": -32000, "message": "..." } }
+{ "id": "<echoed>",  "result": { "workspaces": [...] } }
+{ "id": "<echoed>", "ok": false, "error": { "code": "method_not_found", "message": "..." } }
 ```
+
+Differences from textbook JSON-RPC 2.0:
+- `id` is a **string** (typically UUID), not an integer.
+- Success envelopes **omit `ok`** and provide `result`. Error envelopes set `ok: false` with `error: { code, message }`.
+- `error.code` is a **string symbol** (`"method_not_found"`, `"forbidden"`, …), not a numeric code.
 
 Server → Client (push, no `id`):
 ```json
@@ -385,7 +392,12 @@ CI: deferred. Local `swift test` and `xcodebuild test` until v1 ships.
 
 ### 12.2 cmux socket access
 
-Relay runs as the same user as cmux, so default `cmuxonly` socket mode is sufficient. No `CMUX_SOCKET_MODE=allowAll` required. If the user runs cmux without `cmux` having been launched yet, relay returns 503 and waits.
+Default socket path on macOS is `~/Library/Application Support/cmux/cmux.sock` (override: `CMUX_SOCKET_PATH` env). Relay runs as the same user as cmux, so default `cmuxOnly` access mode is sufficient — owner-only `srw-------` permissions gate the socket and no auth handshake is required for in-user connections. If the user runs the relay before cmux is launched, the relay returns HTTP 503 to phones and retries connect every 2 s.
+
+Auth handshake (only required when `socketControlMode != cmuxOnly` or when running as a different user):
+- Send `auth <password>\n` as the FIRST text command after connect.
+- Resolution order matches cmux CLI: `--password` flag → `CMUX_SOCKET_PASSWORD` env → `~/Library/Application Support/cmux/socket-control-password` file → Keychain service `com.cmuxterm.app.socket-control` (account `local-socket-password`).
+- Skip handshake entirely when password resolution returns nil — the cmux CLI itself does this.
 
 ### 12.3 Mac sleep
 

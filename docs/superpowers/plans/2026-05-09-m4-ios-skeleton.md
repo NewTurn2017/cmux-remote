@@ -171,8 +171,8 @@ import SharedKit
 
 final class SmokeTests: XCTestCase {
     func testSharedKitLinks() {
-        let req = RPCRequest(id: 1, method: "x", params: .null)
-        XCTAssertEqual(req.id, 1)
+        let req = RPCRequest(id: "test-1", method: "x", params: .null)
+        XCTAssertEqual(req.id, "test-1")
     }
 }
 ```
@@ -529,10 +529,15 @@ final class RPCClientTests: XCTestCase {
         let rpc = RPCClient(transport: stub)
         async let result = rpc.call(method: "workspace.list", params: .object([:]))
         try await Task.sleep(nanoseconds: 5_000_000)
-        XCTAssertTrue(stub.outbox.last?.contains("workspace.list") ?? false)
-        await rpc.handleIncoming(text: #"{"id":1,"ok":true,"result":{"workspaces":[]}}"#)
+        let outbox = stub.outbox.last ?? ""
+        XCTAssertTrue(outbox.contains("workspace.list"))
+        // Echo back the UUID id the client generated.
+        let regex = try NSRegularExpression(pattern: #"\"id\":\"([^\"]+)\""#)
+        let match = regex.firstMatch(in: outbox, range: NSRange(outbox.startIndex..., in: outbox))!
+        let outId = String(outbox[Range(match.range(at: 1), in: outbox)!])
+        await rpc.handleIncoming(text: #"{"id":"\#(outId)","result":{"workspaces":[]}}"#)
         let r = try await result
-        XCTAssertTrue(r.ok)
+        XCTAssertTrue(r.isOk)
     }
 
     func testPushFrameDispatchedToHandler() async {
@@ -564,8 +569,7 @@ public protocol RPCTransport: AnyObject, Sendable {
 
 public actor RPCClient {
     private let transport: RPCTransport
-    private var nextId: Int64 = 1
-    private var pending: [Int64: CheckedContinuation<RPCResponse, Error>] = [:]
+    private var pending: [String: CheckedContinuation<RPCResponse, Error>] = [:]
     private var pushHandler: (@Sendable (PushFrame) -> Void)?
 
     public init(transport: RPCTransport) { self.transport = transport }
@@ -576,7 +580,7 @@ public actor RPCClient {
 
     @discardableResult
     public func call(method: String, params: JSONValue) async throws -> RPCResponse {
-        let id = nextId; nextId += 1
+        let id = UUID().uuidString
         let req = RPCRequest(id: id, method: method, params: params)
         let body = try JSONEncoder().encode(req)
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<RPCResponse, Error>) in

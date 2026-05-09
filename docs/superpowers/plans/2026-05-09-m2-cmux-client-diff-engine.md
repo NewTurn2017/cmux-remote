@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Land the Mac-side library that talks to the running cmux Unix socket (`/tmp/cmux.sock`) and the polling DiffEngine that converts `surface.read_text` snapshots into `DiffOp` streams ready for fanout to phones.
+**Goal:** Land the Mac-side library that talks to the running cmux Unix socket (default `~/Library/Application Support/cmux/cmux.sock`, override `CMUX_SOCKET_PATH`) and the polling DiffEngine that converts `surface.read_text` snapshots into `DiffOp` streams ready for fanout to phones.
 
 **Architecture:** Two SwiftPM modules — `CMUXClient` (NIO Unix socket + newline-delimited JSON-RPC dispatch) and the diff/hash subsystem inside `RelayCore` (`DiffEngine`, `RowState`, `ScreenHasher`). No networking outside `localhost`. No tsnet, no APNs — those land in M3 and M6. EmbeddedChannel + a fake cmux fixture drive every test.
 
@@ -21,30 +21,40 @@
 
 ## Pre-flight (Task 0)
 
-Before writing any code, verify the framing cmux uses on its Unix socket. The spec assumes newline-delimited JSON-RPC; if cmux actually uses Content-Length headers (LSP-style) or a length-prefixed binary frame, the framer swaps but every other task remains.
+Pre-flight has been completed during M2 kickoff and recorded in spec section 6.2 — cmux uses **newline-delimited JSON over Unix socket**, request body `{"id":"<uuid>","method":"<dotted>","params":{...}}\n`, response body `{"id":"<echoed>","result":...}\n` on success or `{"id":"<echoed>","ok":false,"error":{"code":"<symbol>","message":"..."}}\n` on error. No auth needed in `cmuxOnly` access mode for same-user connections. The full M1 patch landed `id: String`, `error.code: String`, and `ok: Bool?` to match.
 
-- [ ] **Step 1: Confirm cmux is running**
+- [ ] **Step 1: Reconfirm before writing code**
 
-```bash
-ls -l /tmp/cmux.sock
-```
-Expected: socket exists. If not, start cmux first.
-
-- [ ] **Step 2: Send a probe request**
+`bash scripts/cmux-probe.sh` (which we author below) must print a recognisable `{"id":"probe-1",…}` JSON line when run by the same user that owns the cmux socket. Use this Perl-based probe (macOS `nc` has no timeout flag):
 
 ```bash
-printf '{"id":1,"method":"workspace.list","params":{}}\n' | nc -U /tmp/cmux.sock | head -1
+mkdir -p scripts
+cat > scripts/cmux-probe.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SOCK="${CMUX_SOCKET_PATH:-$HOME/Library/Application Support/cmux/cmux.sock}"
+[ -S "$SOCK" ] || { echo "cmux socket missing: $SOCK"; exit 1; }
+SOCK="$SOCK" perl -e '
+  $SIG{ALRM}=sub{exit 0}; alarm 3;
+  use Socket; socket(my $s,PF_UNIX,SOCK_STREAM,0)or die$!;
+  connect($s,sockaddr_un($ENV{SOCK}))or die"connect: $!";
+  syswrite($s, qq({"id":"probe-1","method":"workspace.list","params":{}}\n));
+  my $b; sysread($s,$b,65536); print substr($b,0,400),"\n";
+'
+EOF
+chmod +x scripts/cmux-probe.sh
+./scripts/cmux-probe.sh
 ```
-Expected: a single JSON line response. If the response is multi-line / has a `Content-Length: ` header / is binary, record the actual framing in `docs/specs/2026-05-09-cmux-iphone-bridge-design.md` under section 14 ("Open questions") **before** continuing.
+Expected: prints `{"id":"probe-1","result":{"workspaces":[...]}}` or similar. If the format differs, halt and revise the spec/plan.
 
-- [ ] **Step 3: Branch**
+- [ ] **Step 2: Branch**
 
 ```bash
 git checkout main
 git checkout -b m2-cmux-diff
 ```
 
-- [ ] **Step 4: Re-enable downstream targets + add deps in `Package.swift`**
+- [ ] **Step 3: Re-enable downstream targets + add deps in `Package.swift`**
 
 M1.8 trimmed all external package dependencies because they were unused at that point. M2 reintroduces only the deps consumed by `CMUXClient` + `RelayCore`. Add the following to the `dependencies:` array (replacing the MILESTONE-GATED comment block):
 
@@ -107,11 +117,11 @@ Add the products entry too:
 
 Run `swift build`. Expected: `Build complete!`. (Empty target dirs need the `.gitkeep` placeholder from M1; one real source file in each gets added in this milestone, so the placeholder can be deleted as soon as the first real file lands.)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add Package.swift docs/specs/2026-05-09-cmux-iphone-bridge-design.md
-git commit -m "M2.0: re-enable CMUXClient + RelayCore targets; record cmux framing"
+git add Package.swift scripts/cmux-probe.sh
+git commit -m "M2.0: re-enable CMUXClient + RelayCore targets; cmux probe script"
 ```
 
 ---
@@ -226,6 +236,16 @@ public enum UnixSocketChannelError: Error, Equatable {
     case connectFailed(String)
 }
 
+/// Default cmux socket location on macOS. Honours `CMUX_SOCKET_PATH` (and the
+/// deprecated `CMUX_SOCKET` alias) and falls back to the per-user Application
+/// Support path the cmux app writes to.
+public func cmuxSocketPath(_ env: [String: String] = ProcessInfo.processInfo.environment) -> String {
+    if let p = env["CMUX_SOCKET_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines), !p.isEmpty { return p }
+    if let p = env["CMUX_SOCKET"]?.trimmingCharacters(in: .whitespacesAndNewlines), !p.isEmpty { return p }
+    let home = env["HOME"] ?? NSHomeDirectory()
+    return "\(home)/Library/Application Support/cmux/cmux.sock"
+}
+
 /// Connects to a Unix-domain socket and installs the JSON line framer.
 public struct UnixSocketChannel {
     public let path: String
@@ -306,15 +326,19 @@ final class CMUXClientTests: XCTestCase {
         let outbound: ByteBuffer = try XCTUnwrap(try chan.readOutbound())
         let outString = outbound.getString(at: 0, length: outbound.readableBytes)!
         XCTAssertTrue(outString.contains("\"method\":\"workspace.list\""))
-        XCTAssertTrue(outString.contains("\"id\":1"))
+        // Extract the UUID id the client generated, echo it back from the fake server.
+        let pattern = #"\"id\":\"([^\"]+)\""#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let match = regex.firstMatch(in: outString, range: NSRange(outString.startIndex..., in: outString))
+        let outId = String(outString[Range(match!.range(at: 1), in: outString)!])
 
-        // Inject a server response with the same id.
+        // Inject a server response with the same id (success without `ok`).
         var resp = ByteBufferAllocator().buffer(capacity: 64)
-        resp.writeString(#"{"id":1,"ok":true,"result":{"workspaces":[]}}"#)
+        resp.writeString(#"{"id":"\#(outId)","result":{"workspaces":[]}}"#)
         try chan.writeInbound(resp)
 
         let value = try await result
-        XCTAssertTrue(value.ok)
+        XCTAssertTrue(value.isOk)
     }
 
     func testTimeoutThrows() async throws {
@@ -367,8 +391,7 @@ public actor CMUXClient {
     private let requestTimeout: TimeAmount
     private let logger = Logger(label: "CMUXClient")
 
-    private var nextId: Int64 = 1
-    private var pending: [Int64: CheckedContinuation<RPCResponse, Error>] = [:]
+    private var pending: [String: CheckedContinuation<RPCResponse, Error>] = [:]
     private var pushHandler: (@Sendable (PushFrame) -> Void)?
 
     public init(channel: Channel, requestTimeout: TimeAmount = .seconds(5)) {
@@ -383,7 +406,7 @@ public actor CMUXClient {
 
     @discardableResult
     public func call(method: String, params: JSONValue) async throws -> RPCResponse {
-        let id = nextId; nextId += 1
+        let id = UUID().uuidString
         let req = RPCRequest(id: id, method: method, params: params)
         let body = try JSONEncoder().encode(req)
         var buf = channel.allocator.buffer(capacity: body.count)
@@ -401,11 +424,11 @@ public actor CMUXClient {
         }
     }
 
-    private func fail(id: Int64, with error: Error) {
+    private func fail(id: String, with error: Error) {
         if let c = pending.removeValue(forKey: id) { c.resume(throwing: error) }
     }
 
-    private func timeoutIfPending(id: Int64) {
+    private func timeoutIfPending(id: String) {
         if let c = pending.removeValue(forKey: id) { c.resume(throwing: CMUXClientError.timeout) }
     }
 
@@ -484,11 +507,13 @@ final class CMUXMethodsTests: XCTestCase {
 
         async let result = client.workspaceList()
         try await Task.sleep(nanoseconds: 5_000_000)
-        let _: ByteBuffer = try XCTUnwrap(try chan.readOutbound())
+        let outbound: ByteBuffer = try XCTUnwrap(try chan.readOutbound())
+        let outString = outbound.getString(at: 0, length: outbound.readableBytes)!
+        let regex = try NSRegularExpression(pattern: #"\"id\":\"([^\"]+)\""#)
+        let m = regex.firstMatch(in: outString, range: NSRange(outString.startIndex..., in: outString))!
+        let outId = String(outString[Range(m.range(at: 1), in: outString)!])
         var resp = ByteBufferAllocator().buffer(capacity: 256)
-        resp.writeString(#"""
-        {"id":1,"ok":true,"result":{"workspaces":[{"id":"w","name":"n","surfaces":[],"last_activity":1000}]}}
-        """#)
+        resp.writeString(#"{"id":"\#(outId)","result":{"workspaces":[{"id":"w","name":"n","surfaces":[],"last_activity":1000}]}}"#)
         try chan.writeInbound(resp)
         let workspaces = try await result
         XCTAssertEqual(workspaces.count, 1)
@@ -1300,7 +1325,7 @@ final class LiveSocketSmokeTests: XCTestCase {
                       "set CMUX_LIVE=1 to run")
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         defer { try? group.syncShutdownGracefully() }
-        let chan = try await UnixSocketChannel(path: "/tmp/cmux.sock", group: group)
+        let chan = try await UnixSocketChannel(path: cmuxSocketPath(), group: group)
             .connect { _ in group.next().makeSucceededFuture(()) }
         let client = CMUXClient(channel: chan, requestTimeout: .seconds(5))
         let workspaces = try await client.workspaceList()
@@ -1321,7 +1346,7 @@ Expected: prints workspace names. Without `CMUX_LIVE=1` the test self-skips so C
 
 ```bash
 git add Tests/CMUXClientTests/LiveSocketSmokeTests.swift
-git commit -m "M2.10: CMUX_LIVE=1 smoke test against /tmp/cmux.sock"
+git commit -m "M2.10: CMUX_LIVE=1 smoke test against cmuxSocketPath()"
 ```
 
 ---

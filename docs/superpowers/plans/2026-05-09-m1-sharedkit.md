@@ -1140,3 +1140,17 @@ git branch -d m1-sharedkit
 ```
 
 Pick up M2 next: `2026-05-09-m2-cmux-client-diff-engine.md`.
+
+---
+
+## Post-merge patch (2026-05-09 same day, branch `m1-patch-cmux-protocol`)
+
+After M2 pre-flight against the live cmux socket revealed the actual cmux-socket v2 wire shape (verified against `manaflow-ai/cmux/CLI/cmux.swift`), three SharedKit types were patched in-place:
+
+- `RPCRequest.id`: `Int64` → `String` (cmux uses UUID strings).
+- `RPCResponse.id`: `Int64` → `String`.
+- `RPCResponse.ok`: `Bool` (required) → `Bool?` (optional). cmux **omits** `ok` on success and sends `ok: false` on error. New convenience `var isOk: Bool { (ok ?? true) && error == nil }`.
+- `RPCError.code`: `Int` → `String` (cmux uses symbolic codes like `"method_not_found"`).
+- Tests adjusted; `okSuccessOmitsOkField` test added covering the absent-`ok` success path.
+
+Spec section 6.2 was updated in the same commit to reflect the actual wire format. Future code in M2/M3/M4 should read SharedKit as patched, not the original M1.2 task body.

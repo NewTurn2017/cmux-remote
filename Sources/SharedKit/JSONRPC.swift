@@ -38,29 +38,33 @@ public indirect enum JSONValue: Codable, Equatable, Sendable {
 }
 
 public struct RPCRequest: Codable, Sendable, Equatable {
-    public var id: Int64
+    public var id: String
     public var method: String
     public var params: JSONValue
-    public init(id: Int64, method: String, params: JSONValue) {
+    public init(id: String, method: String, params: JSONValue) {
         self.id = id; self.method = method; self.params = params
     }
 }
 
 public struct RPCError: Codable, Sendable, Equatable {
-    public var code: Int
+    public var code: String
     public var message: String
     public var data: JSONValue?
-    public init(code: Int, message: String, data: JSONValue? = nil) {
+    public init(code: String, message: String, data: JSONValue? = nil) {
         self.code = code; self.message = message; self.data = data
     }
 }
 
 public struct RPCResponse: Codable, Sendable, Equatable {
-    public var id: Int64
-    public var ok: Bool
+    public var id: String
+    /// Optional on the wire: cmux omits `ok` on success, sends `ok: false` on error.
+    /// Treat absent + no error as success. Use `isOk` for the canonical check.
+    public var ok: Bool?
     public var result: JSONValue?
     public var error: RPCError?
-    public init(id: Int64, ok: Bool, result: JSONValue? = nil, error: RPCError? = nil) {
+    public init(id: String, ok: Bool? = nil, result: JSONValue? = nil, error: RPCError? = nil) {
         self.id = id; self.ok = ok; self.result = result; self.error = error
     }
+
+    public var isOk: Bool { (ok ?? true) && error == nil }
 }
