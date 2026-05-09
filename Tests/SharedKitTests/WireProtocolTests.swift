@@ -57,4 +57,20 @@ struct WireProtocolTests {
         let back = try JSONDecoder().decode(HelloFrame.self, from: data)
         #expect(back == h)
     }
+
+    @Test func pushFrameEncodeRoundTrip() throws {
+        let original = PushFrame.screenDiff(ScreenDiff(
+            surfaceId: "s1",
+            rev: 7,
+            ops: [.row(y: 1, text: "hello"), .cursor(x: 0, y: 1)]
+        ))
+        let data = try JSONEncoder().encode(original)
+        let json = try #require(String(data: data, encoding: .utf8))
+        // Verify the discriminator and snake-cased key both made it onto the wire.
+        #expect(json.contains("\"type\":\"screen.diff\""))
+        #expect(json.contains("\"surface_id\":\"s1\""))
+        // True round-trip: decode back and compare.
+        let back = try JSONDecoder().decode(PushFrame.self, from: data)
+        #expect(back == original)
+    }
 }
