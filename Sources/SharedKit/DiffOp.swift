@@ -38,6 +38,8 @@ public enum DiffOp: Codable, Sendable, Equatable {
 
     /// Compute the minimal set of ops that transforms `from` into `to`.
     /// Row count mismatches emit a `.clear` followed by full row replacements.
+    /// `Screen.cols` is intentionally not transported in `DiffOp`; resize
+    /// updates ride along on `screen.full`, never on `screen.diff`.
     public static func compute(from old: Screen, to new: Screen) -> [DiffOp] {
         var ops: [DiffOp] = []
         if old.rows.count != new.rows.count {
