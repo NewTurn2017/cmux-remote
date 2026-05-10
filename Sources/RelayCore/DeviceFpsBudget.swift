@@ -1,7 +1,12 @@
 import Foundation
 
-public final class DeviceFpsBudget: @unchecked Sendable {
-    public let maxPerSecond: Int
+/// Per-device sliding-window frame budget.
+///
+/// Actor-isolated so the WS handler (which calls `consumeFrame()` on the NIO
+/// event loop) and any future supervisor (e.g. SessionManager broadcasting
+/// resets) cannot race on the `stamps` array.
+public actor DeviceFpsBudget {
+    public nonisolated let maxPerSecond: Int
     private let clock: Clock
     private var stamps: [TimeInterval] = []
 

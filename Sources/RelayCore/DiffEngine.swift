@@ -5,16 +5,20 @@ public protocol SurfaceReader: Sendable {
     func read(workspaceId: String, surfaceId: String, lines: Int) async throws -> Screen
 }
 
-public final class DiffEngine: @unchecked Sendable {
-    public let workspaceId: String
-    public let surfaceId: String
-    public let lines: Int
-    public let activeFps: Int
-    public let idleFps: Int
-    public let idleAfter: TimeInterval = 1.5
+/// Per-surface diff polling state.
+///
+/// Actor-isolated so that `noteUserInput()` (called from the WS handler when a
+/// device sends input) and `tick()` (called from the NIO event loop's polling
+/// timer) cannot race on the mutable state — `lastInput`, `currentFps`,
+/// `state`, `rev`, `lastChecksumAt`, and the two callback slots.
+public actor DiffEngine {
+    public nonisolated let workspaceId: String
+    public nonisolated let surfaceId: String
+    public nonisolated let lines: Int
+    public nonisolated let activeFps: Int
+    public nonisolated let idleFps: Int
+    public nonisolated let idleAfter: TimeInterval = 1.5
 
-    public var onDiff: (([DiffOp]) -> Void)?
-    public var onChecksum: ((String, Int) -> Void)?
     public private(set) var rev: Int = 0
     public private(set) var currentFps: Int
 
@@ -23,6 +27,8 @@ public final class DiffEngine: @unchecked Sendable {
     private var state = RowState()
     private var lastInput: TimeInterval
     private var lastChecksumAt: TimeInterval = 0
+    private var onDiff: (@Sendable ([DiffOp]) -> Void)?
+    private var onChecksum: (@Sendable (String, Int) -> Void)?
 
     public init(reader: SurfaceReader,
                 fps: Int, idleFps: Int,
@@ -38,6 +44,14 @@ public final class DiffEngine: @unchecked Sendable {
         self.lines = lines
         self.clock = clock
         self.lastInput = clock.now
+    }
+
+    public func setOnDiff(_ handler: (@Sendable ([DiffOp]) -> Void)?) {
+        self.onDiff = handler
+    }
+
+    public func setOnChecksum(_ handler: (@Sendable (String, Int) -> Void)?) {
+        self.onChecksum = handler
     }
 
     public func noteUserInput() {
