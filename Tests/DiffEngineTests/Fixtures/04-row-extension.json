@@ -1,0 +1,18 @@
+{
+  "before": {
+    "rev": 1, "rows": ["a","b","c"], "cols": 3,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "after": {
+    "rev": 2, "rows": ["a","b","c","d","e"], "cols": 3,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "expected_ops": [
+    { "op": "clear" },
+    { "op": "row", "y": 0, "text": "a" },
+    { "op": "row", "y": 1, "text": "b" },
+    { "op": "row", "y": 2, "text": "c" },
+    { "op": "row", "y": 3, "text": "d" },
+    { "op": "row", "y": 4, "text": "e" }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "before": {
+    "rev": 1, "rows": ["$ ls", ""], "cols": 40,
+    "cursor": {"x": 4, "y": 0}
+  },
+  "after": {
+    "rev": 2, "rows": ["$ ls", "[34mfile.txt[0m"], "cols": 40,
+    "cursor": {"x": 0, "y": 1}
+  },
+  "expected_ops": [
+    { "op": "row", "y": 1, "text": "[34mfile.txt[0m" },
+    { "op": "cursor", "x": 0, "y": 1 }
+  ]
+}

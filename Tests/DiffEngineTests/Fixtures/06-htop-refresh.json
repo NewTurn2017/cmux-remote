@@ -1,0 +1,19 @@
+{
+  "before": {
+    "rev": 1,
+    "rows": ["CPU 1.0%","MEM 200MB","PROCS 100","load 0.5"],
+    "cols": 20,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "after": {
+    "rev": 2,
+    "rows": ["CPU 5.0%","MEM 200MB","PROCS 200","load 1.5"],
+    "cols": 20,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "expected_ops": [
+    { "op": "row", "y": 0, "text": "CPU 5.0%" },
+    { "op": "row", "y": 2, "text": "PROCS 200" },
+    { "op": "row", "y": 3, "text": "load 1.5" }
+  ]
+}

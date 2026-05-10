@@ -1,0 +1,13 @@
+{
+  "before": {
+    "rev": 1, "rows": ["alpha","beta"], "cols": 5,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "after": {
+    "rev": 2, "rows": ["alpha","beta"], "cols": 5,
+    "cursor": {"x": 4, "y": 1}
+  },
+  "expected_ops": [
+    { "op": "cursor", "x": 4, "y": 1 }
+  ]
+}
