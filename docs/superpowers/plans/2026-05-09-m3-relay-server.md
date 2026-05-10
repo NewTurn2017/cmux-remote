@@ -26,6 +26,13 @@
 - Spec section 13 ("Menu-bar app") — `MenuBarUI.swift`, single-binary mode.
 - Spec section 14 ("Open questions") — settled inline (single binary; tailscaled local API).
 
+## Inherited from M2 review (must address before wiring DiffEngine into Session)
+
+The M2 final review flagged two issues that M3 needs to resolve:
+
+1. **`DiffEngine` and `DeviceFpsBudget` are `@unchecked Sendable` without internal synchronization.** Their mutable fields (`lastInput`, `currentFps`, `rev`, `state`, `lastChecksumAt`, `onDiff`, `onChecksum`, `stamps`) are written by both polling timers and `noteUserInput()` calls. M3 wires these into `Session` (which is an actor) — the safest fix is to make `DiffEngine` and `DeviceFpsBudget` `actor`s themselves. Convert them as part of M3 task 7 (Session) before wiring.
+2. **Cmux `workspace.list` payload schema mismatch** — see spec section 14 "Known issue". M3 task 9 either introduces a `CMUXWorkspaceRaw` translator in `CMUXClient` or revises `SharedKit.Workspace` to match cmux's actual fields (`ref`, `title`, `index`, `current_directory`, `remote`, …). Pre-flight by capturing a real cmux response: `cmux rpc workspace.list > docs/specs/cmux-payload-samples/workspace.list.json`.
+
 ## Key open-question resolutions (commit at start of milestone)
 
 Add to `docs/specs/2026-05-09-cmux-iphone-bridge-design.md` section 14 the following resolutions before any code:
