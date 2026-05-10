@@ -61,6 +61,8 @@ let package = Package(
         .testTarget(name: "SharedKitTests",  dependencies: ["SharedKit"]),
         .testTarget(name: "CMUXClientTests", dependencies: [
             "CMUXClient",
+            .product(name: "NIOCore", package: "swift-nio"),
+            .product(name: "NIOPosix", package: "swift-nio"),
             .product(name: "NIOEmbedded", package: "swift-nio"),
         ]),
         .testTarget(name: "DiffEngineTests", dependencies: [
