@@ -49,10 +49,14 @@ public struct EventFrame: Codable, Sendable, Equatable {
     public var category: EventCategory
     public var name: String
     public var payload: JSONValue
+    public init(category: EventCategory, name: String, payload: JSONValue) {
+        self.category = category; self.name = name; self.payload = payload
+    }
 }
 
 public struct PingFrame: Codable, Sendable, Equatable {
     public var ts: Int64
+    public init(ts: Int64) { self.ts = ts }
 }
 
 // MARK: - Discriminated union over the `type` field

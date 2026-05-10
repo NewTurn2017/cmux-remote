@@ -28,8 +28,14 @@ public actor Session {
         self.idleFps = idleFps
     }
 
-    public func setSendFrame(_ send: (@Sendable (PushFrame) -> Void)?) {
-        self.sendFrame = send
+    public func update(sendFrame: (@Sendable (PushFrame) -> Void)?) {
+        self.sendFrame = sendFrame
+    }
+
+    /// Push a frame to the connected client through the installed
+    /// sendFrame closure. Called by SessionManager on a broadcast.
+    public func send(frame: PushFrame) {
+        sendFrame?(frame)
     }
 
     public func subscribe(workspaceId: String, surfaceId: String, lines: Int) async {
