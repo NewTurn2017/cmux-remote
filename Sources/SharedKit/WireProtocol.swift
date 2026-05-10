@@ -29,6 +29,9 @@ public struct ScreenDiff: Codable, Sendable, Equatable {
     public var surfaceId: String
     public var rev: Int
     public var ops: [DiffOp]
+    public init(surfaceId: String, rev: Int, ops: [DiffOp]) {
+        self.surfaceId = surfaceId; self.rev = rev; self.ops = ops
+    }
     enum CodingKeys: String, CodingKey { case surfaceId = "surface_id", rev, ops }
 }
 
@@ -36,6 +39,9 @@ public struct ScreenChecksum: Codable, Sendable, Equatable {
     public var surfaceId: String
     public var rev: Int
     public var hash: String
+    public init(surfaceId: String, rev: Int, hash: String) {
+        self.surfaceId = surfaceId; self.rev = rev; self.hash = hash
+    }
     enum CodingKeys: String, CodingKey { case surfaceId = "surface_id", rev, hash }
 }
 

@@ -27,7 +27,7 @@ public actor DiffEngine {
     private var state = RowState()
     private var lastInput: TimeInterval
     private var lastChecksumAt: TimeInterval = 0
-    private var onDiff: (@Sendable ([DiffOp]) -> Void)?
+    private var onDiff: (@Sendable (Int, [DiffOp]) -> Void)?
     private var onChecksum: (@Sendable (String, Int) -> Void)?
 
     public init(reader: SurfaceReader,
@@ -46,7 +46,7 @@ public actor DiffEngine {
         self.lastInput = clock.now
     }
 
-    public func setOnDiff(_ handler: (@Sendable ([DiffOp]) -> Void)?) {
+    public func setOnDiff(_ handler: (@Sendable (Int, [DiffOp]) -> Void)?) {
         self.onDiff = handler
     }
 
@@ -67,7 +67,7 @@ public actor DiffEngine {
         let ops = state.ingest(snapshot: snapshot)
         if !ops.isEmpty {
             rev &+= 1
-            onDiff?(ops)
+            onDiff?(rev, ops)
         }
         if clock.now - lastChecksumAt >= 5.0 {
             lastChecksumAt = clock.now

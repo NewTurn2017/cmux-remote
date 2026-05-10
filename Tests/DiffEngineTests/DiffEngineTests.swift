@@ -32,7 +32,7 @@ final class DiffEngineBehaviorTests: XCTestCase {
         let engine = DiffEngine(reader: reader, fps: 100, idleFps: 10,
                                 workspaceId: "w", surfaceId: "s", lines: 2,
                                 clock: FakeClock())
-        await engine.setOnDiff { ops in
+        await engine.setOnDiff { _, ops in
             Task { await inbox.push(ops) }
         }
         try await engine.tick()
