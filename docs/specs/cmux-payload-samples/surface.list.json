@@ -1,0 +1,23 @@
+{
+  "workspace_id" : "EC6D3886-5A82-41EB-B5B7-61AF2FDBF621",
+  "window_id" : "1C0CE3C0-9461-4411-8DFC-4AA8FD1B065E",
+  "surfaces" : [
+    {
+      "id" : "B79A6DD6-7BD4-43AF-9853-A805659C1DBC",
+      "index" : 0,
+      "focused" : true,
+      "pane_ref" : "pane:9",
+      "tmux_start_command" : null,
+      "index_in_pane" : 0,
+      "initial_command" : null,
+      "title" : "⠐ Clean up local branches and start phase 2 design",
+      "type" : "terminal",
+      "pane_id" : "C2BF4CDF-98D4-4400-B850-465EA7FD2CE9",
+      "ref" : "surface:9",
+      "selected_in_pane" : true,
+      "requested_working_directory" : "/Users/genie/dev/active/warmtalent-ai/.worktrees/ddaneung-agent-phase0"
+    }
+  ],
+  "window_ref" : "window:1",
+  "workspace_ref" : "workspace:1"
+}

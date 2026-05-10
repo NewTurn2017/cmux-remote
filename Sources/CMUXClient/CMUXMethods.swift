@@ -4,13 +4,15 @@ import SharedKit
 extension CMUXClient {
     public func workspaceList() async throws -> [Workspace] {
         let resp = try await call(method: "workspace.list", params: .object([:]))
-        return try resp.unwrapResult().decode([String: [Workspace]].self)["workspaces"] ?? []
+        let raw = try resp.unwrapResult().decode(CMUXWorkspaceListRaw.self)
+        return raw.workspaces.map { $0.toWorkspace() }
     }
 
     public func workspaceCreate(name: String) async throws -> Workspace {
         let resp = try await call(method: "workspace.create",
                                   params: .object(["name": .string(name)]))
-        return try resp.unwrapResult().decode(Workspace.self)
+        let raw = try resp.unwrapResult().decode(CMUXWorkspaceCreateRaw.self)
+        return raw.workspace.toWorkspace()
     }
 
     public func workspaceSelect(id: String) async throws {
@@ -26,7 +28,8 @@ extension CMUXClient {
     public func surfaceList(workspaceId: String) async throws -> [Surface] {
         let resp = try await call(method: "surface.list",
                                   params: .object(["workspace_id": .string(workspaceId)]))
-        return try resp.unwrapResult().decode([String: [Surface]].self)["surfaces"] ?? []
+        let raw = try resp.unwrapResult().decode(CMUXSurfaceListRaw.self)
+        return raw.surfaces.map { $0.toSurface() }
     }
 
     public func surfaceSendText(workspaceId: String, surfaceId: String, text: String) async throws {
@@ -57,7 +60,11 @@ extension CMUXClient {
                                       "surface_id": .string(surfaceId),
                                       "lines": .int(Int64(lines)),
                                   ]))
-        return try resp.unwrapResult().decode(Screen.self)
+        let raw = try resp.unwrapResult().decode(CMUXReadTextRaw.self)
+        // `rev` is a relay-internal counter (DiffEngine bumps per tick); the
+        // cmux response has no equivalent, so we hand back 0 here and let
+        // callers stamp their own rev.
+        return raw.toScreen(rev: 0)
     }
 
     public func notificationCreate(workspaceId: String, surfaceId: String?, title: String,

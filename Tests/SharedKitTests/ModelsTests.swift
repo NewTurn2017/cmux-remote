@@ -5,12 +5,21 @@ import Foundation
 @Suite("Models")
 struct ModelsTests {
     @Test func workspaceRoundTrip() throws {
-        let ws = Workspace(id: "ws-1", name: "frontend", surfaces: [
-            Surface(id: "sf-1", title: "shell", cols: 120, rows: 30, lastActivity: 1000),
-        ], lastActivity: 2000)
+        let ws = Workspace(id: "EC6D3886-5A82-41EB-B5B7-61AF2FDBF621",
+                           name: "frontend",
+                           index: 0)
         let data = try JSONEncoder().encode(ws)
         let back = try JSONDecoder().decode(Workspace.self, from: data)
         #expect(back == ws)
+    }
+
+    @Test func surfaceRoundTrip() throws {
+        let sf = Surface(id: "B79A6DD6-7BD4-43AF-9853-A805659C1DBC",
+                         title: "shell",
+                         index: 2)
+        let data = try JSONEncoder().encode(sf)
+        let back = try JSONDecoder().decode(Surface.self, from: data)
+        #expect(back == sf)
     }
 
     @Test func notificationRoundTrip() throws {

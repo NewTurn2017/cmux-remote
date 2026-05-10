@@ -442,17 +442,27 @@ EXPLICITLY OUT of v1.0:
 - Whether to include a tiny config UI on the menu bar app for `allow_login` — **resolved 2026-05-09:** read-only in v1.0; edits via manual `relay.json` change + `kill -HUP` or "Reload" menu-bar action.
 - Sandbox vs prod APNs default — sandbox during dev, prod after first TestFlight.
 
-### Known issue (M2 live smoke 2026-05-10)
+### Resolved: cmux schema alignment (M3.0a, 2026-05-10)
 
-The cmux v2 socket `workspace.list` response contains workspace records whose actual fields are `ref` (string ref like `workspace:1`), `title`, `index`, `selected`, `current_directory`, `remote`, etc. The original section 6.3 mapping assumed our `Workspace { id, name, surfaces, lastActivity }` Codable model would round-trip with cmux's response — it does not.
+The cmux v2 socket exposes more shape than the relay needs:
 
-**Resolution path** (M3 / relay-side):
+- `workspace.list` records carry `ref`, `title`, `index`, `selected`, `current_directory`, `remote{...}`, `pinned`, `listening_ports`, etc. There is no `name`, no `last_activity`, and no inline `surfaces[]`.
+- `surface.list` records carry `id`, `title`, `index`, `ref`, `focused`, `pane_id`, `pane_ref`, `tmux_start_command`, `requested_working_directory`, etc. There are no `cols`/`rows`/`last_activity`.
+- `surface.read_text` returns flat `text` + `base64`. There is no `rev`, no `rows[]`, no `cols`, no `cursor`.
 
-1. Capture a representative `workspace.list` response via `cmux rpc workspace.list` and check it into `docs/specs/cmux-payload-samples/`.
-2. Either (a) introduce a `CMUXWorkspaceRaw` struct in `CMUXClient` that mirrors cmux's actual schema and a translator that maps it to `SharedKit.Workspace`, or (b) revise `SharedKit.Workspace` to match cmux directly (adopt `ref` as id, rename `name`→`title`, etc.).
-3. Re-run `CMUX_LIVE=1 swift test --filter LiveSocketSmokeTests` to confirm the schema is aligned.
+Representative payloads captured live from the cmux app are checked in under `docs/specs/cmux-payload-samples/{workspace.list,surface.list,surface.read_text}.json`.
 
-For M2's purposes the relay-internal types remain as designed; the live smoke test demonstrates connection + envelope decoding is correct. Schema reconciliation lands in M3 task 9 (or earlier as a hot patch if M3 needs the typed decode immediately).
+**Resolution chosen — translator approach (option a):**
+
+1. `SharedKit` exposes slim, iOS-shaped models — `Workspace { id, name, index }` and `Surface { id, title, index }`. Fields the iOS UI does not render are dropped; `index` is the cmux-defined ordering and serves as v1.0's sort key. (Real `lastActivity` is a v1.1+ enhancement once cmux exposes activity timestamps.)
+2. `CMUXClient/CMUXRawTypes.swift` mirrors the cmux wire shape — `CMUXWorkspaceListRaw`, `CMUXWorkspaceRaw`, `CMUXSurfaceListRaw`, `CMUXSurfaceRaw`, `CMUXReadTextRaw` — and exposes `.toWorkspace()` / `.toSurface()` / `.toScreen(rev:)` translators.
+3. `surface.read_text` synthesises a `Screen`: rows by splitting `text` on `\n`, `cols` from the longest line, `cursor` stubbed at `(0,0)` until cmux exposes cursor coordinates.
+4. `CMUX_LIVE=1 swift test --filter LiveSocketSmokeTests` decodes the live cmux response end-to-end. As of 2026-05-10 it returns 8 real workspaces translated through `CMUXWorkspaceListRaw`.
+
+**Open follow-ups** (separate from this resolution):
+
+- Cursor coordinates: cmux v2 has no `surface.cursor` RPC. DiffEngine emits `(0,0)` for now. Either land cursor in cmux upstream, or derive from ANSI escape parsing of `text`. Tracked as v1.1 work, not blocking M3.
+- `XCTest` cases that route through `EmbeddedChannel` + `async let` (e.g. `CMUXClientTests.testCallEncodesRequestAndResolvesOnResponse`) hang under `swift test` due to a pre-existing `EmbeddedEventLoop` thread-safety violation. M3 task 7/10 will move these onto a real `MultiThreadedEventLoopGroup` test fixture; until then they are excluded from the green-build filter and the translator boundary is verified by direct unit tests in `CMUXMethodsTests`.
 
 ## 15. Quality bar
 

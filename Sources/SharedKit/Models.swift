@@ -1,23 +1,30 @@
 import Foundation
 
+/// Workspace as it crosses the relay → iOS boundary.
+///
+/// Slimmed v2 (2026-05-10): cmux's `workspace.list` does not expose `lastActivity`
+/// or inline surfaces. We surface only the fields iOS actually renders. Sort by
+/// `index` (cmux-defined ordering, mirrors `workspace:N` refs).
 public struct Workspace: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
-    public var surfaces: [Surface]
-    public var lastActivity: Int64
-    public init(id: String, name: String, surfaces: [Surface], lastActivity: Int64) {
-        self.id = id; self.name = name; self.surfaces = surfaces; self.lastActivity = lastActivity
+    public var index: Int
+    public init(id: String, name: String, index: Int) {
+        self.id = id; self.name = name; self.index = index
     }
 }
 
+/// Surface as it crosses the relay → iOS boundary.
+///
+/// Slimmed v2 (2026-05-10): cmux's `surface.list` does not expose terminal grid
+/// dimensions or `lastActivity`. Cols/rows of the live buffer come from
+/// `surface.read_text` responses on the server side.
 public struct Surface: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var title: String
-    public var cols: Int
-    public var rows: Int
-    public var lastActivity: Int64
-    public init(id: String, title: String, cols: Int, rows: Int, lastActivity: Int64) {
-        self.id = id; self.title = title; self.cols = cols; self.rows = rows; self.lastActivity = lastActivity
+    public var index: Int
+    public init(id: String, title: String, index: Int) {
+        self.id = id; self.title = title; self.index = index
     }
 }
 

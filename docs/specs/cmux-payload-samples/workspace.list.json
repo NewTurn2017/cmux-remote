@@ -1,0 +1,502 @@
+{
+  "window_ref" : "window:1",
+  "workspaces" : [
+    {
+      "pinned" : false,
+      "ref" : "workspace:1",
+      "remote" : {
+        "detail" : null,
+        "active_terminal_sessions" : 0,
+        "state" : "disconnected",
+        "connected" : false,
+        "forwarded_ports" : [
+
+        ],
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "state" : "unavailable",
+          "detail" : null,
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "transport" : null,
+        "detected_ports" : [
+
+        ],
+        "has_ssh_options" : false,
+        "proxy" : {
+          "port" : null,
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "error_code" : null
+        },
+        "has_identity_file" : false,
+        "local_proxy_port" : null,
+        "heartbeat" : {
+          "last_seen_at" : null,
+          "count" : 0,
+          "age_seconds" : null
+        },
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "id" : "EC6D3886-5A82-41EB-B5B7-61AF2FDBF621",
+      "title" : "따능에이전트개발",
+      "listening_ports" : [
+
+      ],
+      "selected" : true,
+      "custom_color" : null,
+      "current_directory" : "/Users/genie/dev/active/warmtalent-ai/.worktrees/ddaneung-agent-phase1",
+      "description" : null,
+      "index" : 0
+    },
+    {
+      "pinned" : false,
+      "ref" : "workspace:19",
+      "remote" : {
+        "detail" : null,
+        "active_terminal_sessions" : 0,
+        "state" : "disconnected",
+        "connected" : false,
+        "forwarded_ports" : [
+
+        ],
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "state" : "unavailable",
+          "detail" : null,
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "has_identity_file" : false,
+        "has_ssh_options" : false,
+        "detected_ports" : [
+
+        ],
+        "proxy" : {
+          "error_code" : null,
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "port" : null
+        },
+        "heartbeat" : {
+          "count" : 0,
+          "last_seen_at" : null,
+          "age_seconds" : null
+        },
+        "transport" : null,
+        "local_proxy_port" : null,
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "id" : "0C0D2EB7-334D-4E09-9362-03A8F5D2BEEC",
+      "title" : "따능api",
+      "listening_ports" : [
+
+      ],
+      "selected" : false,
+      "custom_color" : null,
+      "description" : null,
+      "current_directory" : "/Users/genie/dev/active/warmtalent-ai",
+      "index" : 1
+    },
+    {
+      "pinned" : false,
+      "ref" : "workspace:6",
+      "remote" : {
+        "state" : "disconnected",
+        "detail" : null,
+        "active_terminal_sessions" : 0,
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "detail" : null,
+          "state" : "unavailable",
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "connected" : false,
+        "forwarded_ports" : [
+
+        ],
+        "transport" : null,
+        "has_ssh_options" : false,
+        "detected_ports" : [
+
+        ],
+        "proxy" : {
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "error_code" : null,
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "port" : null
+        },
+        "heartbeat" : {
+          "last_seen_at" : null,
+          "count" : 0,
+          "age_seconds" : null
+        },
+        "local_proxy_port" : null,
+        "has_identity_file" : false,
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "id" : "5CBE933F-918F-431D-9746-2440236926C9",
+      "title" : "Ground Artfair",
+      "selected" : false,
+      "listening_ports" : [
+
+      ],
+      "custom_color" : null,
+      "description" : null,
+      "current_directory" : "/Users/genie/dev/active/g-round-artfair",
+      "index" : 2
+    },
+    {
+      "pinned" : false,
+      "ref" : "workspace:10",
+      "remote" : {
+        "detail" : null,
+        "active_terminal_sessions" : 0,
+        "state" : "disconnected",
+        "connected" : false,
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "state" : "unavailable",
+          "detail" : null,
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "forwarded_ports" : [
+
+        ],
+        "transport" : null,
+        "detected_ports" : [
+
+        ],
+        "has_identity_file" : false,
+        "heartbeat" : {
+          "last_seen_at" : null,
+          "count" : 0,
+          "age_seconds" : null
+        },
+        "proxy" : {
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "error_code" : null,
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "port" : null
+        },
+        "local_proxy_port" : null,
+        "has_ssh_options" : false,
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "id" : "D0D0190E-1364-45C6-8763-4444B86BAF03",
+      "title" : "요술마켓",
+      "listening_ports" : [
+
+      ],
+      "selected" : false,
+      "custom_color" : null,
+      "current_directory" : "/Users/genie/dev/active/withgenie-kr-lms",
+      "description" : null,
+      "index" : 3
+    },
+    {
+      "pinned" : false,
+      "remote" : {
+        "state" : "disconnected",
+        "detail" : null,
+        "active_terminal_sessions" : 0,
+        "connected" : false,
+        "forwarded_ports" : [
+
+        ],
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "detail" : null,
+          "state" : "unavailable",
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "has_identity_file" : false,
+        "detected_ports" : [
+
+        ],
+        "transport" : null,
+        "proxy" : {
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "port" : null,
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "error_code" : null
+        },
+        "heartbeat" : {
+          "last_seen_at" : null,
+          "count" : 0,
+          "age_seconds" : null
+        },
+        "local_proxy_port" : null,
+        "has_ssh_options" : false,
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "ref" : "workspace:14",
+      "id" : "842DC8D6-3299-4858-AAF3-3CD672C3BD91",
+      "title" : "맡겨봐",
+      "listening_ports" : [
+
+      ],
+      "selected" : false,
+      "custom_color" : null,
+      "description" : null,
+      "current_directory" : "/Users/genie/dev/active/matgyeobwa",
+      "index" : 4
+    },
+    {
+      "pinned" : false,
+      "remote" : {
+        "detail" : null,
+        "state" : "disconnected",
+        "active_terminal_sessions" : 0,
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "detail" : null,
+          "state" : "unavailable",
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "connected" : false,
+        "forwarded_ports" : [
+
+        ],
+        "transport" : null,
+        "detected_ports" : [
+
+        ],
+        "has_identity_file" : false,
+        "heartbeat" : {
+          "count" : 0,
+          "last_seen_at" : null,
+          "age_seconds" : null
+        },
+        "proxy" : {
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "port" : null,
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "error_code" : null
+        },
+        "local_proxy_port" : null,
+        "has_ssh_options" : false,
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "ref" : "workspace:15",
+      "id" : "A98464BF-3CA1-4C97-9D11-9DC93F71AF96",
+      "title" : "cmux-phone",
+      "selected" : false,
+      "listening_ports" : [
+
+      ],
+      "custom_color" : null,
+      "current_directory" : "/Users/genie/dev/side/cmux-iphone",
+      "description" : null,
+      "index" : 5
+    },
+    {
+      "pinned" : false,
+      "remote" : {
+        "detail" : null,
+        "state" : "disconnected",
+        "active_terminal_sessions" : 0,
+        "connected" : false,
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "state" : "unavailable",
+          "detail" : null,
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "forwarded_ports" : [
+
+        ],
+        "transport" : null,
+        "has_identity_file" : false,
+        "has_ssh_options" : false,
+        "proxy" : {
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "port" : null,
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "error_code" : null
+        },
+        "heartbeat" : {
+          "count" : 0,
+          "last_seen_at" : null,
+          "age_seconds" : null
+        },
+        "local_proxy_port" : null,
+        "detected_ports" : [
+
+        ],
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "ref" : "workspace:17",
+      "id" : "C554F6EC-AD86-4DBF-AED1-41F6AA032BDB",
+      "title" : "릴스파이 클론 분석 - sns-connect활용",
+      "selected" : false,
+      "listening_ports" : [
+
+      ],
+      "custom_color" : null,
+      "current_directory" : "/Users/genie/dev/side/hookline",
+      "description" : null,
+      "index" : 6
+    },
+    {
+      "remote" : {
+        "detail" : null,
+        "active_terminal_sessions" : 0,
+        "state" : "disconnected",
+        "daemon" : {
+          "capabilities" : [
+
+          ],
+          "detail" : null,
+          "state" : "unavailable",
+          "name" : null,
+          "remote_path" : null,
+          "version" : null
+        },
+        "forwarded_ports" : [
+
+        ],
+        "connected" : false,
+        "transport" : null,
+        "detected_ports" : [
+
+        ],
+        "has_ssh_options" : false,
+        "heartbeat" : {
+          "last_seen_at" : null,
+          "count" : 0,
+          "age_seconds" : null
+        },
+        "has_identity_file" : false,
+        "local_proxy_port" : null,
+        "proxy" : {
+          "schemes" : [
+            "socks5",
+            "http_connect"
+          ],
+          "error_code" : null,
+          "state" : "unavailable",
+          "host" : null,
+          "url" : null,
+          "port" : null
+        },
+        "enabled" : false,
+        "destination" : null,
+        "conflicted_ports" : [
+
+        ],
+        "port" : null
+      },
+      "ref" : "workspace:25",
+      "pinned" : false,
+      "id" : "0595E1E7-755E-41B2-BA9A-5C06B6BB6E75",
+      "title" : "exit",
+      "selected" : false,
+      "listening_ports" : [
+
+      ],
+      "custom_color" : null,
+      "current_directory" : "/Users/genie/dev/tools/autopresentation",
+      "description" : null,
+      "index" : 7
+    }
+  ],
+  "window_id" : "1C0CE3C0-9461-4411-8DFC-4AA8FD1B065E"
+}
