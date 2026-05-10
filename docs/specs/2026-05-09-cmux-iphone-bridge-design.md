@@ -437,10 +437,22 @@ EXPLICITLY OUT of v1.0:
 
 ## 14. Open questions (to resolve during plan/implementation)
 
-- Exact menu-bar app: bundled inside `cmux-relay` (LSUIElement) or separate binary? — defer to plan
-- AccessoryBar live-config: file watch on `relay.json` snippets vs explicit reload — defer to plan
-- Whether to include a tiny config UI on the menu bar app for `allow_login` — defer to plan
-- Sandbox vs prod APNs default — sandbox during dev, prod after first TestFlight
+- Exact menu-bar app: bundled inside `cmux-relay` (LSUIElement) or separate binary? — **resolved 2026-05-09:** single binary, `LSUIElement` set at runtime via `NSApp.setActivationPolicy(.accessory)`.
+- AccessoryBar live-config: file watch on `relay.json` snippets vs explicit reload — **resolved 2026-05-09:** `DispatchSource.makeFileSystemObjectSource` + SIGHUP fallback.
+- Whether to include a tiny config UI on the menu bar app for `allow_login` — **resolved 2026-05-09:** read-only in v1.0; edits via manual `relay.json` change + `kill -HUP` or "Reload" menu-bar action.
+- Sandbox vs prod APNs default — sandbox during dev, prod after first TestFlight.
+
+### Known issue (M2 live smoke 2026-05-10)
+
+The cmux v2 socket `workspace.list` response contains workspace records whose actual fields are `ref` (string ref like `workspace:1`), `title`, `index`, `selected`, `current_directory`, `remote`, etc. The original section 6.3 mapping assumed our `Workspace { id, name, surfaces, lastActivity }` Codable model would round-trip with cmux's response — it does not.
+
+**Resolution path** (M3 / relay-side):
+
+1. Capture a representative `workspace.list` response via `cmux rpc workspace.list` and check it into `docs/specs/cmux-payload-samples/`.
+2. Either (a) introduce a `CMUXWorkspaceRaw` struct in `CMUXClient` that mirrors cmux's actual schema and a translator that maps it to `SharedKit.Workspace`, or (b) revise `SharedKit.Workspace` to match cmux directly (adopt `ref` as id, rename `name`→`title`, etc.).
+3. Re-run `CMUX_LIVE=1 swift test --filter LiveSocketSmokeTests` to confirm the schema is aligned.
+
+For M2's purposes the relay-internal types remain as designed; the live smoke test demonstrates connection + envelope decoding is correct. Schema reconciliation lands in M3 task 9 (or earlier as a hot patch if M3 needs the typed decode immediately).
 
 ## 15. Quality bar
 
