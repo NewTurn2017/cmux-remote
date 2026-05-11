@@ -81,6 +81,7 @@ let package = Package(
             .product(name: "NIOHTTP1", package: "swift-nio"),
             .product(name: "NIOPosix", package: "swift-nio"),
             .product(name: "NIOEmbedded", package: "swift-nio"),
+            .product(name: "ArgumentParser", package: "swift-argument-parser"),
         ]),
     ]
 )
