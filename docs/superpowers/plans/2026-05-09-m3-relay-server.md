@@ -1972,3 +1972,20 @@ git branch -d m3-relay
 ```
 
 Pick up M4 next: `2026-05-09-m4-ios-skeleton.md`.
+
+---
+
+## Task 16 — upstream cmux socket-access compatibility
+
+2026-05-12 upstream refresh to cmux `5829da2d9` changed the M3 launchd assumption: default `cmuxOnly` rejects same-user external/launchd clients unless they were started inside cmux. The relay compatibility contract is now:
+
+- `automation` mode works without auth for same-user local automation.
+- `password` mode works when the relay sends JSON-RPC `auth.login` first.
+- `cmuxOnly` remains unsupported for launchd relay and must fail fast with an actionable access error.
+- `allowAll` remains rejected as a product recommendation.
+
+Implemented follow-up:
+
+- `CMUXClient.authenticate(password:)` sends `auth.login` before normal RPCs.
+- `cmuxSocketPassword()` resolves `CMUX_SOCKET_PASSWORD` then `~/Library/Application Support/cmux/socket-control-password` so launchd does not need plaintext secrets in plist environment.
+- Plain text `ERROR:` responses from cmux fail pending and future calls immediately instead of timing out.

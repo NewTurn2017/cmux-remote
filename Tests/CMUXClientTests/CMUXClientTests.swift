@@ -21,6 +21,50 @@ final class CMUXClientTests: XCTestCase {
         XCTAssertTrue(value.isOk)
     }
 
+
+
+    func testAuthenticateSendsAuthLoginRequest() async throws {
+        let fix = try await MTELGCmuxFixture.make(requestTimeout: .seconds(2))
+        defer { Task { await fix.shutdown() } }
+
+        async let auth: Void = fix.client.authenticate(password: "secret")
+
+        let outString = try await fix.awaitRequestLine()
+        XCTAssertTrue(outString.contains("\"method\":\"auth.login\""),
+                      "missing auth method on wire: \(outString)")
+        XCTAssertTrue(outString.contains("\"password\":\"secret\""),
+                      "missing password param on wire: \(outString)")
+        let outId = try Self.extractId(from: outString)
+
+        try await fix.sendToClient(line: #"{"id":"\#(outId)","result":{"authenticated":true}}"#)
+
+        try await auth
+    }
+
+    func testPlainAccessDeniedFailsPendingAndFutureCalls() async throws {
+        let fix = try await MTELGCmuxFixture.make(requestTimeout: .seconds(2))
+        defer { Task { await fix.shutdown() } }
+
+        async let result = fix.client.call(method: "workspace.list", params: .object([:]))
+        _ = try await fix.awaitRequestLine()
+
+        try await fix.sendToClient(line: "ERROR: Access denied — only processes started inside cmux can connect")
+
+        do {
+            _ = try await result
+            XCTFail("expected access denied server message")
+        } catch CMUXClientError.serverMessage(let message) {
+            XCTAssertTrue(message.contains("Access denied"), message)
+        }
+
+        do {
+            _ = try await fix.client.call(method: "workspace.list", params: .object([:]))
+            XCTFail("expected cached terminal server message")
+        } catch CMUXClientError.serverMessage(let message) {
+            XCTAssertTrue(message.contains("Access denied"), message)
+        }
+    }
+
     func testTimeoutThrows() async throws {
         let fix = try await MTELGCmuxFixture.make(requestTimeout: .milliseconds(100))
         defer { Task { await fix.shutdown() } }

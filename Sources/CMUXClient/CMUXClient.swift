@@ -9,6 +9,7 @@ public enum CMUXClientError: Error, Equatable {
     case rpc(RPCError)
     case decoding(String)
     case channelClosed
+    case serverMessage(String)
 }
 
 public actor CMUXClient {
@@ -18,6 +19,7 @@ public actor CMUXClient {
 
     private var pending: [String: CheckedContinuation<RPCResponse, Error>] = [:]
     private var pushHandler: (@Sendable (PushFrame) -> Void)?
+    private var terminalError: CMUXClientError?
 
     public init(channel: Channel, requestTimeout: TimeAmount = .seconds(5)) {
         self.channel = channel
@@ -31,20 +33,29 @@ public actor CMUXClient {
 
     @discardableResult
     public func call(method: String, params: JSONValue) async throws -> RPCResponse {
+        if let terminalError {
+            throw terminalError
+        }
+        guard channel.isActive else {
+            throw CMUXClientError.channelClosed
+        }
+
         let id = UUID().uuidString
         let req = RPCRequest(id: id, method: method, params: params)
         let body = try JSONEncoder().encode(req)
         var buf = channel.allocator.buffer(capacity: body.count)
         buf.writeBytes(body)
 
-        // Write request (happens on event loop, stays synchronized)
-        channel.write(buf, promise: nil)
-        channel.flush()
-
         // Wait for response with timeout
         return try await withCheckedThrowingContinuation { cont in
             // Register continuation
             self.pending[id] = cont
+
+            // Write request after registration so a fast local response cannot
+            // beat the pending table entry.
+            self.channel.writeAndFlush(buf).whenFailure { error in
+                Task { await self.failContinuation(id: id, error: .channelClosed) }
+            }
 
             // Schedule timeout
             _ = self.channel.eventLoop.scheduleTask(in: self.requestTimeout) { [weak self] in
@@ -54,9 +65,45 @@ public actor CMUXClient {
         }
     }
 
+    public func authenticate(password: String) async throws {
+        let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let response = try await call(
+            method: "auth.login",
+            params: .object(["password": .string(trimmed)])
+        )
+        if let error = response.error {
+            throw CMUXClientError.rpc(error)
+        }
+        guard response.isOk else {
+            throw CMUXClientError.decoding("auth.login returned ok=false without an RPC error")
+        }
+    }
+
     private func doTimeoutContinuation(id: String) {
         if let c = self.pending.removeValue(forKey: id) {
             c.resume(throwing: CMUXClientError.timeout)
+        }
+    }
+
+    private func failContinuation(id: String, error: CMUXClientError) {
+        if error == .channelClosed, terminalError == nil {
+            terminalError = error
+        }
+        if let c = self.pending.removeValue(forKey: id) {
+            c.resume(throwing: error)
+        }
+    }
+
+    private func failAllPending(_ error: CMUXClientError, terminal: Bool = false) {
+        if terminal, terminalError == nil {
+            terminalError = error
+        }
+        let continuations = pending.values
+        pending.removeAll()
+        for continuation in continuations {
+            continuation.resume(throwing: error)
         }
     }
 
@@ -83,6 +130,15 @@ public actor CMUXClient {
             pushHandler?(push)
             return
         }
+
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("ERROR:") {
+            failAllPending(.serverMessage(trimmed), terminal: true)
+        }
+    }
+
+    fileprivate func didClose() {
+        failAllPending(.channelClosed, terminal: true)
     }
 }
 
@@ -95,5 +151,10 @@ private final class ClientInboundBridge: ChannelInboundHandler, @unchecked Senda
         let buf = self.unwrapInboundIn(data)
         let captured = buf
         Task { await self.client?.deliver(line: captured) }
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        Task { await self.client?.didClose() }
+        context.fireChannelInactive()
     }
 }

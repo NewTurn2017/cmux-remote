@@ -392,12 +392,18 @@ CI: deferred. Local `swift test` and `xcodebuild test` until v1 ships.
 
 ### 12.2 cmux socket access
 
-Default socket path on macOS is `~/Library/Application Support/cmux/cmux.sock` (override: `CMUX_SOCKET_PATH` env). Relay runs as the same user as cmux, so default `cmuxOnly` access mode is sufficient — owner-only `srw-------` permissions gate the socket and no auth handshake is required for in-user connections. If the user runs the relay before cmux is launched, the relay returns HTTP 503 to phones and retries connect every 2 s.
+Default socket path on macOS is `~/Library/Application Support/cmux/cmux.sock` (override: `CMUX_SOCKET_PATH` env). As of upstream cmux `5829da2d9` (2026-05-12 refresh), default `cmuxOnly` means **only processes launched from inside cmux terminals** may connect; same-user launchd agents are rejected before JSON-RPC with `ERROR: Access denied — only processes started inside cmux can connect`. Therefore a headless launchd relay requires one of these cmux settings:
 
-Auth handshake (only required when `socketControlMode != cmuxOnly` or when running as a different user):
-- Send `auth <password>\n` as the FIRST text command after connect.
-- Resolution order matches cmux CLI: `--password` flag → `CMUX_SOCKET_PASSWORD` env → `~/Library/Application Support/cmux/socket-control-password` file → Keychain service `com.cmuxterm.app.socket-control` (account `local-socket-password`).
-- Skip handshake entirely when password resolution returns nil — the cmux CLI itself does this.
+- Recommended for local automation: `socketControlMode=automation` (same macOS user, owner-only socket, no password handshake).
+- Recommended for stricter setups: `socketControlMode=password`; relay authenticates with JSON-RPC `auth.login` before any other method.
+- Do not use `allowAll` for this product path.
+
+If the user runs the relay before cmux is launched, the relay returns HTTP 503 to phones and retries connect every 2 s. If cmux rejects access under `cmuxOnly`, the relay must fail fast with a visible setup error instead of waiting for RPC timeout.
+
+Auth handshake for password mode:
+- Send `auth.login` as the FIRST JSON-RPC request after connect: `{"id":"...","method":"auth.login","params":{"password":"..."}}`.
+- Password resolution order in cmux-iphone: `CMUX_SOCKET_PASSWORD` env → `~/Library/Application Support/cmux/socket-control-password` file. This avoids writing secrets into launchd plists; the launchd relay can read cmux's owner-only password file.
+- Skip handshake when password resolution returns nil; `automation` mode does not need it.
 
 ### 12.3 Mac sleep
 

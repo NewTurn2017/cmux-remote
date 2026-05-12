@@ -21,7 +21,7 @@
 
 ## Pre-flight (Task 0)
 
-Pre-flight has been completed during M2 kickoff and recorded in spec section 6.2 — cmux uses **newline-delimited JSON over Unix socket**, request body `{"id":"<uuid>","method":"<dotted>","params":{...}}\n`, response body `{"id":"<echoed>","result":...}\n` on success or `{"id":"<echoed>","ok":false,"error":{"code":"<symbol>","message":"..."}}\n` on error. No auth needed in `cmuxOnly` access mode for same-user connections. The full M1 patch landed `id: String`, `error.code: String`, and `ok: Bool?` to match.
+Pre-flight has been completed during M2 kickoff and recorded in spec section 6.2 — cmux uses **newline-delimited JSON over Unix socket**, request body `{"id":"<uuid>","method":"<dotted>","params":{...}}\n`, response body `{"id":"<echoed>","result":...}\n` on success or `{"id":"<echoed>","ok":false,"error":{"code":"<symbol>","message":"..."}}\n` on error. Upstream refresh note (2026-05-12, cmux `5829da2d9`): `cmuxOnly` no longer means same-user automation; launchd/external clients must use `automation` or `password` mode. The full M1 patch landed `id: String`, `error.code: String`, and `ok: Bool?` to match.
 
 - [ ] **Step 1: Reconfirm before writing code**
 

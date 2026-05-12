@@ -18,14 +18,17 @@ public final class CmuxConnection: @unchecked Sendable {
     public var onReset: (() -> Void)?
 
     private let logger = Logger(label: "CmuxConnection")
+    private let socketPassword: String?
     private var lastBootId: String?
     private var client: CMUXClient?
 
     public init(socketPath: String = cmuxSocketPath(),
-                group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1))
+                group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
+                socketPassword: String? = cmuxSocketPassword())
     {
         self.socketPath = socketPath
         self.group = group
+        self.socketPassword = socketPassword
     }
 
     /// Test factory — points at a non-existent socket so calling `connect()`
@@ -41,6 +44,9 @@ public final class CmuxConnection: @unchecked Sendable {
         let chan = try await UnixSocketChannel(path: socketPath, group: group)
             .connect { _ in self.group.next().makeSucceededFuture(()) }
         let c = CMUXClient(channel: chan, requestTimeout: .seconds(5))
+        if let socketPassword {
+            try await c.authenticate(password: socketPassword)
+        }
         self.client = c
         return c
     }
