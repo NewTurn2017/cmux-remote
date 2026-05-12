@@ -80,4 +80,50 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertEqual(p.hostname, "")
         XCTAssertEqual(p.os, "")
     }
+
+
+    func testProductionAuthFallsBackToTailscaleCLIWhenSocketMissing() async throws {
+        let json = #"""
+        {
+          "Node": {
+            "Key": "nodekey:fallback",
+            "Hostinfo": { "OS": "iOS", "Hostname": "iPhone" }
+          },
+          "UserProfile": { "LoginName": "alice@example.com" }
+        }
+        """#
+        let requestedAddress = LockedString()
+        let auth = TailscaledLocalAuth(
+            socketPath: "/tmp/no-such-tailscaled.sock",
+            cliWhois: { addr in
+                requestedAddress.set(addr)
+                return Data(json.utf8)
+            }
+        )
+
+        let p = try await auth.whois(remoteAddr: "100.64.0.5:54321")
+
+        XCTAssertEqual(requestedAddress.get(), "100.64.0.5")
+        XCTAssertEqual(p.loginName, "alice@example.com")
+        XCTAssertEqual(p.hostname, "iPhone")
+        XCTAssertEqual(p.nodeKey, "nodekey:fallback")
+    }
+
+}
+
+private final class LockedString: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+
+    func set(_ value: String) {
+        lock.lock()
+        self.value = value
+        lock.unlock()
+    }
+
+    func get() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
 }

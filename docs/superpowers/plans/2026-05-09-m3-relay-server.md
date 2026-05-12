@@ -4,7 +4,7 @@
 
 **Goal:** Bring up `cmux-relay`, a single launchd-managed Mac daemon that authenticates phones via Tailscale identity, accepts WS connections, multiplexes JSON-RPC traffic to the local cmux socket, and exposes a CLI for device revocation. Plus a small SwiftUI menu-bar UI for "Devices" management.
 
-**Architecture:** swift-nio HTTP/1.1 server with `NIOWebSocketUpgrader`. Auth uses the **local tailscaled API** (`/var/run/tailscale/tailscaled.sock` or the macOS user-context equivalent) for `WhoIs(peerAddr)` — the spec mentions tsnet, but the practical, ship-now approach is to consult the host's already-running tailscaled and skip embedding a tsnet node. The relay still sits behind the user's tailnet because we bind on `0.0.0.0:4399` and Tailscale ACLs / Funnel-off keep the public out. Per-connection state in `Session`, fan-in/fan-out via `SessionManager`. One persistent `CmuxClient` connection to the cmux UDS at `~/Library/Application Support/cmux/cmux.sock` (override `CMUX_SOCKET_PATH`). CLI is `swift-argument-parser`.
+**Architecture:** swift-nio HTTP/1.1 server with `NIOWebSocketUpgrader`. Auth uses the **host Tailscale identity surface** for `WhoIs(peerAddr)`: local tailscaled Unix socket when present, with a `tailscale whois --json` fallback for macOS GUI/App Store installs that have no socket. The spec mentions tsnet, but the practical, ship-now approach is to consult the host's already-running Tailscale and skip embedding a tsnet node. The relay still sits behind the user's tailnet because we bind on `0.0.0.0:4399` and Tailscale ACLs / Funnel-off keep the public out. Per-connection state in `Session`, fan-in/fan-out via `SessionManager`. One persistent `CmuxClient` connection to the cmux UDS at `~/Library/Application Support/cmux/cmux.sock` (override `CMUX_SOCKET_PATH`). CLI is `swift-argument-parser`.
 
 **Tech Stack:** swift-nio (HTTP1, WebSocket, SSL), swift-argument-parser, swift-log, async-http-client (for the local tailscaled API call), SwiftUI MenuBarExtra (single binary, `setActivationPolicy(.accessory)`).
 
@@ -1989,3 +1989,15 @@ Implemented follow-up:
 - `CMUXClient.authenticate(password:)` sends `auth.login` before normal RPCs.
 - `cmuxSocketPassword()` resolves `CMUX_SOCKET_PASSWORD` then `~/Library/Application Support/cmux/socket-control-password` so launchd does not need plaintext secrets in plist environment.
 - Plain text `ERROR:` responses from cmux fail pending and future calls immediately instead of timing out.
+
+---
+
+## Task 17 — macOS Tailscale GUI whois fallback
+
+2026-05-12 live M3 smoke on this Mac showed Tailscale was running, but neither `/var/run/tailscaled.socket` nor `/var/run/tailscale/tailscaled.sock` existed. `tailscale whois --json <tailnet-ip>` did work, which matches macOS GUI/App Store style installs.
+
+Implemented follow-up:
+
+- `TailscaledLocalAuth` now attempts the Unix-socket LocalAPI only when the socket path exists.
+- If no socket exists, or LocalAPI fails, it falls back to `tailscale whois --json` and parses the same Tailscale JSON shape.
+- Unit coverage injects the CLI fallback so register does not depend on a real Tailscale daemon in tests.

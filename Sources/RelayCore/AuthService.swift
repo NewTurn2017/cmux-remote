@@ -41,25 +41,81 @@ public final class MockAuthService: AuthService, @unchecked Sendable {
 /// Requires async-http-client 1.21+ for `http+unix://` URL support. The
 /// `Sec-Tailscale: localapi` header is required by tailscaled's CSRF guard.
 public final class TailscaledLocalAuth: AuthService {
+    public typealias CLIWhois = @Sendable (String) async throws -> Data
+
     public let socketPath: String
     public let httpClient: HTTPClient
+    private let cliWhois: CLIWhois
+    private let ownsHTTPClient: Bool
 
     public init(socketPath: String = "/var/run/tailscaled.socket",
-                httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .singleton))
+                httpClient: HTTPClient = HTTPClient(eventLoopGroupProvider: .singleton),
+                ownsHTTPClient: Bool = true,
+                cliWhois: CLIWhois? = nil)
     {
         self.socketPath = socketPath
         self.httpClient = httpClient
+        self.ownsHTTPClient = ownsHTTPClient
+        self.cliWhois = cliWhois ?? { addr in
+            try await TailscaledLocalAuth.runTailscaleWhoisCLI(addr: addr)
+        }
+    }
+
+    deinit {
+        if ownsHTTPClient {
+            try? httpClient.syncShutdown()
+        }
     }
 
     public func whois(remoteAddr: String) async throws -> PeerIdentity {
         let addr = stripPort(remoteAddr)
+        if FileManager.default.fileExists(atPath: socketPath) {
+            do {
+                return try await whoisViaLocalAPI(addr: addr)
+            } catch {
+                // Some macOS Tailscale distributions do not expose a
+                // tailscaled Unix socket even though `tailscale whois --json`
+                // works. Fall through to the CLI path so operator-side smoke
+                // tests work across both open-source and App Store installs.
+            }
+        }
+        do {
+            return try Self.parseWhoisResponse(try await cliWhois(addr))
+        } catch {
+            throw RelayError.unauthorized(remoteAddr)
+        }
+    }
+
+    private func whoisViaLocalAPI(addr: String) async throws -> PeerIdentity {
         let url = "http+unix://localhost\(socketPath)/localapi/v0/whois?addr=\(addr)"
         var req = HTTPClientRequest(url: url)
         req.headers.add(name: "Sec-Tailscale", value: "localapi")
         let resp = try await httpClient.execute(req, timeout: .seconds(2))
-        guard resp.status == .ok else { throw RelayError.unauthorized(remoteAddr) }
+        guard resp.status == .ok else { throw RelayError.unauthorized(addr) }
         let body = try await resp.body.collect(upTo: 1 << 20)
         return try Self.parseWhoisResponse(Data(buffer: body))
+    }
+
+    private static func runTailscaleWhoisCLI(addr: String) async throws -> Data {
+        try await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["tailscale", "whois", "--json", addr]
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            try process.run()
+            process.waitUntilExit()
+
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            if process.terminationStatus == 0 {
+                return data
+            }
+            throw RelayError.unauthorized(addr)
+        }.value
     }
 
     /// Decodes a `tailscaled` `/localapi/v0/whois` response. Visible to tests.
