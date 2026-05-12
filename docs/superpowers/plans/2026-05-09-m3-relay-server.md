@@ -1795,6 +1795,8 @@ git commit -m "M3.13: relay smoke script (health endpoint)"
 
 ## Task 14 — launchd plist + install scripts
 
+> Deviation note (2026-05-12): The MenuBar subcommand from task 12 remains intentionally deferred to v1.1. M3.14 installs only the headless `cmux-relay serve` daemon because pulling AppKit/SwiftUI into the v1.0 daemon binary adds packaging and runtime cost without improving the launchd path.
+
 **Files:**
 - Create: `scripts/relay.plist.tmpl`
 - Create: `scripts/install-launchd.sh`
