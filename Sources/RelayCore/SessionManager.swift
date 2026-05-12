@@ -68,4 +68,12 @@ public actor SessionManager {
             await s.send(frame: frame)
         }
     }
+
+    /// Notify every connected client that cmux restarted and local relay
+    /// surface state should be considered stale.
+    public func broadcastReset() async {
+        await broadcastToAll(frame: .event(EventFrame(category: .system,
+                                                     name: "cmux.reset",
+                                                     payload: .null)))
+    }
 }

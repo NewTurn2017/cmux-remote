@@ -46,6 +46,9 @@ struct Serve: AsyncParsableCommand {
         let manager = SessionManager(reader: reader,
                                      defaultFps: store.current.defaultFps,
                                      idleFps: store.current.idleFps)
+        conn.onReset = {
+            Task { await manager.broadcastReset() }
+        }
         let deviceStore = try DeviceStore(url: URL(fileURLWithPath: devicesStorePath()))
         let auth = TailscaledLocalAuth()
         let routes = Routes(deviceStore: deviceStore,
