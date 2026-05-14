@@ -217,8 +217,8 @@ client that talks to cmux over a documented JSON-RPC schema.
 ### 1. Build and install the relay on your Mac
 
 ```bash
-git clone https://github.com/<you>/cmux-iphone.git
-cd cmux-iphone
+git clone https://github.com/NewTurn2017/cmux-remote.git
+cd cmux-remote
 swift build -c release --product cmux-relay
 
 # Install as a launchd user agent (auto-starts on login)
@@ -310,7 +310,7 @@ multi-user sharing, server-side persistence beyond the live session.
 ## Project layout
 
 ```
-cmux-iphone/
+cmux-remote/
 ├─ README.md / README.en.md
 ├─ LICENSE
 ├─ docs/

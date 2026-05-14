@@ -190,8 +190,8 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 ### 1. Mac에 relay 빌드 + 설치
 
 ```bash
-git clone https://github.com/<you>/cmux-iphone.git
-cd cmux-iphone
+git clone https://github.com/NewTurn2017/cmux-remote.git
+cd cmux-remote
 swift build -c release --product cmux-relay
 
 # launchd 유저 에이전트로 설치 (로그인 시 자동 시작)
@@ -280,7 +280,7 @@ Relay는 `~/.cmuxremote/relay.json`을 읽습니다 (`install-launchd.sh`가
 ## 프로젝트 구조
 
 ```
-cmux-iphone/
+cmux-remote/
 ├─ README.md / README.en.md
 ├─ LICENSE
 ├─ docs/
