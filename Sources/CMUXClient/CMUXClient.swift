@@ -20,11 +20,25 @@ public actor CMUXClient {
     private var pending: [String: CheckedContinuation<RPCResponse, Error>] = [:]
     private var pushHandler: (@Sendable (PushFrame) -> Void)?
     private var terminalError: CMUXClientError?
+    private var bridgeReady = false
+    private var bridgeWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(channel: Channel, requestTimeout: TimeAmount = .seconds(5)) {
         self.channel = channel
         self.requestTimeout = requestTimeout
         Task { await self.installInboundHandler() }
+    }
+
+    /// Await this from the construction site before issuing any RPC. The
+    /// `installInboundHandler` task scheduled in `init` is racy with the
+    /// first `call(...)` — without this gate the very first response (and
+    /// every subsequent one, since `events.stream` keeps the line open)
+    /// would arrive at a pipeline that has no inbound bridge yet and get
+    /// silently dropped, which surfaces as `CMUXClientError.timeout` after
+    /// 5 s.
+    public func awaitReady() async {
+        if bridgeReady { return }
+        await withCheckedContinuation { bridgeWaiters.append($0) }
     }
 
     public func onEventStream(_ handler: @escaping @Sendable (PushFrame) -> Void) {
@@ -110,6 +124,10 @@ public actor CMUXClient {
     private func installInboundHandler() async {
         let handler = ClientInboundBridge(client: self)
         try? await channel.pipeline.addHandler(handler).get()
+        bridgeReady = true
+        let waiters = bridgeWaiters
+        bridgeWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
     }
 
     fileprivate func deliver(line: ByteBuffer) {

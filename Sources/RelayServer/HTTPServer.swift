@@ -68,7 +68,21 @@ public final class HTTPServer: @unchecked Sendable {
                         else {
                             return ch.eventLoop.makeSucceededFuture(nil)
                         }
-                        return ch.eventLoop.makeSucceededFuture(HTTPHeaders())
+                        // URLSessionWebSocketTask validates the negotiated
+                        // `Sec-WebSocket-Protocol` against the *first*
+                        // entry it offered (Apple's implementation is
+                        // stricter than RFC 6455 here). Echo that exact
+                        // first offered token so the iOS handshake closes
+                        // cleanly instead of `NSURLErrorBadServerResponse`.
+                        let offered = (head.headers.first(name: "Sec-WebSocket-Protocol") ?? "")
+                            .split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        var responseHeaders = HTTPHeaders()
+                        if let echoed = offered.first {
+                            responseHeaders.add(name: "Sec-WebSocket-Protocol", value: echoed)
+                        }
+                        return ch.eventLoop.makeSucceededFuture(responseHeaders)
                     },
                     upgradePipelineHandler: { @Sendable ch, head in
                         let did = HTTPServer.deviceIdFromWSHeaders(head.headers, store: store) ?? ""
@@ -131,17 +145,35 @@ public final class HTTPServer: @unchecked Sendable {
     static func deviceIdFromWSHeaders(_ headers: HTTPHeaders,
                                       store: DeviceStore) -> String?
     {
-        guard let proto = headers.first(name: "Sec-WebSocket-Protocol") else { return nil }
-        let parts = proto.split(separator: ",").map {
-            $0.trimmingCharacters(in: .whitespaces)
-        }
-        guard let bearer = parts.first(where: { $0.hasPrefix("bearer.") }) else {
-            return nil
-        }
-        let token = String(bearer.dropFirst("bearer.".count))
-        if token.isEmpty { return nil }
-        for d in store.allDevices() where store.validate(deviceId: d.deviceId, token: token) {
-            return d.deviceId
+        // Native iOS clients can ride the bearer on the standard
+        // `Authorization: Bearer <token>` header — URLSessionWebSocketTask
+        // strips custom values from `Sec-WebSocket-Protocol`. Browsers
+        // that can't set Authorization continue to use the legacy
+        // subprotocol form `bearer.<token>`.
+        let candidates: [String] = {
+            var tokens: [String] = []
+            if let auth = headers.first(name: "Authorization"),
+               auth.hasPrefix("Bearer ")
+            {
+                let trimmed = String(auth.dropFirst("Bearer ".count))
+                    .trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { tokens.append(trimmed) }
+            }
+            if let proto = headers.first(name: "Sec-WebSocket-Protocol") {
+                let parts = proto.split(separator: ",").map {
+                    $0.trimmingCharacters(in: .whitespaces)
+                }
+                for part in parts where part.hasPrefix("bearer.") {
+                    let token = String(part.dropFirst("bearer.".count))
+                    if !token.isEmpty { tokens.append(token) }
+                }
+            }
+            return tokens
+        }()
+        for token in candidates {
+            for d in store.allDevices() where store.validate(deviceId: d.deviceId, token: token) {
+                return d.deviceId
+            }
         }
         return nil
     }

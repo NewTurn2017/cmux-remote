@@ -1,4 +1,5 @@
 .build/
+build/
 .swiftpm/
 DerivedData/
 *.xcodeproj/xcuserdata/
@@ -8,3 +9,9 @@ ios/CmuxRemote.xcodeproj/xcuserdata/
 .DS_Store
 *.xcuserstate
 Package.resolved
+
+ios/CmuxRemote.xcodeproj/
+
+# Local agent state — Claude Code session data, omx workspace metadata.
+.claude/
+.omx/

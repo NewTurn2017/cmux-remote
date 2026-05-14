@@ -9,19 +9,31 @@
 # bare box.
 #
 # Run from a checkout root: `bash scripts/smoke-relay.sh`.
+# Full local Tailnet smoke without mutating ~/.cmuxremote:
+#   SMOKE_EPHEMERAL=1 \
+#   SMOKE_LISTEN_HOST=0.0.0.0 \
+#   SMOKE_CONNECT_HOST="$(tailscale ip -4 | head -1)" \
+#   bash scripts/smoke-relay.sh
 # Requires: curl, swift, jq or python3. Optional: websocat (WS test).
 # Not run in CI — cmux daemon and Tailscale are operator-side deps.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOST="127.0.0.1"
-PORT="4399"
-BASE="http://${HOST}:${PORT}"
-WS_BASE="ws://${HOST}:${PORT}"
-CFG_DIR="${HOME}/.cmuxremote"
+LISTEN_HOST="${SMOKE_LISTEN_HOST:-${SMOKE_HOST:-127.0.0.1}}"
+CONNECT_HOST="${SMOKE_CONNECT_HOST:-$LISTEN_HOST}"
+PORT="${SMOKE_PORT:-4399}"
+BASE="http://${CONNECT_HOST}:${PORT}"
+WS_BASE="ws://${CONNECT_HOST}:${PORT}"
+RUN_HOME="$HOME"
+TMP_ROOT=""
+if [ "${SMOKE_EPHEMERAL:-0}" = "1" ]; then
+  TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/cmux-relay-smoke.XXXXXX")"
+  RUN_HOME="${TMP_ROOT}/home"
+fi
+CFG_DIR="${RUN_HOME}/.cmuxremote"
 CFG="${CFG_DIR}/relay.json"
-LOGIN_NAME="${SMOKE_LOGIN:-smoke@local}"
+LOGIN_NAME="${SMOKE_LOGIN:-}"
 SMOKE_DEVICE_ID=""
 RELAY_PID=""
 
@@ -42,6 +54,18 @@ json_field() {
   fi
 }
 
+detect_tailnet_login() {
+  command -v tailscale >/dev/null 2>&1 || return 1
+  local status
+  status="$(tailscale status --json 2>/dev/null)" || return 1
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$status" | jq -r '.User[.Self.UserID|tostring].LoginName // empty'
+  else
+    printf '%s' "$status" | python3 -c \
+      'import json,sys; d=json.load(sys.stdin); print(d.get("User",{}).get(str(d.get("Self",{}).get("UserID")),{}).get("LoginName",""))'
+  fi
+}
+
 cleanup() {
   local rc=$?
   if [ -n "$RELAY_PID" ] && kill -0 "$RELAY_PID" 2>/dev/null; then
@@ -51,7 +75,14 @@ cleanup() {
   fi
   if [ -n "$SMOKE_DEVICE_ID" ] && [ -x "${BIN:-}" ]; then
     note "revoking smoke device ${SMOKE_DEVICE_ID:0:12}…"
-    "$BIN" devices revoke "$SMOKE_DEVICE_ID" >/dev/null 2>&1 || true
+    HOME="$RUN_HOME" "$BIN" devices revoke "$SMOKE_DEVICE_ID" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$TMP_ROOT" ]; then
+    if [ "$rc" -eq 0 ]; then
+      rm -rf "$TMP_ROOT"
+    else
+      warn "keeping ephemeral smoke logs at ${CFG_DIR}"
+    fi
   fi
   exit $rc
 }
@@ -61,16 +92,23 @@ require curl
 require swift
 command -v jq >/dev/null 2>&1 || require python3
 
+if [ -z "$LOGIN_NAME" ]; then
+  LOGIN_NAME="$(detect_tailnet_login || true)"
+fi
+LOGIN_NAME="${LOGIN_NAME:-smoke@local}"
+
 # Phase 0 — seed ~/.cmuxremote/relay.json if absent. Existing files are
 # preserved; the operator may have tuned allow_login or apns for their
 # tailnet identity. The template's allow_login won't grant register
-# unless the operator edits it to include their tailnet LoginName.
+# unless the operator edits it to include their tailnet LoginName. Use
+# SMOKE_EPHEMERAL=1 to generate an isolated config + device store for a
+# one-off full smoke.
 mkdir -p "$CFG_DIR"
 if [ ! -f "$CFG" ]; then
   note "seeding $CFG (edit allow_login to your tailnet login for register)"
   cat > "$CFG" <<EOF
 {
-  "listen": "${HOST}:${PORT}",
+  "listen": "${LISTEN_HOST}:${PORT}",
   "allow_login": ["${LOGIN_NAME}"],
   "apns": {
     "key_path": "/dev/null",
@@ -92,8 +130,8 @@ note "building cmux-relay (debug)"
 BIN="$ROOT/.build/debug/cmux-relay"
 [ -x "$BIN" ] || fail "binary not found at $BIN"
 
-note "starting relay daemon on ${HOST}:${PORT}"
-"$BIN" serve --config "$CFG" \
+note "starting relay daemon on ${LISTEN_HOST}:${PORT}; probing ${CONNECT_HOST}:${PORT}"
+HOME="$RUN_HOME" "$BIN" serve --config "$CFG" \
   >"${CFG_DIR}/smoke-stdout.log" 2>"${CFG_DIR}/smoke-stderr.log" &
 RELAY_PID=$!
 
@@ -138,6 +176,9 @@ case "$register_code" in
     ;;
   403)
     warn "register 403 — your tailnet login isn't in allow_login (current: ${LOGIN_NAME}). Edit ${CFG} and rerun."
+    if [[ "$CONNECT_HOST" == "127."* || "$CONNECT_HOST" == "localhost" ]]; then
+      warn "loopback peers are not resolved by tailscaled whois; for full smoke use SMOKE_EPHEMERAL=1 SMOKE_LISTEN_HOST=0.0.0.0 SMOKE_CONNECT_HOST=\"\$(tailscale ip -4 | head -1)\"."
+    fi
     note "smoke OK (health-only)"
     exit 0
     ;;
@@ -174,15 +215,34 @@ printf '  → HTTP %s\n' "$apns_code"
 # verify Sec-WebSocket-Protocol bearer parsing.
 if command -v websocat >/dev/null 2>&1; then
   note "WS /v1/ws upgrade + hello via websocat"
+  require python3
   hello=$(printf '{"deviceId":"%s","appVersion":"smoke-1.0","protocolVersion":1}' \
           "$SMOKE_DEVICE_ID")
-  # -n1 sends one line and exits; --protocol sets Sec-WebSocket-Protocol.
+  # -n1 sends one line; --protocol sets Sec-WebSocket-Protocol.
   # We don't strictly need a response — server attaches the session on
-  # hello and starts the FPS clock. Capturing stderr in case the upgrade
-  # gets rejected.
-  ws_out=$(printf '%s\n' "$hello" \
-    | websocat --protocol "cmuxremote.v1, bearer.${TOKEN}" -n1 -t "${WS_BASE}/v1/ws" 2>&1 \
-    || true)
+  # hello and starts the FPS clock. websocat can keep the socket open
+  # after stdin EOF, so bound it with a small Python stdlib wrapper
+  # instead of relying on GNU timeout (not present on stock macOS).
+  ws_out=$(python3 - "${WS_BASE}/v1/ws" "cmuxremote.v1, bearer.${TOKEN}" "$hello" <<'PY' || true
+import subprocess
+import sys
+
+url, protocol, hello = sys.argv[1:4]
+proc = subprocess.Popen(
+    ["websocat", "--protocol", protocol, "-n1", "-t", url],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+)
+try:
+    out, _ = proc.communicate(hello + "\n", timeout=3)
+except subprocess.TimeoutExpired:
+    proc.kill()
+    out, _ = proc.communicate()
+print(out, end="")
+PY
+  )
   if [ -n "$ws_out" ]; then
     printf '  → WS first message: %s\n' "$(printf '%s' "$ws_out" | head -c 200)"
   else

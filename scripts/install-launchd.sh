@@ -38,6 +38,11 @@ BIN_DEST="$DEST/bin/cmux-relay"
 CONFIG="${CMUX_RELAY_CONFIG:-$DEST/relay.json}"
 LOGDIR="${CMUX_RELAY_LOGDIR:-$DEST/log}"
 SOCKET="${CMUX_SOCKET_PATH:-$HOME/Library/Application Support/cmux/cmux.sock}"
+DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
+# launchd starts agents with a stripped PATH; tailscale CLI on macOS lives in
+# /usr/local/bin (pkg install) or /opt/homebrew/bin (brew), so prepend both
+# before the system defaults so AuthService's whois fallback can find it.
+RELAY_PATH="${CMUX_RELAY_PATH:-/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
 LAUNCH_AGENTS_DIR="${CMUX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 PLIST="$LAUNCH_AGENTS_DIR/$LABEL.plist"
 TARGET="gui/$(id -u)"
@@ -66,6 +71,8 @@ render_plist() {
     -e "s|__CONFIG__|$(render_token "$CONFIG")|g" \
     -e "s|__SOCKET__|$(render_token "$SOCKET")|g" \
     -e "s|__LOGDIR__|$(render_token "$LOGDIR")|g" \
+    -e "s|__DEV_ALLOW_LOCALHOST__|$(render_token "$DEV_ALLOW_LOCALHOST")|g" \
+    -e "s|__RELAY_PATH__|$(render_token "$RELAY_PATH")|g" \
     "$TEMPLATE"
 }
 

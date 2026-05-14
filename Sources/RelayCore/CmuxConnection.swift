@@ -20,7 +20,8 @@ public final class CmuxConnection: @unchecked Sendable {
     private let logger = Logger(label: "CmuxConnection")
     private let socketPassword: String?
     private var lastBootId: String?
-    private var client: CMUXClient?
+    private var dispatchClient: CMUXClient?
+    private var eventsClient: CMUXClient?
 
     public init(socketPath: String = cmuxSocketPath(),
                 group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
@@ -39,15 +40,39 @@ public final class CmuxConnection: @unchecked Sendable {
                        group: MultiThreadedEventLoopGroup(numberOfThreads: 1))
     }
 
+    /// Default entry point — returns the dispatch client used for ordinary
+    /// RPC traffic (workspace.list, surface.subscribe, screen.diff, …).
     public func connect() async throws -> CMUXClient {
-        if let c = client { return c }
+        if let c = dispatchClient { return c }
+        let c = try await openClient()
+        self.dispatchClient = c
+        return c
+    }
+
+    /// Dedicated channel for the long-lived `events.stream` subscription.
+    /// cmux locks a subscribed channel into push-only mode and silently
+    /// drops further RPC requests on it, so we never reuse the dispatch
+    /// client for the subscription — the symptom would be every
+    /// dispatched call timing out at the 5 s `CMUXClient.requestTimeout`.
+    public func connectForEvents() async throws -> CMUXClient {
+        if let c = eventsClient { return c }
+        let c = try await openClient()
+        self.eventsClient = c
+        return c
+    }
+
+    private func openClient() async throws -> CMUXClient {
         let chan = try await UnixSocketChannel(path: socketPath, group: group)
             .connect { _ in self.group.next().makeSucceededFuture(()) }
         let c = CMUXClient(channel: chan, requestTimeout: .seconds(5))
+        // CMUXClient installs its inbound bridge in a fire-and-forget Task
+        // inside its initializer; without this gate the very first RPC
+        // races the bridge install and its response is dropped before
+        // being delivered.
+        await c.awaitReady()
         if let socketPassword {
             try await c.authenticate(password: socketPassword)
         }
-        self.client = c
         return c
     }
 

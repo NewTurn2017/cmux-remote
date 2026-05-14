@@ -31,6 +31,8 @@ public actor WSProtocolMachine {
         case sendText(String)
         case close
         case attachSession(deviceId: String)
+        case subscribe(responseId: String, workspaceId: String, surfaceId: String, lines: Int)
+        case unsubscribe(responseId: String, surfaceId: String)
     }
 
     private let cmux: CMUXFacade
@@ -55,6 +57,10 @@ public actor WSProtocolMachine {
         guard let req = try? JSONDecoder().decode(RPCRequest.self, from: data) else {
             return []
         }
+        if let relayAction = Self.relayOwnedAction(for: req) {
+            return [relayAction]
+        }
+
         do {
             let result = try await cmux.dispatch(method: req.method, params: req.params)
             let resp = RPCResponse(id: req.id, ok: true, result: result, error: nil)
@@ -73,6 +79,44 @@ public actor WSProtocolMachine {
         helloed ? [] : [.close]
     }
 
+
+    private static func relayOwnedAction(for req: RPCRequest) -> Action? {
+        guard case .object(let params) = req.params else { return nil }
+        switch req.method {
+        case "surface.subscribe":
+            guard case .string(let workspaceId)? = params["workspace_id"],
+                  case .string(let surfaceId)? = params["surface_id"]
+            else {
+                return .sendText(Self.encode(errorResponse(id: req.id, code: "invalid_params",
+                                                           message: "surface.subscribe requires workspace_id and surface_id")))
+            }
+            let lines: Int
+            if case .int(let value)? = params["lines"] { lines = max(1, Int(value)) }
+            else { lines = 200 }
+            return .subscribe(responseId: req.id, workspaceId: workspaceId, surfaceId: surfaceId, lines: lines)
+        case "surface.unsubscribe":
+            guard case .string(let surfaceId)? = params["surface_id"] else {
+                return .sendText(Self.encode(errorResponse(id: req.id, code: "invalid_params",
+                                                           message: "surface.unsubscribe requires surface_id")))
+            }
+            return .unsubscribe(responseId: req.id, surfaceId: surfaceId)
+        default:
+            return nil
+        }
+    }
+
+    private static func okResponse(id: String) -> RPCResponse {
+        RPCResponse(id: id, ok: true, result: .object([:]), error: nil)
+    }
+
+    private static func errorResponse(id: String, code: String, message: String) -> RPCResponse {
+        RPCResponse(id: id, ok: false, result: nil, error: RPCError(code: code, message: message))
+    }
+
+    public static func encodeForHandler(_ resp: RPCResponse) -> String {
+        encode(resp)
+    }
+
     private static func encode(_ resp: RPCResponse) -> String {
         guard let data = try? JSONEncoder().encode(resp),
               let s = String(data: data, encoding: .utf8) else { return "{}" }
@@ -81,6 +125,31 @@ public actor WSProtocolMachine {
 }
 
 // MARK: - NIO channel handler
+
+private actor WSActionQueue {
+    private var tail: Task<Void, Never>?
+
+    func run(_ operation: @escaping @Sendable () async -> Void) {
+        let previous = tail
+        let next = Task {
+            await previous?.value
+            await operation()
+        }
+        tail = next
+    }
+}
+
+private final class WSChannelContext: @unchecked Sendable {
+    private let context: ChannelHandlerContext
+
+    init(_ context: ChannelHandlerContext) {
+        self.context = context
+    }
+
+    func execute(_ operation: @escaping @Sendable (ChannelHandlerContext) -> Void) {
+        context.eventLoop.execute { operation(self.context) }
+    }
+}
 
 /// Thin NIO `ChannelInboundHandler` that drives `WSProtocolMachine` and
 /// applies its actions on the channel's event loop. Hello timeout is a
@@ -101,6 +170,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
     private let deviceStore: DeviceStore
     private let sessionManager: SessionManager
     private let machine: WSProtocolMachine
+    private let actionQueue = WSActionQueue()
     private let logger = Logger(label: "cmux-relay.ws")
 
     private var helloTimer: Scheduled<Void>?
@@ -119,13 +189,12 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
 
     public func channelActive(context: ChannelHandlerContext) {
         let machine = self.machine
+        let channel = WSChannelContext(context)
         helloTimer = context.eventLoop.scheduleTask(in: .milliseconds(100)) { [weak self] in
             guard let self else { return }
             Task {
                 let actions = await machine.helloMissed()
-                context.eventLoop.execute {
-                    self.apply(actions: actions, on: context)
-                }
+                channel.execute { self.apply(actions: actions, on: $0) }
             }
         }
     }
@@ -137,11 +206,13 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         guard let text = buf.getString(at: buf.readerIndex,
                                        length: buf.readableBytes) else { return }
 
-        let machine = self.machine
+        let channel = WSChannelContext(context)
         Task { [weak self] in
-            let actions = await machine.processText(text)
             guard let self else { return }
-            await self.apply(actions: actions, on: context)
+            await self.actionQueue.run {
+                let actions = await self.machine.processText(text)
+                await self.apply(actions: actions, on: channel)
+            }
         }
     }
 
@@ -160,26 +231,48 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
     /// SessionManager) happens on the actor, then the resulting Session
     /// is stored under the event loop.
     private func apply(actions: [WSProtocolMachine.Action],
-                       on context: ChannelHandlerContext) async
+                       on channel: WSChannelContext) async
     {
         for action in actions {
             switch action {
             case .sendText(let text):
-                context.eventLoop.execute { self.writeText(text, on: context) }
+                channel.execute { self.writeText(text, on: $0) }
             case .close:
-                context.eventLoop.execute { context.close(promise: nil) }
+                channel.execute { $0.close(promise: nil) }
             case .attachSession:
-                context.eventLoop.execute {
+                channel.execute { _ in
                     self.helloTimer?.cancel()
                     self.helloTimer = nil
                 }
                 let s = await sessionManager.attach(deviceId: deviceId) { [weak self] frame in
                     guard let self else { return }
-                    context.eventLoop.execute {
-                        self.writePushFrame(frame, on: context)
-                    }
+                    channel.execute { self.writePushFrame(frame, on: $0) }
                 }
-                context.eventLoop.execute { self.session = s }
+                self.session = s
+            case .subscribe(let responseId, let workspaceId, let surfaceId, let lines):
+                guard let session else {
+                    let text = WSProtocolMachine.encodeForHandler(.init(
+                        id: responseId, ok: false, result: nil,
+                        error: RPCError(code: "session_not_attached", message: "hello required before subscribe")
+                    ))
+                    channel.execute { self.writeText(text, on: $0) }
+                    continue
+                }
+                await session.subscribe(workspaceId: workspaceId, surfaceId: surfaceId, lines: lines)
+                let text = WSProtocolMachine.encodeForHandler(.init(id: responseId, ok: true, result: .object([:])))
+                channel.execute { self.writeText(text, on: $0) }
+            case .unsubscribe(let responseId, let surfaceId):
+                guard let session else {
+                    let text = WSProtocolMachine.encodeForHandler(.init(
+                        id: responseId, ok: false, result: nil,
+                        error: RPCError(code: "session_not_attached", message: "hello required before unsubscribe")
+                    ))
+                    channel.execute { self.writeText(text, on: $0) }
+                    continue
+                }
+                await session.unsubscribe(surfaceId: surfaceId)
+                let text = WSProtocolMachine.encodeForHandler(.init(id: responseId, ok: true, result: .object([:])))
+                channel.execute { self.writeText(text, on: $0) }
             }
         }
     }
@@ -195,6 +288,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
             case .sendText(let text): writeText(text, on: context)
             case .close:              context.close(promise: nil)
             case .attachSession:      break
+            case .subscribe, .unsubscribe: break
             }
         }
     }

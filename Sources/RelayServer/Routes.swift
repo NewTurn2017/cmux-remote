@@ -26,11 +26,27 @@ public actor Routes {
     private let deviceStore: DeviceStore
     private let config: RelayConfig
     private let auth: AuthService
+    private let allowLocalhost: Bool
 
-    public init(deviceStore: DeviceStore, config: RelayConfig, auth: AuthService) {
+    public init(deviceStore: DeviceStore,
+                config: RelayConfig,
+                auth: AuthService,
+                allowLocalhost: Bool = Routes.defaultAllowLocalhost())
+    {
         self.deviceStore = deviceStore
         self.config = config
         self.auth = auth
+        self.allowLocalhost = allowLocalhost
+    }
+
+    /// Reads `CMUX_DEV_ALLOW_LOCALHOST=1` from the environment. When true,
+    /// loopback callers (`127.0.0.1` / `::1`) bypass `tailscaled.whois` —
+    /// macOS short-circuits packets to the local Tailscale IP through `lo0`,
+    /// so the iOS Simulator on the same Mac can never produce a remote
+    /// address tailscaled will recognise. We keep the bypass opt-in so it
+    /// never ships to a production binding.
+    public static func defaultAllowLocalhost() -> Bool {
+        ProcessInfo.processInfo.environment["CMUX_DEV_ALLOW_LOCALHOST"] == "1"
     }
 
     /// Top-level dispatch. `deviceId` is `nil` until the HTTP layer has
@@ -111,19 +127,32 @@ public actor Routes {
 
     private func registerNew(remoteAddr: String) async -> HTTPResponseLite {
         let peer: PeerIdentity
-        do {
-            peer = try await auth.whois(remoteAddr: remoteAddr)
-        } catch RelayError.unauthorized {
-            // tailscaled didn't recognize the peer at all — treat as
-            // forbidden so the phone shows a clear "not on tailnet" UI
-            // rather than a 5xx that suggests a relay bug.
-            return .init(.forbidden)
-        } catch {
-            return .init(.internalServerError)
-        }
+        if allowLocalhost, Self.isLoopback(remoteAddr), let login = config.allowLogin.first {
+            // Dev bypass — see `defaultAllowLocalhost()`. The peer identity
+            // is fabricated from the first allow_login so the simulator can
+            // pair without traversing tailscaled. nodeKey is a stable
+            // synthetic value so re-registering yields the same deviceId.
+            peer = PeerIdentity(
+                loginName: login,
+                hostname: "localhost-dev",
+                os: "ios-simulator",
+                nodeKey: "cmux-dev-localhost:\(login)"
+            )
+        } else {
+            do {
+                peer = try await auth.whois(remoteAddr: remoteAddr)
+            } catch RelayError.unauthorized {
+                // tailscaled didn't recognize the peer at all — treat as
+                // forbidden so the phone shows a clear "not on tailnet" UI
+                // rather than a 5xx that suggests a relay bug.
+                return .init(.forbidden)
+            } catch {
+                return .init(.internalServerError)
+            }
 
-        guard config.allowLogin.contains(peer.loginName) else {
-            return .init(.forbidden)
+            guard config.allowLogin.contains(peer.loginName) else {
+                return .init(.forbidden)
+            }
         }
 
         let deviceId = sha256Hex(peer.nodeKey)
@@ -149,4 +178,10 @@ public actor Routes {
 
 private func sha256Hex(_ s: String) -> String {
     SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
+}
+
+extension Routes {
+    static func isLoopback(_ addr: String) -> Bool {
+        addr == "127.0.0.1" || addr == "::1" || addr == "0:0:0:0:0:0:0:1"
+    }
 }

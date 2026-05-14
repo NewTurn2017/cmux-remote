@@ -3,6 +3,7 @@ import ArgumentParser
 import NIOPosix
 import RelayCore
 import CMUXClient
+import SharedKit
 import Logging
 
 /// `cmux-relay` CLI entry point. Spec section 6.4, plan task 12.
@@ -48,6 +49,23 @@ struct Serve: AsyncParsableCommand {
                                      idleFps: store.current.idleFps)
         conn.onReset = {
             Task { await manager.broadcastReset() }
+        }
+        Task {
+            do {
+                let client = try await conn.connectForEvents()
+                let stream = EventStream(client: client) { event in
+                    if event.category == .system,
+                       let boot = try? event.payload.decode(BootInfo.self)
+                    {
+                        conn.observe(bootInfo: boot)
+                    }
+                    Task { await manager.broadcastToAll(frame: .event(event)) }
+                }
+                await stream.start(categories: EventCategory.allCases)
+                logger.info("cmux event stream attached")
+            } catch {
+                logger.warning("cmux event stream unavailable: \(String(describing: error))")
+            }
         }
         let deviceStore = try DeviceStore(url: URL(fileURLWithPath: devicesStorePath()))
         let auth = TailscaledLocalAuth()
