@@ -11,6 +11,7 @@ struct CmuxRemoteApp: App {
     @State private var bootstrapped = false
     @State private var activeRPC: RPCClient?
     @State private var splashFinished = Self.shouldSkipSplash()
+    @AppStorage("cmux.demoMode") private var demoMode: Bool = false
 
     var body: some Scene {
         WindowGroup {
@@ -72,8 +73,8 @@ struct CmuxRemoteApp: App {
         notifStore.onNew = { record in presenter.present(record) }
         Task { await presenter.requestAuthorizationIfNeeded() }
         let processInfo = ProcessInfo.processInfo
-        if Self.shouldUseFakeRelay(processInfo) {
-            await bootstrap(rpc: FakeRPCDispatch())
+        if demoMode || Self.shouldUseFakeRelay(processInfo) {
+            await bootstrapDemo()
             return
         }
 
@@ -168,6 +169,37 @@ struct CmuxRemoteApp: App {
         workspaceStore = WorkspaceStore(rpc: rpc)
         surfaceStore = SurfaceStore(rpc: rpc)
         await workspaceStore.refresh()
+    }
+
+    @MainActor
+    private func bootstrapDemo() async {
+        let rpc = DemoRPCDispatch()
+        let liveWorkspaceStore = WorkspaceStore(rpc: rpc)
+        let liveSurfaceStore = SurfaceStore(rpc: rpc)
+        workspaceStore = liveWorkspaceStore
+        surfaceStore = liveSurfaceStore
+
+        // When the user taps a surface chip, push a corresponding screen.full
+        // so the terminal mirror lights up just like the live path would.
+        await rpc.setOnSubscribe { surfaceId in
+            await MainActor.run {
+                if let frame = DemoContent.screenFull(for: surfaceId) {
+                    liveSurfaceStore.ingest(.screenFull(frame))
+                }
+            }
+        }
+
+        await liveWorkspaceStore.refresh()
+
+        // Seed the inbox after a short beat so reviewers see notifications
+        // without us racing the workspace list render.
+        let store = notifStore
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            for record in DemoContent.notifications() {
+                store.append(record)
+            }
+        }
     }
 
     @MainActor

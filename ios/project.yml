@@ -40,6 +40,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: "Mac에서 실행 중인 cmux relay에 연결해 작업공간과 터미널을 원격으로 제어하기 위해 로컬 네트워크 접근이 필요합니다."
+        ITSAppUsesNonExemptEncryption: false
         UIAppFonts:
           - "DepartureMono-Regular.otf"
           - "GeistMono-Regular.ttf"

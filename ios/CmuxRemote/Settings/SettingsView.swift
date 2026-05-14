@@ -7,6 +7,7 @@ struct SettingsView: View {
     var onTriggerTestNotification: (@MainActor () -> TestNotificationResult)? = nil
     @AppStorage("cmux.host") private var host: String = ""
     @AppStorage("cmux.port") private var port: Int = 4399
+    @AppStorage("cmux.demoMode") private var demoMode: Bool = false
     @State private var localStatus: TestNotificationStatus = .idle
     @State private var roundTripStatus: TestNotificationStatus = .idle
 
@@ -18,6 +19,31 @@ struct SettingsView: View {
                     .foregroundStyle(CmuxTheme.ink)
 
                 connectionGuide
+
+                section(title: "demo mode") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Mac이나 Tailscale 없이 앱을 둘러볼 수 있어요. 가짜 워크스페이스 / 터미널 / 알림이 채워집니다. App Review 평가 경로이기도 합니다.")
+                            .cmuxMono(11)
+                            .foregroundStyle(CmuxTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Button(action: { demoMode.toggle(); onReconnect() }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: demoMode ? "checkmark.seal.fill" : "play.rectangle")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(demoMode ? "[ EXIT DEMO MODE ]" : "[ TRY DEMO MODE ]")
+                                    .cmuxDisplay(12)
+                            }
+                            .foregroundStyle(CmuxTheme.canvas)
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .background(demoMode ? CmuxTheme.accentYellow : CmuxTheme.accentBlue)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("DemoModeToggle")
+                    }
+                }
 
                 section(title: "mac connection") {
                     VStack(alignment: .leading, spacing: 14) {

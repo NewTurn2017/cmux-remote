@@ -20,6 +20,10 @@ public struct ScreenFull: Codable, Sendable, Equatable {
     public var cols: Int
     public var rowsCount: Int
     public var cursor: CursorPos
+    public init(surfaceId: String, rev: Int, rows: [String], cols: Int, rowsCount: Int, cursor: CursorPos) {
+        self.surfaceId = surfaceId; self.rev = rev; self.rows = rows
+        self.cols = cols; self.rowsCount = rowsCount; self.cursor = cursor
+    }
     enum CodingKeys: String, CodingKey {
         case surfaceId = "surface_id", rev, rows, cols, rowsCount, cursor
     }

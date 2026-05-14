@@ -19,6 +19,7 @@ struct WorkspaceView: View {
     @State private var surfaceActionInFlight = false
     @State private var surfaceActionError: String?
     @State private var mouseMode = false
+    @AppStorage("cmux.demoMode") private var demoMode: Bool = false
     @FocusState private var commandFieldFocused: Bool
 
     var body: some View {
@@ -148,11 +149,21 @@ struct WorkspaceView: View {
                 HStack(spacing: 8) {
                     Text("●")
                         .cmuxDisplay(11)
-                        .foregroundStyle(CmuxTheme.accentGreen)
+                        .foregroundStyle(demoMode ? CmuxTheme.accentYellow : CmuxTheme.accentGreen)
                     Text(currentWorkspace?.name ?? "no workspace")
                         .cmuxMono(13, weight: .medium)
                         .foregroundStyle(CmuxTheme.ink)
                         .lineLimit(1)
+                    if demoMode {
+                        Text("DEMO")
+                            .cmuxDisplay(9)
+                            .foregroundStyle(CmuxTheme.canvas)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(CmuxTheme.accentYellow)
+                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                            .accessibilityLabel("Demo mode active")
+                    }
                     Spacer()
                     Text("×")
                         .cmuxDisplay(16)
