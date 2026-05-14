@@ -7,7 +7,7 @@ struct TerminalView: View {
     var scrollToBottomRequest: Int = 0
     var mouseMode: Bool = false
     var onMouseClick: ((Int, Int) -> Void)? = nil
-    @State private var fontSize: CGFloat = 15
+    @State private var fontSize: CGFloat = 8
     @State private var pinchAnchorFontSize: CGFloat?
 
     private static let fontSizeRange: ClosedRange<CGFloat> = 8...32

@@ -318,10 +318,7 @@ struct WorkspaceView: View {
 
             HStack(spacing: 4) {
                 KeyButton(label: "esc") { sendKey(.esc) }
-                KeyButton(label: "↵", accessibilityLabel: "send enter") { sendKey(.enter) }
-                KeyButton(label: "⇧↵", accessibilityLabel: "shift enter line break") {
-                    sendKey(.named("enter", modifiers: [.shift]))
-                }
+                KeyButton(label: "OK", accessibilityLabel: "send OK and enter") { sendOK() }
                 KeyButton(label: "/") { sendSymbol("/") }
                 KeyButton(label: "$") { sendSymbol("$") }
                 KeyButton(label: "tab") { sendKey(.tab) }
@@ -426,6 +423,19 @@ struct WorkspaceView: View {
         Task {
             do {
                 try await surfaceStore.cycleNextPane()
+                await MainActor.run { composer.clearError() }
+            } catch {
+                await MainActor.run { composer.failSubmit(error) }
+            }
+        }
+    }
+
+    private func sendOK() {
+        Task {
+            do {
+                let (workspaceId, surfaceId) = try activeSurface()
+                try await surfaceStore.sendText(workspaceId: workspaceId, surfaceId: surfaceId, text: "OK")
+                try await surfaceStore.sendKey(workspaceId: workspaceId, surfaceId: surfaceId, key: .enter)
                 await MainActor.run { composer.clearError() }
             } catch {
                 await MainActor.run { composer.failSubmit(error) }
