@@ -261,6 +261,42 @@ Relay는 `~/.cmuxremote/relay.json`을 읽습니다 (`install-launchd.sh`가
 
 ---
 
+## relay 운영
+
+relay는 launchd 유저 에이전트(`com.genie.cmuxremote`)로 돌아갑니다.
+`RunAtLoad` + `KeepAlive`라 로그인 시 자동 시작되고 죽으면 다시 떠요.
+
+```bash
+SERVICE="gui/$(id -u)/com.genie.cmuxremote"
+
+# 재시작 (재빌드 없이 — 가장 자주 씀)
+launchctl kickstart -k "$SERVICE"
+
+# 상태 (state / pid / last exit code)
+launchctl print "$SERVICE" | grep -E "state|pid|last exit"
+
+# 실시간 로그
+tail -f ~/.cmuxremote/log/stderr.log
+
+# 일시 중지 (KeepAlive 때문에 bootout 사용)
+launchctl bootout "$SERVICE"
+```
+
+소스를 바꿔 새 바이너리를 반영하려면 빌드 → 복사 → plist 렌더 →
+bootstrap + kickstart를 한 번에 처리하는 설치 스크립트를 다시 돌립니다:
+
+```bash
+./scripts/install-launchd.sh            # swift build -c release 포함
+./scripts/uninstall-launchd.sh          # bootout + plist 제거
+```
+
+정상 기동 시 `stderr.log`에 `starting cmux-relay on 0.0.0.0:4399` →
+`listening …` → `cmux event stream attached` 순으로 찍힙니다.
+`cmux event stream unavailable: socketMissing`가 보이면 cmux 앱부터
+켜고 relay를 kickstart 하세요.
+
+---
+
 ## 로드맵
 
 - [x] v1.0 — 작업공간 목록, surface 생성/닫기, 터미널 미러, 키 입력,
