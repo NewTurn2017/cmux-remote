@@ -8,6 +8,7 @@ settings:
     SWIFT_VERSION: "5.10"
     DEVELOPMENT_TEAM: "2UANJX7ATM"
     CODE_SIGN_STYLE: Automatic
+    SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
 packages:
   SharedKit:
     path: ..
@@ -73,3 +74,16 @@ targets:
         CFBundleVersion: "1"
     dependencies:
       - target: CmuxRemote
+schemes:
+  CmuxRemote:
+    build:
+      targets:
+        CmuxRemote: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CmuxRemoteTests
+    archive:
+      config: Release
