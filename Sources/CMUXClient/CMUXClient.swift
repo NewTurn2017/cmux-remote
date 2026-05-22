@@ -158,6 +158,19 @@ public actor CMUXClient {
     fileprivate func didClose() {
         failAllPending(.channelClosed, terminal: true)
     }
+
+    /// True only while the underlying channel is live and no terminal
+    /// (channelClosed) error has been recorded. `CmuxConnection` uses this
+    /// to decide whether a cached client can be reused or must be re-dialed.
+    public func isUsable() -> Bool {
+        channel.isActive && terminalError == nil
+    }
+
+    /// Suspends until the underlying channel closes. The event-stream
+    /// supervisor awaits this to know when to re-attach.
+    public func awaitClosed() async {
+        _ = try? await channel.closeFuture.get()
+    }
 }
 
 private final class ClientInboundBridge: ChannelInboundHandler, @unchecked Sendable {
