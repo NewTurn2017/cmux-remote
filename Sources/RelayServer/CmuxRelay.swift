@@ -65,8 +65,14 @@ struct Serve: AsyncParsableCommand {
                     }
                     await stream.start(categories: EventCategory.allCases)
                     logger.info("cmux event stream attached")
-                    policy.reset()
+                    let attachedAt = ContinuousClock.now
                     await client.awaitClosed()
+                    // Only treat this as a healthy connection (and reset backoff)
+                    // if it stayed attached a while; otherwise a flapping/crash-
+                    // looping cmux would be re-attacked every base interval.
+                    if ContinuousClock.now - attachedAt > .seconds(5) {
+                        policy.reset()
+                    }
                     logger.warning("cmux event stream detached; will re-attach")
                     await conn.invalidateEvents()
                 } catch {
