@@ -41,32 +41,32 @@ Cmux Remote
 ### Subtitle (max 30)
 
 ```
-Your Mac terminal, on iPhone
+Private terminal companion
 ```
-*(28 chars)*
+*(26 chars)*
 
 ### Promotional Text (max 170, can change without review)
 
 ```
-Run claude-code, lazygit, vim, or any cmux workspace on your Mac while you are away — straight from your iPhone, over your own Tailscale network. No third-party servers.
+Control cmux workspaces, agent sessions, and terminal surfaces over your own Tailscale network. Private by design, with no third-party relay.
 ```
-*(168 chars)*
+*(141 chars)*
 
 ### Keywords (max 100, comma-separated, no spaces after commas)
 
 ```
-cmux,terminal,ssh,tmux,tailscale,mac,remote,developer,claude,codex,wireguard,relay
+cmux,terminal,ssh,tmux,tailscale,remote,developer,claude,codex,wireguard,relay
 ```
-*(82 chars)*
+*(78 chars)*
 
 ### Description (max 4000)
 
 ```
-Cmux Remote is a private remote-control client for the cmux terminal multiplexer running on your own computer. Connect over your Tailscale network — your traffic never touches a third-party server.
+Cmux Remote is a private remote-control client for the cmux terminal multiplexer running on your own computer. Connect over your Tailscale network — your traffic never touches a third-party relay.
 
 WHAT IT IS
 
-Cmux (https://cmux.com) is a modern terminal multiplexer with native splits, workspaces, and rich integrations for AI agents like Claude Code, Codex, omx, and Cursor. Cmux Remote mirrors the cmux surface you choose, lets you type into it, send keys, and receive notifications — all from this mobile app.
+Cmux (https://cmux.com) is a modern terminal multiplexer with native splits, workspaces, and rich integrations for AI agents like Claude Code, Codex, omx, and Cursor. Cmux Remote mirrors the cmux surface you choose, lets you type into it, send keys, manage workspaces, attach photos, and receive notifications — all from this mobile app.
 
 WHO IT IS FOR
 
@@ -86,10 +86,12 @@ The relay speaks directly to cmux's local Unix socket. This app speaks to the re
 FEATURES
 
 - Live mirror of cmux terminal surfaces with ANSI color and Korean / CJK width support
-- Full keyboard accessory bar — Esc, Enter, Tab, arrows, Ctrl combos
-- Mouse passthrough toggle (xterm SGR) for Textual / Bubble Tea / fzf TUIs
-- Local notifications for cmux events, with no external notification server required in v1.0
-- Multiple workspaces and surfaces with chip-bar switching
+- Full keyboard accessory bar — Esc, Enter, Tab, arrows, Ctrl combos, /new, and Space
+- Keyboard-safe composer layout with automatic keyboard dismissal after submit
+- Paste text from the mobile clipboard and attach photos; files are saved by the relay under Downloads/cmux-remote
+- Local notifications and Inbox entries for cmux events plus AI-agent needs-input prompts
+- Workspace create, rename, close, and multi-surface chip-bar switching
+- Connected computer battery status when the relay can provide it
 - Pinch-to-zoom font, scroll-to-bottom on surface change
 - Demo Mode with fully populated fake data — try the app before you set up a relay
 
@@ -145,55 +147,57 @@ cmux Remote
 ### 부제 (max 30)
 
 ```
-주머니 속 Mac 터미널 원격 제어
+사설 터미널 원격 제어
 ```
-*(17 chars)*
+*(12 chars)*
 
 ### 프로모션 텍스트 (max 170)
 
 ```
-Mac에서 돌아가는 claude-code, lazygit, vim, cmux 워크스페이스를 자리 비울 때도 iPhone에서 그대로 — 본인 Tailscale 네트워크 위에서. 외부 서버 거치지 않습니다.
+cmux 워크스페이스, 에이전트 세션, 터미널 surface를 본인 Tailscale 네트워크 안에서 원격 제어합니다. 외부 relay를 거치지 않습니다.
 ```
-*(124 chars)*
+*(86 chars)*
 
 ### 키워드 (max 100)
 
 ```
-cmux,터미널,터미널원격,tmux,tailscale,개발자,맥,원격,claude,codex,wireguard,relay,코딩
+cmux,터미널,터미널원격,tmux,tailscale,개발자,원격,claude,codex,wireguard,relay,코딩
 ```
-*(80 chars — Korean keyword bytes count carefully, ASC limits chars not bytes)*
+*(68 chars — Korean keyword bytes count carefully, ASC limits chars not bytes)*
 
 ### 설명 (max 4000)
 
 ```
-cmux Remote는 iPhone을 본인 Mac에서 돌아가는 cmux 터미널 멀티플렉서의 원격 헤드로 만들어 줍니다. Tailscale 네트워크 위에서 작동하므로 트래픽이 외부 서버를 거치지 않습니다.
+cmux Remote는 사용자의 모바일 기기를 본인 컴퓨터에서 돌아가는 cmux 터미널 멀티플렉서의 원격 헤드로 만들어 줍니다. Tailscale 네트워크 위에서 작동하므로 트래픽이 외부 relay를 거치지 않습니다.
 
 이 앱이 무엇인가요
 
-cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Codex / Cursor 같은 AI 에이전트와의 깊은 통합을 제공하는 macOS용 현대적 터미널 멀티플렉서입니다. cmux Remote는 선택한 cmux surface를 미러링하고, 키 입력을 보내고, 알림을 받게 해 줍니다 — 전부 iPhone에서.
+cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Codex / Cursor 같은 AI 에이전트와의 깊은 통합을 제공하는 데스크톱용 현대적 터미널 멀티플렉서입니다. cmux Remote는 선택한 cmux surface를 미러링하고, 키 입력을 보내고, 워크스페이스를 관리하고, 사진을 첨부하고, 알림을 받게 해 줍니다 — 전부 모바일 앱에서.
 
 누구를 위한 앱인가요
 
-- claude-code, codex, omx 같은 장시간 에이전트를 Mac에서 돌리며, 소파에서 잠깐 들여다보거나 살짝 조작하고 싶은 개발자
-- 이미 카페에서 Mac 개발 머신에 SSH 접속하는 분들 — 더 깔끔한 경험을 원할 때
+- claude-code, codex, omx 같은 장시간 에이전트를 컴퓨터에서 돌리며, 소파에서 잠깐 들여다보거나 살짝 조작하고 싶은 개발자
+- 이미 카페에서 본인 개발 머신에 SSH 접속하는 분들 — 더 깔끔한 경험을 원할 때
 - Tailscale을 이미 쓰고 있고, 터미널 접근을 위한 사설 경로를 찾고 있는 분
 
 어떻게 작동하나요
 
-1. Mac에 오픈소스 cmux-relay 바이너리를 설치 (한 줄 설치 스크립트 제공).
-2. Mac이 Tailscale에 연결되어 있는지 확인.
-3. 이 앱을 열고 Mac의 Tailscale 호스트명을 입력해 Connect 탭.
+1. 컴퓨터에 오픈소스 cmux-relay 바이너리를 설치 (한 줄 설치 스크립트 제공).
+2. 컴퓨터가 Tailscale에 연결되어 있는지 확인.
+3. 이 앱을 열고 컴퓨터의 Tailscale 호스트명을 입력해 Connect 탭.
 4. cmux 워크스페이스가 나타납니다. surface를 선택하면 끝.
 
-릴레이는 Mac에서 cmux의 로컬 Unix socket과 직접 통신합니다. iPhone은 Tailscale의 WireGuard 암호화 터널을 통해 릴레이와 통신합니다. 본인 네트워크 밖으로 나가는 데이터는 없습니다.
+릴레이는 컴퓨터에서 cmux의 로컬 Unix socket과 직접 통신합니다. 모바일 앱은 Tailscale의 WireGuard 암호화 터널을 통해 릴레이와 통신합니다. 본인 네트워크 밖으로 나가는 데이터는 없습니다.
 
 주요 기능
 
 - ANSI 색상 + 한국어 / CJK 폭 처리 지원하는 cmux 터미널 surface 라이브 미러
-- 전용 키보드 액세서리 바 — Esc, Enter, Tab, 방향키, Ctrl 조합
-- 마우스 패스스루 토글 (xterm SGR) — Textual / Bubble Tea / fzf TUI 호환
-- cmux 알림용 로컬 푸시 (v1.0에서는 원격 APNs 불필요)
-- 다중 워크스페이스 / surface, 칩바 전환
+- 전용 키보드 액세서리 바 — Esc, Enter, Tab, 방향키, Ctrl 조합, /new, Space
+- 전송 후 키보드 자동 닫힘과 키보드 표시 중 안정적인 터미널/입력창 레이아웃
+- 모바일 클립보드 붙여넣기와 사진 첨부. 파일은 relay가 Downloads/cmux-remote 아래에 저장
+- cmux 이벤트와 AI 에이전트 needs input 프롬프트를 로컬 알림 / Inbox로 표시
+- 워크스페이스 생성, 이름 변경, 닫기와 다중 surface 칩바 전환
+- relay가 제공하는 경우 연결된 컴퓨터 배터리 상태 표시
 - 핀치 줌 폰트 사이즈, surface 전환 시 자동 하단 스크롤
 - 데모 모드 — 릴레이 설정 전에도 가짜 데이터로 앱을 둘러볼 수 있음
 
@@ -205,8 +209,8 @@ https://github.com/NewTurn2017/cmux-remote
 
 요구 사양
 
-- cmux 0.64 이상이 설치된 macOS Mac
-- Mac과 iPhone 모두 같은 Tailscale tailnet에 로그인되어 있을 것
+- cmux 0.64 이상이 설치된 개인 컴퓨터
+- 컴퓨터와 모바일 기기 모두 같은 Tailscale tailnet에 로그인되어 있을 것
 - iOS 17 이상
 
 이 앱은 MIT 라이선스로 공개된 오픈소스입니다. Issues와 pull requests 환영.
@@ -227,24 +231,24 @@ https://github.com/NewTurn2017/cmux-remote
 ```
 Cmux Remote 1.0.2 focuses on day-to-day remote control quality:
 
-- Better iPhone keyboard behavior: Enter now dismisses the keyboard after sending, and the terminal/composer layout no longer leaves large blank gaps or hides controls when the keyboard is visible.
-- Workspace management from iPhone: create workspaces with the requested title, rename existing workspaces, and close unused workspaces directly from the workspace list.
+- Better mobile keyboard behavior: Enter now dismisses the keyboard after sending, and the terminal/composer layout no longer leaves large blank gaps or hides controls when the keyboard is visible.
+- Workspace management from the mobile app: create workspaces with the requested title, rename existing workspaces, and close unused workspaces directly from the workspace list.
 - Faster input controls: refreshed shortcut buttons, including /new and Space for OMX selection flows.
-- Image attachments: attach a photo from iPhone and send it through the relay to the connected computer.
-- Mac status in the app: show connected Mac battery information when the relay can provide it.
+- Image attachments: attach a photo from the mobile app and send it through the relay to the connected computer.
+- Connected computer status: show battery information when the relay can provide it.
 - Inbox improvements: Claude/Codex-style needs-input events are surfaced reliably in the Inbox.
 ```
 
 ### 새로운 기능 — ko
 
 ```
-cmux Remote 1.0.2는 iPhone에서 실제로 조작할 때 불편했던 부분을 집중 개선한 업데이트입니다.
+cmux Remote 1.0.2는 모바일에서 실제로 조작할 때 불편했던 부분을 집중 개선한 업데이트입니다.
 
 - 키보드 입력 경험 개선: Enter 전송 후 키보드가 자동으로 닫히고, 가상 키보드가 올라와도 터미널/입력창 레이아웃이 크게 비거나 가려지지 않도록 조정했습니다.
-- 워크스페이스 관리 추가: 새 워크스페이스 생성 시 입력한 이름이 그대로 반영되며, 기존 워크스페이스 이름 변경과 닫기를 iPhone에서 바로 할 수 있습니다.
+- 워크스페이스 관리 추가: 새 워크스페이스 생성 시 입력한 이름이 그대로 반영되며, 기존 워크스페이스 이름 변경과 닫기를 모바일에서 바로 할 수 있습니다.
 - 단축 버튼 개선: /new, Space 등 모바일에서 자주 쓰는 입력을 빠르게 보낼 수 있게 정리했습니다.
-- 이미지 첨부 지원: iPhone 사진을 첨부해 연결된 컴퓨터로 전달할 수 있습니다.
-- 연결된 Mac 상태 표시: relay가 제공하는 경우 MacBook 배터리 상태를 앱에서 확인할 수 있습니다.
+- 이미지 첨부 지원: 모바일 사진을 첨부해 연결된 컴퓨터로 전달할 수 있습니다.
+- 연결된 컴퓨터 상태 표시: relay가 제공하는 경우 배터리 상태를 앱에서 확인할 수 있습니다.
 - Inbox 개선: Claude/Codex 계열 세션의 needs input 알림을 Inbox에서 더 안정적으로 표시합니다.
 ```
 
@@ -257,7 +261,7 @@ cmux Remote 1.0.2는 iPhone에서 실제로 조작할 때 불편했던 부분을
 | Is data used to track? | N/A |
 | Third-party SDKs? | None |
 
-The app stores `bearer` and `device_id` in the iOS Keychain, but these are issued by the **user's own** Mac relay and never sent to any developer-controlled server. Per Apple's definition this is not "data collection".
+The app stores `bearer` and `device_id` in the iOS Keychain, but these are issued by the **user's own** relay and never sent to any developer-controlled server. Per Apple's definition this is not "data collection".
 
 ## Encryption / Export Compliance
 
@@ -275,7 +279,7 @@ Not used in v1.0. No advertising identifiers, no tracking. (Required only when v
 Paste this verbatim into the **App Review Information → Notes** field:
 
 ```
-Cmux Remote is a remote-control client for the cmux Mac terminal multiplexer over the user's own Tailscale network. App Review cannot replicate this setup because it requires a Mac running cmux + cmux-relay on a tailnet only the user controls.
+Cmux Remote is a remote-control client for the cmux terminal multiplexer over the user's own Tailscale network. App Review cannot replicate this setup because it requires a computer running cmux + cmux-relay on a tailnet only the user controls.
 
 To evaluate the full app:
 1. Launch the app.

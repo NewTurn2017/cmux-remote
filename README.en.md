@@ -18,9 +18,9 @@ cmux exclusively over a documented JSON-RPC protocol.
 
 ## Status
 
-**Early preview (v1.0).** It can:
+**Early preview (v1.0.2).** It can:
 
-- list, open, create, and close cmux workspaces and surfaces
+- list, open, create, rename, and close cmux workspaces and surfaces
 - mirror any terminal surface in near real-time (15 Hz diff polling)
 - send keystrokes, key combinations, raw text, and command lines
 - surface cmux notifications as iOS local notifications (while the app
@@ -29,6 +29,7 @@ cmux exclusively over a documented JSON-RPC protocol.
 - attach iPhone photos by saving them to the Mac under
   `~/Downloads/cmux-remote/` and inserting the saved path
 - show the connected MacBook battery state in the workspace header
+- surface Claude/Codex-style `needs input` events in the Inbox
 - pin cmux pane focus on every send
 
 Smoke-tested against macOS 14 + iOS 17 on both LAN and across a Tailnet
@@ -109,6 +110,8 @@ client that talks to cmux over a documented JSON-RPC schema.
 ### Workspaces / surfaces
 
 - Workspace and terminal-surface listing
+- Workspace creation with the requested title sent to cmux as `workspace.create.title`
+- Workspace rename (`workspace.rename`) and close (`workspace.close`) from the workspace list
 - In-app surface create / close from the chip bar (with confirmation
   dialog and automatic fallback selection)
 - Auto re-subscribe and bottom-pin on workspace / surface switch
@@ -152,6 +155,7 @@ client that talks to cmux over a documented JSON-RPC schema.
 - Duplicate-id guard — a reconnect that re-emits the same notification
   only fires one banner
 - Inbox view holds the most recent 200 entries (newest first)
+- Claude/Codex-style `needs input`, `needs attention`, and approval events are promoted into the same Inbox stream
 - Deep link `cmux://surface/<id>` (will be joined by APNs payload
   routing in M6)
 - `SEND TEST NOTIFICATION` button in Settings: a local inject for
@@ -170,6 +174,8 @@ client that talks to cmux over a documented JSON-RPC schema.
 - Per-device rate limiter and `boot_id`-driven reset broadcast
 - Ships as a launchd user agent, with an injected `PATH` so the
   `tailscale` CLI is reachable from a stripped launchd environment
+- Connected Mac battery lookup via `host.battery`, displayed as an iPhone header badge
+- iPhone photo uploads saved only under `~/Downloads/cmux-remote/` via `file.upload`
 - Dedicated cmux UDS channel for the events stream (the subscribed
   channel becomes push-only and won't accept further RPC responses)
 
@@ -255,7 +261,7 @@ the menu bar.
 ### 3. Use it
 
 - **Workspaces** — the workspace list. Tap one to expand its surface
-  chip bar.
+  chip bar, or create, rename, and close workspaces in place.
 - **Terminal** — the tapped surface mirrors here. The bottom accessory
   bar carries esc / arrows / tab / mouse mode / pane toggle.
 - **Notifications** — Inbox for cmux notifications. Anything delivered
@@ -293,6 +299,8 @@ the installer with `CMUX_DEV_ALLOW_LOCALHOST=1`.
 - [x] v1.0 — workspace listing, surface create/close, terminal mirror,
       keystroke send, mouse mode, pane toggle, local notifications,
       Tokyo Night Storm UI
+- [x] v1.0.2 — keyboard layout fixes, photo attach, MacBook battery badge,
+      `needs input` Inbox handling, workspace create/rename/close
 - [ ] **v1.1 — APNs push** (alerts that arrive while the app is killed
       or long-backgrounded), payload-driven deep-link to surface
 - [ ] v1.2 — iPad layout, external keyboard polish
@@ -327,7 +335,7 @@ cmux-remote/
 │     ├─ CmuxRemoteApp.swift / ContentView.swift
 │     ├─ Network/           # RPCClient, WSClient, AuthClient, EndpointPolicy
 │     ├─ Notifications/     # LocalNotificationPresenter, NotificationCenterView
-│     ├─ Stores/            # WorkspaceStore, SurfaceStore, NotificationStore
+│     ├─ Stores/            # WorkspaceStore, SurfaceStore, NotificationStore, HostStatusStore
 │     ├─ Terminal/          # CellGrid, ANSIParser, TerminalView, cell-width
 │     ├─ Workspace/         # WorkspaceListView, WorkspaceDrawer, WorkspaceView
 │     ├─ Settings/          # SettingsView
