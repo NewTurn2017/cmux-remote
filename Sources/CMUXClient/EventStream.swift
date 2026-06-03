@@ -21,7 +21,10 @@ public actor EventStream {
             }
         }
         let cats: JSONValue = .array(categories.map { .string($0.rawValue) })
-        // Fire-and-forget: cmux replies once with ok and then keeps pushing events.
-        _ = try? await client.call(method: "events.stream", params: .object(["categories": cats]))
+        // Fire-and-forget: cmux 0.64.12 acks the subscribe with a `cmux-events`
+        // subscription envelope (no matching RPC id) and then streams events.
+        // Using `call` here would block until the request timeout on every
+        // attach; `send` writes the subscribe and returns immediately.
+        try? await client.send(method: "events.stream", params: .object(["categories": cats]))
     }
 }
