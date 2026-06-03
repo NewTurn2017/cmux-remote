@@ -1,10 +1,12 @@
 import Foundation
+import Logging
 import SharedKit
 
 public actor EventStream {
     private let client: CMUXClient
     private let sink: @Sendable (EventFrame) -> Void
     private var started = false
+    private let logger = Logger(label: "EventStream")
 
     public init(client: CMUXClient, sink: @escaping @Sendable (EventFrame) -> Void) {
         self.client = client
@@ -25,6 +27,15 @@ public actor EventStream {
         // subscription envelope (no matching RPC id) and then streams events.
         // Using `call` here would block until the request timeout on every
         // attach; `send` writes the subscribe and returns immediately.
-        try? await client.send(method: "events.stream", params: .object(["categories": cats]))
+        do {
+            try await client.send(method: "events.stream", params: .object(["categories": cats]))
+        } catch {
+            // Synchronous pre-check failure (channel already closed/terminal at
+            // subscribe time). The async write path closes the channel itself on
+            // failure; here we only need visibility — the supervisor's
+            // `awaitClosed()` returns immediately on an already-dead channel and
+            // re-attaches.
+            logger.warning("events.stream subscribe failed: \(String(describing: error))")
+        }
     }
 }

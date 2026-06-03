@@ -93,7 +93,20 @@ public actor CMUXClient {
         let body = try JSONEncoder().encode(req)
         var buf = channel.allocator.buffer(capacity: body.count)
         buf.writeBytes(body)
-        channel.writeAndFlush(buf, promise: nil)
+        // Fire-and-forget, but don't drop a write failure. Unlike `call`, there
+        // is no pending continuation to fail, so a silently-dropped subscribe
+        // would leave the event-stream supervisor blocked in `awaitClosed()` on
+        // a half-dead channel with no events ever arriving. Close the channel so
+        // `closeFuture` fires and the supervisor re-attaches.
+        self.channel.writeAndFlush(buf).whenFailure { [weak self] error in
+            Task { await self?.handleSendFailure(error) }
+        }
+    }
+
+    private func handleSendFailure(_ error: Error) {
+        logger.warning("fire-and-forget send failed; closing channel to trigger re-attach: \(String(describing: error))")
+        if terminalError == nil { terminalError = .channelClosed }
+        channel.close(promise: nil)
     }
 
     public func authenticate(password: String) async throws {
