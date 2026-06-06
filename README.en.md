@@ -87,8 +87,7 @@ iPhone (iOS 17+)         Tailscale            Mac
                                                             ▼
                                               ┌────────────────────────────────┐
                                               │ cmux.app                       │
-                                              │ ~/Library/Application Support/ │
-                                              │   cmux/cmux.sock               │
+                                              │ ~/.local/state/cmux/cmux.sock  │
                                               └────────────────────────────────┘
 ```
 
@@ -202,7 +201,7 @@ client that talks to cmux over a documented JSON-RPC schema.
 - macOS 13 Ventura or newer
 - A working [cmux](https://github.com/manaflow-ai/cmux) installation
   with its Unix socket exposed (default
-  `~/Library/Application Support/cmux/cmux.sock`)
+  `~/.local/state/cmux/cmux.sock`)
 - Swift 5.10 toolchain (Xcode 15.3+) to build from source
 - Tailscale installed and signed in
 - A free TCP port for the relay (default `4399`)
@@ -330,11 +329,15 @@ never overwritten):
 at the application layer regardless. To allow localhost in dev, run
 the installer with `CMUX_DEV_ALLOW_LOCALHOST=1`.
 
-By default, the relay follows cmux's
-`~/Library/Application Support/cmux/last-socket-path` marker for the Unix
-socket. This keeps the relay from being pinned to a stale `cmux.sock` when
-cmux restarts with a socket name such as `cmux-501.sock`. Only set
-`CMUX_SOCKET_PATH=/path/to/socket` when you deliberately need a fixed socket.
+By default, the relay follows cmux's `last-socket-path` markers, newest
+convention first: the fixed `/tmp/cmux-last-socket-path`, then
+`~/.local/state/cmux/last-socket-path`, then the legacy
+`~/Library/Application Support/cmux/last-socket-path`; if none resolve it falls
+back to `~/.local/state/cmux/cmux.sock`. This keeps the relay from being pinned
+to a stale socket when cmux rotates its socket name (e.g. `cmux-501.sock`) or an
+update moves it from `~/Library/Application Support/cmux` to
+`~/.local/state/cmux`. Only set `CMUX_SOCKET_PATH=/path/to/socket` when you
+deliberately need a fixed socket.
 
 > **APNs key fields (`apns_team_id`, `apns_key_id`, `apns_key_path`)
 > are coming in v1.1.** Until then, cmux notifications are presented
@@ -396,9 +399,11 @@ Per-log fixes:
 
 - `cmux event stream unavailable: socketMissing` — **cmux is not
   running.** Launch the cmux app, then `launchctl kickstart -k "$SERVICE"`.
-- Repeated `Connection refused` — cmux restarted and **the socket name
-  rotated.** Check that `~/Library/Application Support/cmux/last-socket-path`
-  points at the current socket, then re-run `./scripts/install-launchd.sh`.
+- Repeated `Connection refused` — **the socket path changed** (cmux rotated
+  its socket name, or an update moved it to `~/.local/state/cmux`). A current
+  relay tracks the markers automatically, so re-running
+  `./scripts/install-launchd.sh` fixes it. In a pinch, pin the path from
+  `cat /tmp/cmux-last-socket-path` via `CMUX_SOCKET_PATH`.
 - Health check OK but only the app can't attach — **network/address
   issue.** Confirm the iPhone and Mac share a Tailnet, the app's
   address/port (`4399`) is correct, and the device token wasn't revoked

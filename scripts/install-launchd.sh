@@ -37,9 +37,11 @@ BIN_SRC="$ROOT/.build/release/cmux-relay"
 BIN_DEST="$DEST/bin/cmux-relay"
 CONFIG="${CMUX_RELAY_CONFIG:-$DEST/relay.json}"
 LOGDIR="${CMUX_RELAY_LOGDIR:-$DEST/log}"
-# Leave CMUX_SOCKET_PATH empty by default so cmux-relay follows cmux's
-# last-socket-path marker at runtime. Set CMUX_SOCKET_PATH explicitly only when
-# the operator wants to pin the relay to a fixed socket.
+# Leave CMUX_SOCKET_PATH empty by default so cmux-relay discovers the live cmux
+# socket at runtime: it follows cmux's last-socket-path markers (the fixed
+# /tmp/cmux-last-socket-path, then ~/.local/state/cmux, then the legacy
+# ~/Library/Application Support/cmux) and falls back to ~/.local/state/cmux/cmux.sock.
+# Set CMUX_SOCKET_PATH explicitly only when the operator wants to pin a fixed socket.
 SOCKET="${CMUX_SOCKET_PATH:-}"
 DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
 # launchd starts agents with a stripped PATH; tailscale CLI on macOS lives in
