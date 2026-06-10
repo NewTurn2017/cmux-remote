@@ -58,6 +58,25 @@ final class ConfigLoaderTests: XCTestCase {
         XCTAssertThrowsError(try RelayConfig.decode(jsonString: json))
     }
 
+    /// `authorizing(login:)` folds the relay host's own tailnet login into
+    /// allow_login so the owner's phone pairs without hand-editing the config.
+    func testAuthorizingAddsSelfLogin() {
+        XCTAssertEqual(RelayConfig.defaults.authorizing(login: "me@example.com").allowLogin,
+                       ["me@example.com"])
+    }
+
+    /// It must be idempotent and ignore nil/empty so it never duplicates an
+    /// operator-listed login or reacts to a tagged node's missing identity.
+    func testAuthorizingIsIdempotentAndNilSafe() {
+        var cfg = RelayConfig.defaults
+        cfg.allowLogin = ["me@example.com"]
+        XCTAssertEqual(cfg.authorizing(login: "me@example.com").allowLogin, ["me@example.com"])
+        XCTAssertEqual(cfg.authorizing(login: nil).allowLogin, ["me@example.com"])
+        XCTAssertEqual(cfg.authorizing(login: "").allowLogin, ["me@example.com"])
+        XCTAssertEqual(cfg.authorizing(login: "you@example.com").allowLogin,
+                       ["me@example.com", "you@example.com"])
+    }
+
     func testReloadFromDisk() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).json")
         let raw = #"""

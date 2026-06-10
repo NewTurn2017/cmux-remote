@@ -285,10 +285,11 @@ iPhone에서 cmux Remote 열기:
 2. 위에서 확인한 Tailscale IP 또는 MagicDNS 이름 입력, 포트는 `4399`
 3. **Add** — relay가 Tailscale 신원을 확인하고 페어링합니다
 
-단, relay는 `allow_login`에 등록된 tailnet 로그인의 기기만 허용합니다.
-기본 설정의 `allow_login`은 비어 있어 첫 페어링이 `403 Forbidden`으로
-막히므로, 아래 **설정**의 `allow_login`에 본인 로그인을 먼저 추가하세요.
-페어링 시 디바이스별 토큰이 발급되며
+relay는 자기 Mac의 tailnet 로그인을 자동으로 허용하므로, iPhone이 같은
+Tailscale 계정이면 보통 추가 설정 없이 바로 붙습니다. 다른 계정이거나
+relay가 태그 노드로 도는 경우에만 아래 **설정**의 `allow_login`에 본인
+로그인을 직접 추가하세요(그 외 로그인은 `403 Forbidden`). 페어링 시
+디바이스별 토큰이 발급되며
 `~/.cmuxremote/bin/cmux-relay devices revoke <id>`로 언제든 해지할 수 있습니다.
 
 ### 4. 사용
@@ -322,10 +323,13 @@ Relay는 `~/.cmuxremote/relay.json`을 읽습니다. 파일이 없으면
 `CMUX_DEV_ALLOW_LOCALHOST=1` 환경 변수로 install 스크립트를 돌리세요.
 
 생략한 키는 위 기본값으로 채워지므로 위 3줄짜리 설정만으로도 relay는
-정상 부팅합니다. 단 **페어링하려면 `allow_login`을 한 번 채워야** 합니다 —
-relay는 여기에 나열된 tailnet 로그인의 기기만 허용하고 나머지는
-`403 Forbidden`으로 막습니다. Mac과 iPhone이 같은 Tailscale 계정이면 값은
-동일합니다. 본인 로그인 값은 Tailscale 관리 콘솔, 또는
+정상 부팅합니다. 페어링은 `allow_login`에 등록된 tailnet 로그인의 기기만
+허용하지만(나머지는 `403 Forbidden`), relay가 **자기 Mac의 로그인을 자동으로
+추가**하므로 같은 Tailscale 계정의 iPhone은 보통 비워둬도 붙습니다. 자동
+허용을 끄려면 `CMUX_NO_SELF_LOGIN=1`로 install 스크립트를 돌리세요.
+
+다른 계정의 기기를 붙이거나 relay가 태그 노드로 도는 경우에만 로그인을 직접
+추가합니다. 본인 로그인 값은 Tailscale 관리 콘솔, 또는
 `tailscale status --json`의 `Self.UserID`가 가리키는 `User[…].LoginName`
 에서 확인할 수 있습니다 (예: `you@example.com`). 이 값을 넣고 relay를
 재시작하세요:

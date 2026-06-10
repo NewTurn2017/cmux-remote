@@ -142,9 +142,9 @@ if [ ! -f "$CONFIG" ]; then
   "idle_fps":    5
 }
 JSON
-  note "the default authorises nobody yet — to pair your phone, add your"
-  note "  tailnet login to \"allow_login\" in $CONFIG, then re-run this script"
-  note "  (or: launchctl kickstart -k $SERVICE)"
+  note "this Mac's own tailnet login is auto-authorised, so a phone on the"
+  note "  same Tailscale account pairs out of the box. For other accounts, add"
+  note "  the login to \"allow_login\" in $CONFIG (CMUX_NO_SELF_LOGIN=1 to opt out)."
 fi
 
 note "building release binary"

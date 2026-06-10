@@ -84,8 +84,23 @@ struct Serve: AsyncParsableCommand {
         }
         let deviceStore = try DeviceStore(url: URL(fileURLWithPath: devicesStorePath()))
         let auth = TailscaledLocalAuth()
+
+        // Foolproof pairing: a fresh relay.json has an empty allow_login, which
+        // would 403 every phone. The relay runs on the operator's own Mac, so its
+        // own tailnet login is the same account their phone signs in with —
+        // authorise it automatically. Tagged/headless nodes resolve to nil and we
+        // fall back to whatever allow_login lists. Opt out with CMUX_NO_SELF_LOGIN=1.
+        var effectiveConfig = store.current
+        if ProcessInfo.processInfo.environment["CMUX_NO_SELF_LOGIN"] == nil,
+           let selfLogin = await auth.selfLogin() {
+            if !effectiveConfig.allowLogin.contains(selfLogin) {
+                logger.info("auto-authorising this Mac's tailnet login for pairing: \(selfLogin)")
+            }
+            effectiveConfig = effectiveConfig.authorizing(login: selfLogin)
+        }
+
         let routes = Routes(deviceStore: deviceStore,
-                            config: store.current,
+                            config: effectiveConfig,
                             auth: auth)
         let server = HTTPServer(group: group, routes: routes, auth: auth,
                                 deviceStore: deviceStore,

@@ -313,11 +313,12 @@ Open cmux Remote on the iPhone:
 2. Enter the Tailscale IP or MagicDNS name from above, port `4399`
 3. **Add** — the relay resolves your Tailscale identity and pairs
 
-Note: the relay only accepts devices whose tailnet login is listed in
-`allow_login`. The default `allow_login` is empty, so the first pairing
-is rejected with `403 Forbidden` until you add your login under
-**Configuration** below. Pairing exchanges a per-device token; revoke any
-device anytime with `~/.cmuxremote/bin/cmux-relay devices revoke <id>`.
+The relay auto-authorises its own Mac's tailnet login, so an iPhone on the
+same Tailscale account usually pairs with no extra setup. Only for a
+different account, or when the relay runs on a tagged node, add your login
+to `allow_login` under **Configuration** below (any other login gets
+`403 Forbidden`). Pairing exchanges a per-device token; revoke any device
+anytime with `~/.cmuxremote/bin/cmux-relay devices revoke <id>`.
 
 ### 4. Use it
 
@@ -351,13 +352,16 @@ at the application layer regardless. To allow localhost in dev, run
 the installer with `CMUX_DEV_ALLOW_LOCALHOST=1`.
 
 Omitted keys fall back to the defaults above, so the three-line config
-boots the relay fine — but **pairing requires `allow_login`**. The relay
-only accepts devices whose tailnet login is listed there; everyone else
-gets `403 Forbidden`. Mac and iPhone on the same Tailscale account share
-the same value. Find yours in the Tailscale admin console, or via the
-`User[…].LoginName` that `Self.UserID` points to in
-`tailscale status --json` (e.g. `you@example.com`). Add it and restart
-the relay:
+boots the relay fine. Pairing only accepts devices whose tailnet login is
+listed in `allow_login` (everyone else gets `403 Forbidden`), but the relay
+**auto-adds its own Mac's login**, so an iPhone on the same Tailscale
+account usually pairs with `allow_login` left empty. Disable that by running
+the installer with `CMUX_NO_SELF_LOGIN=1`.
+
+Only for a different account, or a tagged-node relay, add the login by hand.
+Find yours in the Tailscale admin console, or via the `User[…].LoginName`
+that `Self.UserID` points to in `tailscale status --json`
+(e.g. `you@example.com`). Add it and restart the relay:
 
 ```json
 {

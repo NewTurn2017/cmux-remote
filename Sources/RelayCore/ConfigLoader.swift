@@ -75,6 +75,16 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     public static func decode(jsonString: String) throws -> RelayConfig {
         try JSONDecoder().decode(RelayConfig.self, from: Data(jsonString.utf8))
     }
+
+    /// Returns a copy with `login` appended to `allowLogin`. Idempotent and
+    /// nil/empty-safe, so the relay can fold in its own tailnet login without
+    /// duplicating an already-listed operator or reacting to a missing one.
+    public func authorizing(login: String?) -> RelayConfig {
+        guard let login, !login.isEmpty, !allowLogin.contains(login) else { return self }
+        var copy = self
+        copy.allowLogin.append(login)
+        return copy
+    }
 }
 
 /// Holds the current `relay.json` snapshot and reloads it on demand.
