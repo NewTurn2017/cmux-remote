@@ -400,6 +400,39 @@ launchd plist는 owner-only(600)이고 env 경로가 cmux의 CLI 정책(`--passw
 → `CMUX_SOCKET_PASSWORD` → settings file)과도 일치하므로 운영에서는
 env를 권장합니다.
 
+#### cmux 재시작 뒤 고치기 — `scripts/refresh-cmux-password.sh`
+
+cmux는 시작 시 `automation.socketPassword`를 cmux.json에서 **읽고 제거**합니다
+(평문 비밀번호가 디스크에 영구히 남지 않도록 설계된 동작). 그 결과 cmux를
+재시작하면 서버 측 비밀번호가 사라져서 launchd가 띄웄 relay는 다음과 같은
+일관된 에러를 보고합니다:
+
+```
+ERROR: auth_unconfigured — Password mode is enabled but no socket password is
+configured in Settings.
+```
+
+동봉 하나로 복구하세요:
+
+```bash
+./scripts/refresh-cmux-password.sh
+```
+
+이 스크립트는 idempotent이고 우선순위가 명확합니다:
+
+1. launchd plist에서 `CMUX_SOCKET_PASSWORD`를 읽음 (다른 곳에 제시하지 않음)
+2. 그 값을 cmux.json `automation.socketPassword`에 다시 주입 (하루 한 번
+   `cmux.json.YYYYMMDD.bak` 백업)
+3. `cmux reload-config`로 cmux가 비밀번호를 다시 읽고 sidecar 파일
+   `~/.local/state/cmux/socket-control-password`를 재생성하도록 함
+4. relay를 kickstart해 재인증
+5. 로그에서 `event stream attached` 확인, 실패 시 이유 설명
+
+relay 플리스트의 비밀번호가 경우는 이 스크립트가 다룰 수 없으므로
+(근원적으로 새 시크릿으로 교체하는 경우)
+`CMUX_SOCKET_PASSWORD=<새값> ./scripts/install-launchd.sh`를 먼저 실행해
+plist에 새 시크릿을 박은 뒤 `refresh-cmux-password.sh`를 돌리세요.
+
 > **APNs 푸시 (`apns` 블록).** relay.json에 `apns` 블록을 넣으면 cmux
 > 알림이 APNs 푸시로 전달돼 앱이 종료된 상태에서도 도착합니다. 블록이
 > 없으면 알림은 로컬 알림으로만 표시됩니다.
