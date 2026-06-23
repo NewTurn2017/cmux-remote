@@ -138,17 +138,60 @@ final class CmuxSocketPathTests: XCTestCase {
         try FileManager.default.createDirectory(at: temp.appendingPathComponent("cmux", isDirectory: true), withIntermediateDirectories: true)
         try "file-secret\n".write(to: temp.appendingPathComponent("cmux/socket-control-password"), atomically: true, encoding: .utf8)
 
-        let password = cmuxSocketPassword(["CMUX_SOCKET_PASSWORD": " env-secret\n"], appSupportDirectory: temp)
+        let password = cmuxSocketPassword(
+            ["CMUX_SOCKET_PASSWORD": " env-secret\n"],
+            stateDirectory: emptyStateDir(),
+            appSupportDirectory: temp
+        )
 
         XCTAssertEqual(password, "env-secret")
     }
 
+    func testSocketPasswordPrefersStateDirectoryOverAppSupport() throws {
+        // cmux 0.64.16+ writes the password file to `$XDG_STATE_HOME/cmux/`.
+        // The relay must read it from there even when a stale legacy file
+        // still lives under `~/Library/Application Support/cmux/`.
+        let temp = freshTemp()
+        let stateDir = try makeCmuxDir(temp.appendingPathComponent("state"))
+        let legacyDir = try makeCmuxDir(temp.appendingPathComponent("appsupport"))
+        try "state-secret\n".write(to: stateDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+        try "legacy-secret\n".write(to: legacyDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+
+        let password = cmuxSocketPassword(
+            [:],
+            stateDirectory: temp.appendingPathComponent("state"),
+            appSupportDirectory: temp.appendingPathComponent("appsupport")
+        )
+
+        XCTAssertEqual(password, "state-secret")
+    }
+
+    func testSocketPasswordRespectsXdgStateHome() throws {
+        let temp = freshTemp()
+        let xdg = temp.appendingPathComponent("xdgstate")
+        let stateDir = try makeCmuxDir(xdg)
+        try "xdg-secret\n".write(to: stateDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+
+        let password = cmuxSocketPassword(
+            ["XDG_STATE_HOME": xdg.path],
+            appSupportDirectory: temp.appendingPathComponent("empty-appsupport")
+        )
+
+        XCTAssertEqual(password, "xdg-secret")
+    }
+
     func testSocketPasswordFallsBackToCmuxPasswordFile() throws {
+        // Legacy cmux releases only wrote to ~/Library/Application Support/cmux.
+        // With no state-tier file present, the legacy tier still resolves.
         let temp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: temp.appendingPathComponent("cmux", isDirectory: true), withIntermediateDirectories: true)
         try "file-secret\n".write(to: temp.appendingPathComponent("cmux/socket-control-password"), atomically: true, encoding: .utf8)
 
-        let password = cmuxSocketPassword([:], appSupportDirectory: temp)
+        let password = cmuxSocketPassword(
+            [:],
+            stateDirectory: emptyStateDir(),
+            appSupportDirectory: temp
+        )
 
         XCTAssertEqual(password, "file-secret")
     }
@@ -158,7 +201,11 @@ final class CmuxSocketPathTests: XCTestCase {
         try FileManager.default.createDirectory(at: temp.appendingPathComponent("cmux", isDirectory: true), withIntermediateDirectories: true)
         try "\n".write(to: temp.appendingPathComponent("cmux/socket-control-password"), atomically: true, encoding: .utf8)
 
-        let password = cmuxSocketPassword(["CMUX_SOCKET_PASSWORD": "   "], appSupportDirectory: temp)
+        let password = cmuxSocketPassword(
+            ["CMUX_SOCKET_PASSWORD": "   "],
+            stateDirectory: emptyStateDir(),
+            appSupportDirectory: temp
+        )
 
         XCTAssertNil(password)
     }
@@ -171,6 +218,13 @@ final class CmuxSocketPathTests: XCTestCase {
 
     private func freshTemp() -> URL {
         URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+    }
+
+    /// Returns a path in /tmp guaranteed not to exist, so the new
+    /// state-tier in `cmuxSocketPassword` resolves to nothing during
+    /// legacy-fallback tests.
+    private func emptyStateDir() -> URL {
+        URL(fileURLWithPath: "/tmp/cmux-iphone-tests-no-such-state-\(UUID().uuidString)")
     }
 
     /// A `/tmp` marker path guaranteed not to exist, to neutralize that tier.

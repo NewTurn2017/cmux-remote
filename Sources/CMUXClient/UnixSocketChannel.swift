@@ -98,12 +98,21 @@ private func defaultAppSupportDirectory(_ env: [String: String]) -> URL {
 
 /// Resolves the password used by cmux `socketControlMode=password`.
 ///
-/// Order intentionally matches current cmux CLI behavior for non-interactive
-/// local automation: `CMUX_SOCKET_PASSWORD` first, then the per-user password
-/// file written by cmux Settings. The relay does not put secrets into launchd
-/// plists; a launchd-started relay can read the same owner-only file.
+/// Resolution order (mirrors ``cmuxSocketPath`` so the relay tracks cmux's
+/// own state-dir migrations without re-pinning):
+/// 1. `CMUX_SOCKET_PASSWORD` (matches `cmux --help` precedence)
+/// 2. `$XDG_STATE_HOME/cmux/socket-control-password` (default
+///    `~/.local/state/cmux/socket-control-password`) — written by cmux
+///    0.64.16+ when `automation.socketControlMode = "password"`
+/// 3. legacy `~/Library/Application Support/cmux/socket-control-password`
+///    — older cmux releases
+///
+/// Each tier checks for a non-empty trimmed value; an empty file or env var
+/// is treated as "not set" so a partially-staged install falls through to
+/// the next tier instead of authenticating with whitespace.
 public func cmuxSocketPassword(
     _ env: [String: String] = ProcessInfo.processInfo.environment,
+    stateDirectory: URL? = nil,
     appSupportDirectory: URL? = nil,
     fileManager: FileManager = .default
 ) -> String? {
@@ -111,21 +120,40 @@ public func cmuxSocketPassword(
         return p
     }
 
-    guard let appSupportDirectory = appSupportDirectory
-        ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-    else {
-        return nil
+    let stateCmuxDirectory = (stateDirectory ?? defaultStateDirectory(env))
+        .appendingPathComponent("cmux", isDirectory: true)
+    if let p = passwordFromFile(
+        at: stateCmuxDirectory.appendingPathComponent("socket-control-password", isDirectory: false),
+        fileManager: fileManager
+    ) {
+        return p
     }
 
-    let passwordFile = appSupportDirectory
-        .appendingPathComponent("cmux", isDirectory: true)
-        .appendingPathComponent("socket-control-password", isDirectory: false)
-    guard fileManager.fileExists(atPath: passwordFile.path),
-          let data = try? Data(contentsOf: passwordFile),
-          let raw = String(data: data, encoding: .utf8)
-    else {
-        return nil
+    let legacyCmuxDirectory: URL?
+    if let appSupportDirectory {
+        legacyCmuxDirectory = appSupportDirectory.appendingPathComponent("cmux", isDirectory: true)
+    } else if let dir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+        legacyCmuxDirectory = dir.appendingPathComponent("cmux", isDirectory: true)
+    } else {
+        legacyCmuxDirectory = nil
     }
+    if let dir = legacyCmuxDirectory,
+       let p = passwordFromFile(
+           at: dir.appendingPathComponent("socket-control-password", isDirectory: false),
+           fileManager: fileManager
+       )
+    {
+        return p
+    }
+
+    return nil
+}
+
+private func passwordFromFile(at url: URL, fileManager: FileManager) -> String? {
+    guard fileManager.fileExists(atPath: url.path),
+          let data = try? Data(contentsOf: url),
+          let raw = String(data: data, encoding: .utf8)
+    else { return nil }
     return normalizedSocketPassword(raw)
 }
 
