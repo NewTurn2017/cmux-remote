@@ -370,6 +370,36 @@ relay가 stale socket에 묶이지 않도록 하기 위함입니다. 고정 경�
 필요한 운영 환경에서만 `CMUX_SOCKET_PATH=/path/to/socket`으로
 install 스크립트를 실행하세요.
 
+### cmux 0.64.16+ socket-control 비밀번호
+
+cmux 0.64.16부터 `automation.socketControlMode`의 기본값이 `cmuxOnly`로
+바뀌었습니다 — **cmux 자식 프로세스만** UDS에 붙을 수 있다는 뜻이고,
+launchd가 띄우는 relay는 cmux의 자식이 아니므로 거부됩니다 (relay 로그에
+`ERROR: Access denied — only processes started inside cmux can connect`).
+붙이려면 cmux를 password 모드로 바꾸고 동일한 비밀번호를 relay에
+알려줘야 합니다.
+
+```bash
+# 1) cmux를 password 모드로 (자동 reload, 단 socketControlMode는 cmux 재시작이 필요)
+~/.agents/skills/cmux-settings/scripts/cmux-settings set automation.socketControlMode '"password"'
+PW=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+~/.agents/skills/cmux-settings/scripts/cmux-settings set automation.socketPassword "\"$PW\""
+
+# 2) relay에도 같은 비밀번호 주입 (env가 cmux의 비밀번호 파일보다 우선)
+CMUX_SOCKET_PASSWORD="$PW" ./scripts/install-launchd.sh
+
+# 3) cmux를 한 번 재시작해 SocketControlServer를 password 모드로 부팅
+#    (cmux 0.64.16의 socketControlMode는 startup-only — cmux reload-config로는 안 바뀜)
+```
+
+relay의 비밀번호 탐색 순서: `CMUX_SOCKET_PASSWORD` env → `$XDG_STATE_HOME/cmux/socket-control-password`
+(기본 `~/.local/state/cmux/socket-control-password`) → 레거시
+`~/Library/Application Support/cmux/socket-control-password`. cmux 0.64.16은
+XDG 경로에 비밀번호 파일을 쓰므로 env를 안 줘도 file 폴백이 작동하지만,
+launchd plist는 owner-only(600)이고 env 경로가 cmux의 CLI 정책(`--password`
+→ `CMUX_SOCKET_PASSWORD` → settings file)과도 일치하므로 운영에서는
+env를 권장합니다.
+
 > **APNs 푸시 (`apns` 블록).** relay.json에 `apns` 블록을 넣으면 cmux
 > 알림이 APNs 푸시로 전달돼 앱이 종료된 상태에서도 도착합니다. 블록이
 > 없으면 알림은 로컬 알림으로만 표시됩니다.

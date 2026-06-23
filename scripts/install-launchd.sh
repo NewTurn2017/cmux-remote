@@ -18,6 +18,18 @@ Usage: scripts/install-launchd.sh [--dry-run]
 Options:
   --dry-run   Print resolved paths and rendered plist without building,
               copying, writing LaunchAgents, or invoking launchctl.
+
+Environment passthroughs (all optional):
+  CMUX_SOCKET_PATH        Pin the cmux UDS path. Empty = let the relay follow
+                          cmux's last-socket-path markers at runtime.
+  CMUX_SOCKET_PASSWORD    Shared secret for cmux's password-mode socket.
+                          Required when cmux's automation.socketControlMode is
+                          set to "password" (cmux 0.64.16+ default rejects
+                          non-cmux-descendants like launchd-spawned relays).
+                          Match the value at automation.socketPassword in
+                          ~/.config/cmux/cmux.json.
+  CMUX_DEV_ALLOW_LOCALHOST  Set to 1 to bypass tailscaled whois for loopback
+                          peers during simulator development. Defaults to 0.
 USAGE
 }
 
@@ -43,6 +55,14 @@ LOGDIR="${CMUX_RELAY_LOGDIR:-$DEST/log}"
 # ~/Library/Application Support/cmux) and falls back to ~/.local/state/cmux/cmux.sock.
 # Set CMUX_SOCKET_PATH explicitly only when the operator wants to pin a fixed socket.
 SOCKET="${CMUX_SOCKET_PATH:-}"
+# cmux 0.64.16+ gates the UDS with `automation.socketControlMode=password`
+# (`cmuxOnly` denies non-cmux-descendants like a launchd-spawned relay). The
+# relay reads the secret in this order: `CMUX_SOCKET_PASSWORD` env first, then
+# `$XDG_STATE_HOME/cmux/socket-control-password`, then the legacy
+# `~/Library/Application Support/cmux/socket-control-password`. Setting the env
+# var is the most reliable path because cmux moved its state dir between
+# releases. Leave empty to fall through to the file lookup.
+SOCKET_PASSWORD="${CMUX_SOCKET_PASSWORD:-}"
 DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
 # launchd starts agents with a stripped PATH; tailscale CLI on macOS lives in
 # /usr/local/bin (pkg install) or /opt/homebrew/bin (brew), so prepend both
@@ -75,6 +95,7 @@ render_plist() {
     -e "s|__BIN__|$(render_token "$BIN_DEST")|g" \
     -e "s|__CONFIG__|$(render_token "$CONFIG")|g" \
     -e "s|__SOCKET__|$(render_token "$SOCKET")|g" \
+    -e "s|__SOCKET_PASSWORD__|$(render_token "$SOCKET_PASSWORD")|g" \
     -e "s|__LOGDIR__|$(render_token "$LOGDIR")|g" \
     -e "s|__DEV_ALLOW_LOCALHOST__|$(render_token "$DEV_ALLOW_LOCALHOST")|g" \
     -e "s|__RELAY_PATH__|$(render_token "$RELAY_PATH")|g" \
@@ -113,6 +134,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
     note "socket override: $SOCKET"
   else
     note "socket override: <dynamic via cmux last-socket-path>"
+  fi
+  if [ -n "$SOCKET_PASSWORD" ]; then
+    note "socket password: <set via CMUX_SOCKET_PASSWORD env, ${#SOCKET_PASSWORD} chars>"
+  else
+    note "socket password: <unset; relay will fall back to cmux's password file>"
   fi
   note "logdir: $LOGDIR"
   note "plist: $PLIST"
