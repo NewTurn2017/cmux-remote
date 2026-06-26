@@ -140,7 +140,40 @@ Depending on the log:
 |---|---|---|
 | `cmux event stream unavailable: socketMissing` | cmux is not running | Launch the cmux app, then `launchctl kickstart -k "$SERVICE"` |
 | Repeated `Connection refused` | cmux restarted and the socket name rotated | `launchctl kickstart -k "$SERVICE"`; if needed, re-run `./scripts/install-launchd.sh` |
+| Repeated `cmux event stream attached` then immediately `detached` | cmux socket access denied (cmux 0.64+) | See **③a** below |
 | Three lines OK but only the app can't attach | network/address issue | Check ④ and ⑤ |
+
+### ③a Socket access denied (cmux 0.64+)
+
+cmux 0.64 introduced a socket access control mode that defaults to
+`cmuxOnly` — only processes launched inside cmux can connect. The relay
+runs as a launchd agent outside cmux and is denied.
+
+Fix: tell cmux to accept password-authenticated external connections by
+creating `~/.config/cmux/cmux.json` with:
+
+```bash
+mkdir -p ~/.config/cmux
+cat > ~/.config/cmux/cmux.json << 'EOF'
+{
+  "automation": {
+    "socketControlMode": "password",
+    "socketPassword": "$(openssl rand -hex 24)"
+  }
+}
+EOF
+```
+
+Or write the file manually with any strong password you choose, then
+reload from **inside a cmux terminal**:
+
+```bash
+cmux reload-config
+```
+
+The relay reads the password automatically from
+`~/.local/state/cmux/socket-control-password` (written by cmux on
+reload). No relay restart is needed.
 
 ### ④ Is Tailscale online on both ends?
 

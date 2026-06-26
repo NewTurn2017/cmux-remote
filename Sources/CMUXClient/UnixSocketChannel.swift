@@ -105,9 +105,24 @@ private func defaultAppSupportDirectory(_ env: [String: String]) -> URL {
 public func cmuxSocketPassword(
     _ env: [String: String] = ProcessInfo.processInfo.environment,
     appSupportDirectory: URL? = nil,
+    stateDirectory: URL? = nil,
     fileManager: FileManager = .default
 ) -> String? {
     if let p = normalizedSocketPassword(env["CMUX_SOCKET_PASSWORD"]) {
+        return p
+    }
+
+    // cmux 0.64+ writes socket-control-password to the XDG state dir
+    // (~/.local/state/cmux/) rather than Application Support.
+    // Check state dir first (newer convention), then fall back to App Support.
+    let stateCmuxDir = (stateDirectory ?? defaultStateDirectory(env))
+        .appendingPathComponent("cmux", isDirectory: true)
+    let statePasswordFile = stateCmuxDir
+        .appendingPathComponent("socket-control-password", isDirectory: false)
+    if fileManager.fileExists(atPath: statePasswordFile.path),
+       let data = try? Data(contentsOf: statePasswordFile),
+       let raw = String(data: data, encoding: .utf8),
+       let p = normalizedSocketPassword(raw) {
         return p
     }
 
