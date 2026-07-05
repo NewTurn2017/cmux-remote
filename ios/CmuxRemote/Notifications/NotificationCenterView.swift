@@ -16,6 +16,23 @@ struct NotificationCenterView: View {
                         .cmuxDisplay(14)
                         .foregroundStyle(CmuxTheme.muted)
                     Spacer()
+                    if store.unreadCount > 0 {
+                        Button(action: { store.markAllRead() }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("[ MARK ALL READ ]")
+                                    .cmuxDisplay(10)
+                            }
+                            .foregroundStyle(CmuxTheme.canvas)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 30)
+                            .background(CmuxTheme.accentBlue)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("MarkAllReadButton")
+                    }
                 }
 
                 CmuxRule(title: "events")

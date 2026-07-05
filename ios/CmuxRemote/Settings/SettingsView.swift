@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("cmux.host") private var host: String = ""
     @AppStorage("cmux.port") private var port: Int = 4399
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
+    @AppStorage("cmux.localNotificationsEnabled") private var localNotificationsEnabled: Bool = true
     @State private var localStatus: TestNotificationStatus = .idle
     @State private var roundTripStatus: TestNotificationStatus = .idle
 
@@ -97,10 +98,24 @@ struct SettingsView: View {
                     }
                 }
 
-                if onTriggerTestNotification != nil {
-                    section(title: "notifications") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("로컬 인젝션은 cmux 응답과 무관하게 Inbox + iOS 배너를 즉시 검증합니다. 라운드트립 라인은 relay → cmux → events.stream 경로 살아있는지 별도로 표시.")
+                section(title: "notifications") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle(isOn: $localNotificationsEnabled) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("LOCAL IOS NOTIFICATIONS")
+                                    .cmuxDisplay(11)
+                                    .foregroundStyle(CmuxTheme.ink)
+                                Text("사용자 입력이 필요한 이벤트만 iOS 배너로 보냅니다. Inbox 기록과 배지는 계속 유지됩니다.")
+                                    .cmuxMono(11)
+                                    .foregroundStyle(CmuxTheme.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .tint(CmuxTheme.accentGreen)
+                        .accessibilityIdentifier("LocalNotificationsEnabledToggle")
+
+                        if onTriggerTestNotification != nil {
+                            Text("로컬 인젝션은 cmux 응답과 무관하게 Inbox에 즉시 쌓입니다. iOS 배너는 위 설정이 켜져 있을 때만 요청합니다. 라운드트립 라인은 relay → cmux → events.stream 경로 살아있는지 별도로 표시.")
                                 .cmuxMono(11)
                                 .foregroundStyle(CmuxTheme.muted)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -234,9 +249,9 @@ struct SettingsView: View {
     private func triggerTestNotification() {
         guard let action = onTriggerTestNotification else { return }
         let result = action()
-        localStatus = result.localInjected
+        localStatus = result.localBannerRequested
             ? .sent
-            : .failed("inject skipped")
+            : .failed("local notifications disabled; Inbox only")
         if let task = result.roundTrip {
             roundTripStatus = .sending
             Task { @MainActor in

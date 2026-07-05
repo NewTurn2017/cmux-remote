@@ -366,6 +366,100 @@ final class StoresTests: XCTestCase {
         XCTAssertEqual(store.items.first?.threadId, "workspace-w1")
     }
 
+    func testNotificationStoreStoresGenericNotificationCreatedWithoutOnNew() {
+        let store = NotificationStore()
+        var observed: [NotificationRecord] = []
+        store.onNew = { record in observed.append(record) }
+        let frame = PushFrame.event(EventFrame(
+            category: .notification,
+            name: "notification.created",
+            payload: .object([
+                "id": .string("generic-1"),
+                "workspace_id": .string("w1"),
+                "title": .string("Build finished"),
+                "body": .string("Generic notification"),
+            ])
+        ))
+
+        store.ingest(frame)
+
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.unreadCount, 1)
+        XCTAssertEqual(observed.count, 0)
+    }
+
+    func testNotificationStoreSuppressesLocalCallbackWhenDisabled() {
+        let store = NotificationStore()
+        store.localNotificationsEnabled = false
+        var observed: [NotificationRecord] = []
+        store.onNew = { record in observed.append(record) }
+        let frame = PushFrame.event(EventFrame(
+            category: .surface,
+            name: "claude.needs_input",
+            payload: .object([
+                "id": .string("need-disabled"),
+                "workspace_id": .string("w1"),
+                "surface_id": .string("s1"),
+                "title": .string("Claude Code"),
+                "body": .string("needs input"),
+            ])
+        ))
+
+        store.ingest(frame)
+
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.unreadCount, 1)
+        XCTAssertEqual(observed.count, 0)
+    }
+
+    func testNotificationStoreFiresLocalCallbackForNeedsInputWhenEnabled() {
+        let store = NotificationStore()
+        var observed: [NotificationRecord] = []
+        store.onNew = { record in observed.append(record) }
+        let frame = PushFrame.event(EventFrame(
+            category: .surface,
+            name: "claude.needs_input",
+            payload: .object([
+                "id": .string("need-enabled"),
+                "workspace_id": .string("w1"),
+                "surface_id": .string("s1"),
+                "title": .string("Claude Code"),
+                "body": .string("needs input"),
+            ])
+        ))
+
+        store.ingest(frame)
+
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.unreadCount, 1)
+        XCTAssertEqual(observed.map(\.id), ["need-enabled"])
+    }
+
+    func testNotificationStoreMarkAllReadClearsUnreadCounts() {
+        let store = NotificationStore()
+        store.append(NotificationRecord(id: "n1", workspaceId: "w1", surfaceId: nil, title: "t1", subtitle: nil, body: "b1", ts: 1, threadId: "th1"))
+        store.append(NotificationRecord(id: "n2", workspaceId: "w2", surfaceId: nil, title: "t2", subtitle: nil, body: "b2", ts: 2, threadId: "th2"))
+
+        XCTAssertEqual(store.unreadCount, 2)
+
+        store.markAllRead()
+
+        XCTAssertEqual(store.unreadCount, 0)
+        XCTAssertTrue(store.unreadByWorkspace.isEmpty)
+    }
+
+    func testNotificationStoreDefaultAppendIsInboxOnly() {
+        let store = NotificationStore()
+        var observed: [NotificationRecord] = []
+        store.onNew = { record in observed.append(record) }
+
+        store.append(NotificationRecord(id: "demo-1", workspaceId: "w1", surfaceId: nil, title: "demo", subtitle: nil, body: "inbox only", ts: 1, threadId: "th1"))
+
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.unreadCount, 1)
+        XCTAssertTrue(observed.isEmpty)
+    }
+
     func testNotificationStoreIgnoresNonNotificationEvents() {
         let store = NotificationStore()
         store.ingest(.event(EventFrame(
@@ -506,19 +600,19 @@ final class StoresTests: XCTestCase {
         XCTAssertEqual(store.items.first?.body, "needs input")
     }
 
-    func testNotificationStoreFiresOnNewOnceForRepeatedId() {
+    func testNotificationStoreFiresOnNewOnceForRepeatedNeedsInputId() {
         let store = NotificationStore()
         var fired: [String] = []
         store.onNew = { record in fired.append(record.id) }
 
         let frame = PushFrame.event(EventFrame(
-            category: .notification,
-            name: "notification.created",
+            category: .surface,
+            name: "surface.needs-input",
             payload: .object([
                 "id": .string("dup-1"),
                 "workspace_id": .string("w1"),
-                "title": .string("once"),
-                "body": .string("only"),
+                "source": .string("Claude Code"),
+                "body": .string("needs input"),
             ])
         ))
 

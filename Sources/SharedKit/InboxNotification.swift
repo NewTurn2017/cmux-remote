@@ -5,6 +5,10 @@ public enum InboxNotification {
         event.isInboxEvent
     }
 
+    public static func requiresUserInput(_ event: EventFrame) -> Bool {
+        event.isNeedsInputEvent
+    }
+
     public static func record(from event: EventFrame, now: Int64 = Int64(Date().timeIntervalSince1970)) -> NotificationRecord? {
         guard event.isInboxEvent else { return nil }
         if let data = try? SharedKitJSON.deterministicEncoder.encode(event.payload),

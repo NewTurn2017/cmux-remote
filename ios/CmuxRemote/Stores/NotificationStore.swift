@@ -6,6 +6,7 @@ import SharedKit
 public final class NotificationStore {
     public var items: [NotificationRecord] = []
     public var onNew: (@MainActor (NotificationRecord) -> Void)?
+    public var localNotificationsEnabled = true
 
     public private(set) var unreadByWorkspace: [String: Int] = [:]
     public private(set) var unreadCount = 0
@@ -15,7 +16,10 @@ public final class NotificationStore {
 
     public init() {}
 
-    public func append(_ notification: NotificationRecord) {
+    public func append(
+        _ notification: NotificationRecord,
+        deliveryPolicy: NotificationDeliveryPolicy = .inboxOnly
+    ) {
         let isNew = seenIds.insert(notification.id).inserted
         items.insert(notification, at: 0)
         if items.count > 200 {
@@ -27,13 +31,20 @@ public final class NotificationStore {
             }
         }
         recomputeUnread()
-        if isNew { onNew?(notification) }
+        if isNew, localNotificationsEnabled, deliveryPolicy.shouldPostLocalNotification {
+            onNew?(notification)
+        }
     }
 
     /// Mark every currently-known notification for a workspace as read, so the
     /// workspace's badge clears. Called when the user opens that workspace.
     public func markWorkspaceSeen(_ workspaceId: String) {
         readIds.formUnion(WorkspaceNotificationTally.ids(in: items, forWorkspace: workspaceId))
+        recomputeUnread()
+    }
+
+    public func markAllRead() {
+        readIds.formUnion(items.map(\.id))
         recomputeUnread()
     }
 
@@ -45,6 +56,25 @@ public final class NotificationStore {
     public func ingest(_ frame: PushFrame) {
         guard case .event(let event) = frame else { return }
         guard let notification = InboxNotification.record(from: event) else { return }
-        append(notification)
+        append(notification, deliveryPolicy: NotificationDeliveryPolicy(event: event))
+    }
+}
+
+public enum NotificationDeliveryPolicy: Equatable {
+    case inboxOnly
+    case userInputRequired
+    case userInitiatedTest
+
+    var shouldPostLocalNotification: Bool {
+        switch self {
+        case .inboxOnly:
+            return false
+        case .userInputRequired, .userInitiatedTest:
+            return true
+        }
+    }
+
+    init(event: EventFrame) {
+        self = InboxNotification.requiresUserInput(event) ? .userInputRequired : .inboxOnly
     }
 }

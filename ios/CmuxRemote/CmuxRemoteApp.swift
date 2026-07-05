@@ -14,6 +14,7 @@ struct CmuxRemoteApp: App {
     @State private var activeRPC: RPCClient?
     @State private var splashFinished = Self.shouldSkipSplash()
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
+    @AppStorage("cmux.localNotificationsEnabled") private var localNotificationsEnabled: Bool = true
 
     var body: some Scene {
         WindowGroup {
@@ -29,6 +30,15 @@ struct CmuxRemoteApp: App {
                 )
                 .task { await bootstrapOnce() }
                 .onOpenURL(perform: handleDeepLink(_:))
+                .onChange(of: localNotificationsEnabled) { _, enabled in
+                    notifStore.localNotificationsEnabled = enabled
+                    if enabled {
+                        Task { @MainActor in
+                            guard await notifPresenter.requestAuthorizationIfNeeded() else { return }
+                            await remoteNotifications.registerForRemoteNotifications()
+                        }
+                    }
+                }
                 .opacity(splashFinished ? 1 : 0)
 
                 if !splashFinished {
@@ -73,8 +83,11 @@ struct CmuxRemoteApp: App {
         guard !bootstrapped else { return }
         bootstrapped = true
         let presenter = notifPresenter
+        notifStore.localNotificationsEnabled = localNotificationsEnabled
         notifStore.onNew = { record in presenter.present(record) }
-        Task { await presenter.requestAuthorizationIfNeeded() }
+        if localNotificationsEnabled {
+            Task { await presenter.requestAuthorizationIfNeeded() }
+        }
         let processInfo = ProcessInfo.processInfo
         if demoMode || Self.shouldUseFakeRelay(processInfo) {
             await bootstrapDemo()
@@ -118,9 +131,11 @@ struct CmuxRemoteApp: App {
             try await auth.registerIfNeeded()
             os_log("cmux register ok")
             remoteNotifications.configure(authClient: auth)
-            Task { @MainActor in
-                guard await presenter.requestAuthorizationIfNeeded() else { return }
-                await remoteNotifications.registerForRemoteNotifications()
+            if localNotificationsEnabled {
+                Task { @MainActor in
+                    guard await presenter.requestAuthorizationIfNeeded() else { return }
+                    await remoteNotifications.registerForRemoteNotifications()
+                }
             }
         } catch {
             os_log("cmux register FAILED: %{public}@", String(describing: error))
@@ -141,7 +156,7 @@ struct CmuxRemoteApp: App {
         let liveSurfaceStore = SurfaceStore(rpc: rpc)
         let liveHostStatusStore = HostStatusStore(rpc: rpc)
         await MainActor.run {
-            liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0) }
+            liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0, deliveryPolicy: .userInputRequired) }
             workspaceStore = liveWorkspaceStore
             surfaceStore = liveSurfaceStore
             hostStatusStore = liveHostStatusStore
@@ -192,7 +207,7 @@ struct CmuxRemoteApp: App {
         let liveWorkspaceStore = WorkspaceStore(rpc: rpc)
         let liveSurfaceStore = SurfaceStore(rpc: rpc)
         let liveHostStatusStore = HostStatusStore(rpc: rpc)
-        liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0) }
+        liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0, deliveryPolicy: .userInputRequired) }
         workspaceStore = liveWorkspaceStore
         surfaceStore = liveSurfaceStore
         hostStatusStore = liveHostStatusStore
@@ -216,7 +231,7 @@ struct CmuxRemoteApp: App {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             for record in DemoContent.notifications() {
-                store.append(record)
+                store.append(record, deliveryPolicy: .inboxOnly)
             }
         }
     }
@@ -267,7 +282,12 @@ struct CmuxRemoteApp: App {
             ts: Int64(Date().timeIntervalSince1970),
             threadId: "workspace-\(workspaceId)"
         )
-        notifStore.append(record)
+        let shouldRequestLocalBanner = localNotificationsEnabled
+        notifStore.localNotificationsEnabled = shouldRequestLocalBanner
+        notifStore.append(
+            record,
+            deliveryPolicy: shouldRequestLocalBanner ? .userInitiatedTest : .inboxOnly
+        )
 
         let roundTrip: Task<Void, Error>?
         if let rpc = activeRPC {
@@ -282,7 +302,7 @@ struct CmuxRemoteApp: App {
         } else {
             roundTrip = nil
         }
-        return TestNotificationResult(localInjected: true, roundTrip: roundTrip)
+        return TestNotificationResult(localBannerRequested: shouldRequestLocalBanner, roundTrip: roundTrip)
     }
 
     static func shouldSkipHardeningForDevelopment(
@@ -298,7 +318,7 @@ struct CmuxRemoteApp: App {
 }
 
 public struct TestNotificationResult: Sendable {
-    public let localInjected: Bool
+    public let localBannerRequested: Bool
     public let roundTrip: Task<Void, Error>?
 }
 
