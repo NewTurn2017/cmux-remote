@@ -115,6 +115,21 @@
 - **relay 측 에러**(`file.upload` 실패, 예: 상한/쓰기 실패): 기존 `uploadFile` 의 catch 가
   `inputStatus = .failed(...)` + throw → 호출부에서 `failSubmit`.
 
+## 안전 · 테스트 가능성 제약 (중요)
+
+iOS 앱은 개발 중 실기기/시뮬레이터 e2e 테스트가 어렵다(운영자가 원격). 따라서 **되돌리기 쉽고
+회귀 위험이 낮은 방식**으로 간다:
+
+- **순수 로직 최대화**: 파일명 sanitize/타임스탬프, MIME 추론을 UI 밖 순수 함수로 빼서
+  단위 테스트로 검증(앱 실행 없이 확인 가능한 부분을 최대로).
+- **기존 사진 흐름 무변경 보장**: `attachPhoto`/`prepareImageAttachment`/`uploadFile`/
+  `appendPathToDraft` 는 건드리지 않고, 파일 경로만 새 분기로 추가. 사진 첨부가 깨질 여지 차단.
+- **검증된 경로 재사용**: 업로드는 이미 동작하는 `uploadFile` RPC 를 그대로 사용.
+- **relay 무변경**: 서버측 회귀 0. 임의 파일 업로드는 relay 단위 테스트로 이미 커버됨 →
+  구현 중 `swift test` 로 재확인(이건 로컬에서 실행 가능).
+- **실패 안전(fail-safe)**: 크기 초과·읽기 실패·취소는 모두 조용히 또는 명확한 에러로 처리하고
+  입력창 상태를 오염시키지 않는다.
+
 ## Testing
 
 - **단위 테스트** (신규, `CmuxRemoteTests`): `sanitizedAttachmentFilename(_:)` —
