@@ -87,13 +87,18 @@
 
 ### 저장 파일명 규칙 (타임스탬프 접두)
 
-- 형식: `<yyyyMMdd-HHmmss>-<sanitizedBasename>`, 예: `20260711-013245-report.pdf`.
-- `attachmentTimestamp()` (기존, `en_US_POSIX`, `yyyyMMdd-HHmmss`) 재사용.
-- basename sanitize: 경로 구분자/제어문자 제거, 파일명이 비면 `file` 로 대체, 확장자 보존.
-  (relay 는 `filename` 을 그대로 `appendingPathComponent` 하므로 iOS 에서 `/` 등을 제거해
-  디렉터리 이탈을 막는다. 방어적 2중화 — relay 도 별도 검증 여부는 구현 시 확인.)
+- 최종 형식: `<yyyyMMdd-HHmmss>-<basename>`, 예: `20260711-013245-report.pdf`.
+- **타임스탬프는 relay(`RelayFileUploadService.uniqueFilename`)가 붙인다.** 구현 중 확인 결과
+  relay 가 모든 업로드에 자체 타임스탬프를 이미 붙이므로, iOS 는 타임스탬프를 붙이지 않고
+  **sanitize 된 원본 basename 만** 보낸다(이중 타임스탬프 방지).
+- iOS basename sanitize(`AttachmentNaming.sanitizedBasename`): 마지막 경로 컴포넌트만 취해
+  경로 구분자/제어문자 제거(디렉터리 이탈 방지), 비면 `file`. 확장자 보존.
+- relay 측 교정(구현 중 발견한 버그 수정): (1) 원본 파일명을 **그대로 존중**하고 확장자를
+  강제로 덧붙이지 않는다(예전엔 확장자 없는 `Dockerfile` 에 `.jpg` 를 붙였음). (2) 이름이
+  비었을 때만 `upload.<ext>` 로 합성하되 `<ext>` 는 MIME 에서 `UTType` 으로 추론. (3) sanitize 를
+  `NSString.lastPathComponent` 로 바꿔 빈 입력이 cwd 로 해석되던 누수 제거.
 - 결과 경로: `~/Downloads/cmux-remote/20260711-013245-report.pdf`. 타임스탬프로 매 업로드가
-  고유 → 기존 파일 덮어쓰기 없음.
+  고유 → 덮어쓰기 없음.
 
 ### Components / 경계
 
