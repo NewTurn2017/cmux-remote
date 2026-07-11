@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import UniformTypeIdentifiers
 import SharedKit
 
 struct WorkspaceView: View {
@@ -30,6 +31,8 @@ struct WorkspaceView: View {
     @State private var surfaceActionError: String?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var attachmentInFlight = false
+    @State private var showPhotoPicker = false
+    @State private var showFilePicker = false
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
     @FocusState private var commandFieldFocused: Bool
 
@@ -136,6 +139,20 @@ struct WorkspaceView: View {
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item else { return }
             Task { await attachPhoto(item) }
+        }
+        .photosPicker(isPresented: $showPhotoPicker,
+                      selection: $selectedPhotoItem,
+                      matching: .images)
+        .fileImporter(isPresented: $showFilePicker,
+                      allowedContentTypes: [.item],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                Task { await attachFile(url) }
+            case .failure(let error):
+                composer.failSubmit(error)
+            }
         }
     }
 
@@ -351,7 +368,9 @@ struct WorkspaceView: View {
                         accessibilityLabel: "Paste clipboard into command field",
                         identifier: "CommandPasteButton") { pasteClipboard() }
 
-                PhotoAttachButton(isBusy: attachmentInFlight, selection: $selectedPhotoItem)
+                AttachMenuButton(isBusy: attachmentInFlight,
+                                 onPhoto: { showPhotoPicker = true },
+                                 onFile: { showFilePicker = true })
 
                 Spacer(minLength: 4)
 
@@ -581,6 +600,57 @@ struct WorkspaceView: View {
             }
         } catch {
             await MainActor.run { composer.failSubmit(error) }
+        }
+    }
+
+    private static let attachmentMaxUploadBytes = 12 * 1024 * 1024
+
+    private func attachFile(_ url: URL) async {
+        attachmentInFlight = true
+        defer { attachmentInFlight = false }
+
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let values = try url.resourceValues(
+                forKeys: [.fileSizeKey, .contentTypeKey, .nameKey]
+            )
+            if let size = values.fileSize, size > Self.attachmentMaxUploadBytes {
+                await MainActor.run {
+                    composer.failSubmit(
+                        AttachmentError.tooLarge(maxBytes: Self.attachmentMaxUploadBytes)
+                    )
+                }
+                return
+            }
+            let data = try Data(contentsOf: url)
+            let originalName = values.name ?? url.lastPathComponent
+            let filename = AttachmentNaming.timestampedFilename(
+                originalName: originalName, date: Date()
+            )
+            let mimeType = AttachmentNaming.mimeType(for: values.contentType)
+            let uploaded = try await surfaceStore.uploadFile(
+                data: data, filename: filename, mimeType: mimeType
+            )
+            await MainActor.run {
+                appendPathToDraft(uploaded.path)
+                commandFieldFocused = true
+                composer.clearError()
+            }
+        } catch {
+            await MainActor.run { composer.failSubmit(error) }
+        }
+    }
+
+    private enum AttachmentError: LocalizedError {
+        case tooLarge(maxBytes: Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .tooLarge(let maxBytes):
+                return "파일이 너무 큽니다 (최대 \(maxBytes / (1024 * 1024))MB)"
+            }
         }
     }
 
@@ -948,19 +1018,23 @@ private struct IconKey: View {
     }
 }
 
-private struct PhotoAttachButton: View {
+private struct AttachMenuButton: View {
     let isBusy: Bool
-    @Binding var selection: PhotosPickerItem?
+    let onPhoto: () -> Void
+    let onFile: () -> Void
 
     var body: some View {
-        PhotosPicker(selection: $selection, matching: .images) {
+        Menu {
+            Button { onPhoto() } label: { Label("사진", systemImage: "photo") }
+            Button { onFile() } label: { Label("파일", systemImage: "doc") }
+        } label: {
             Group {
                 if isBusy {
                     ProgressView()
                         .tint(CmuxTheme.ink)
                         .scaleEffect(0.65)
                 } else {
-                    Image(systemName: "photo.badge.plus")
+                    Image(systemName: "plus")
                         .font(.system(size: 13, weight: .bold))
                 }
             }
@@ -975,8 +1049,8 @@ private struct PhotoAttachButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isBusy)
-        .accessibilityIdentifier("CommandPhotoAttachButton")
-        .accessibilityLabel("Attach photo from iPhone")
+        .accessibilityIdentifier("CommandAttachButton")
+        .accessibilityLabel("Attach photo or file")
     }
 }
 
