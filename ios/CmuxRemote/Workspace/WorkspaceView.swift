@@ -603,6 +603,7 @@ struct WorkspaceView: View {
         }
     }
 
+    // Keep in sync with the relay's RelayFileUploadService.maxBytes (Sources/RelayServer/HostServices.swift).
     private static let attachmentMaxUploadBytes = 12 * 1024 * 1024
 
     private func attachFile(_ url: URL) async {
@@ -648,10 +649,17 @@ struct WorkspaceView: View {
         }
     }
 
-    private enum AttachmentError: LocalizedError {
+    // CustomStringConvertible matters here: CommandComposer.failSubmit surfaces
+    // errors via String(describing:), which uses `description` (not
+    // LocalizedError.errorDescription). Without it the user would see the raw
+    // enum case dump instead of the friendly message.
+    private enum AttachmentError: LocalizedError, CustomStringConvertible {
         case tooLarge(maxBytes: Int)
 
-        var errorDescription: String? {
+        var description: String { message }
+        var errorDescription: String? { message }
+
+        private var message: String {
             switch self {
             case .tooLarge(let maxBytes):
                 return "파일이 너무 큽니다 (최대 \(maxBytes / (1024 * 1024))MB)"
