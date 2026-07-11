@@ -24,14 +24,6 @@ final class AttachmentNamingTests: XCTestCase {
         XCTAssertEqual(AttachmentNaming.sanitizedBasename("///"), "file")
     }
 
-    func testTimestampedFilenameFormat() {
-        let name = AttachmentNaming.timestampedFilename(originalName: "../x/report.pdf", date: Date())
-        XCTAssertNotNil(
-            name.range(of: #"^\d{8}-\d{6}-report\.pdf$"#, options: .regularExpression),
-            "unexpected filename: \(name)"
-        )
-    }
-
     func testMimeTypeFromUTType() {
         XCTAssertEqual(AttachmentNaming.mimeType(for: .pdf), "application/pdf")
         XCTAssertEqual(AttachmentNaming.mimeType(for: .plainText), "text/plain")

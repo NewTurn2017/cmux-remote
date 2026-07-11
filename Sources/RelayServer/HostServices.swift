@@ -1,5 +1,6 @@
 import Foundation
 import SharedKit
+import UniformTypeIdentifiers
 
 public struct HostBatterySnapshot: Equatable, Sendable {
     public let available: Bool
@@ -142,13 +143,20 @@ public enum RelayFileUploadService {
 
     private static func uniqueFilename(_ requested: String, mimeType: String, date: Date) -> String {
         let safeBase = sanitize(requested)
-        let ext = fileExtension(for: mimeType)
         let base: String
         if safeBase.isEmpty {
-            base = "iphone-image.\(ext)"
-        } else if (safeBase as NSString).pathExtension.isEmpty {
-            base = safeBase + ".\(ext)"
+            // No usable client-provided name; synthesize a neutral one, adding a
+            // MIME-derived extension when the type is recognized.
+            if let ext = fileExtension(for: mimeType) {
+                base = "upload.\(ext)"
+            } else {
+                base = "upload"
+            }
         } else {
+            // Respect the client's filename verbatim, extension or not — the
+            // client owns naming, and the timestamp prefix below keeps it unique.
+            // (Appending a MIME-guessed extension here would corrupt legitimate
+            // extensionless names like "Dockerfile" or "Makefile".)
             base = safeBase
         }
         let formatter = DateFormatter()
@@ -158,16 +166,23 @@ public enum RelayFileUploadService {
     }
 
     private static func sanitize(_ name: String) -> String {
-        let last = URL(fileURLWithPath: name).lastPathComponent
+        // NSString.lastPathComponent is a pure string op — unlike
+        // URL(fileURLWithPath:), it does not resolve an empty/relative path
+        // against the current working directory.
+        let last = (name as NSString).lastPathComponent
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
-        return last.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }.reduce(into: "") { $0.append($1) }
+        let mapped = last.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }.reduce(into: "") { $0.append($1) }
+        // A degenerate input (e.g. "/") reduces to only separators; treat that
+        // as no usable name so the caller falls back to a synthesized one.
+        return mapped.allSatisfy { $0 == "-" } ? "" : mapped
     }
 
-    private static func fileExtension(for mimeType: String) -> String {
+    private static func fileExtension(for mimeType: String) -> String? {
         switch mimeType.lowercased() {
+        case "image/jpeg": return "jpg"
         case "image/png": return "png"
         case "image/heic", "image/heif": return "heic"
-        default: return "jpg"
+        default: return UTType(mimeType: mimeType)?.preferredFilenameExtension
         }
     }
 }

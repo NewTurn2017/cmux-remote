@@ -22,22 +22,8 @@ enum AttachmentNaming {
         return cleaned.isEmpty ? "file" : cleaned
     }
 
-    /// "<yyyyMMdd-HHmmss>-<sanitized basename>" in local time,
-    /// e.g. "20260711-013245-report.pdf".
-    static func timestampedFilename(originalName: String, date: Date) -> String {
-        "\(timestamp(from: date))-\(sanitizedBasename(originalName))"
-    }
-
     /// Preferred MIME for a UTType, or the octet-stream fallback when unknown.
     static func mimeType(for contentType: UTType?) -> String {
         contentType?.preferredMIMEType ?? fallbackMimeType
-    }
-
-    private static func timestamp(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone.current
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter.string(from: date)
     }
 }

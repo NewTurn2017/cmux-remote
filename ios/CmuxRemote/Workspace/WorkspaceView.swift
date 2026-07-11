@@ -624,11 +624,16 @@ struct WorkspaceView: View {
                 }
                 return
             }
-            let data = try Data(contentsOf: url)
+            // Read off the main actor — Data(contentsOf:) is blocking and this
+            // runs on the MainActor-isolated view. The security-scoped access
+            // granted above is process-wide, so it stays valid during the read.
+            let data = try await Task.detached(priority: .userInitiated) {
+                try Data(contentsOf: url)
+            }.value
+            // The relay adds the timestamp prefix and enforces uniqueness, so we
+            // send just the sanitized original name (avoids a double timestamp).
             let originalName = values.name ?? url.lastPathComponent
-            let filename = AttachmentNaming.timestampedFilename(
-                originalName: originalName, date: Date()
-            )
+            let filename = AttachmentNaming.sanitizedBasename(originalName)
             let mimeType = AttachmentNaming.mimeType(for: values.contentType)
             let uploaded = try await surfaceStore.uploadFile(
                 data: data, filename: filename, mimeType: mimeType
