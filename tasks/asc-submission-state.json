@@ -1,0 +1,71 @@
+{
+  "release_type": "1.x",
+  "asc_ui_language": "ko",
+  "version": "1.0.7",
+  "build": "10",
+  "preflight": {
+    "pass": 15,
+    "warn": 0,
+    "fail": 0
+  },
+  "metadata": {
+    "path": "docs/launch-assets/asc-metadata.md",
+    "verified": false,
+    "verified_at": null,
+    "included_changes": [
+      "LIVE terminal input",
+      "Korean/Hangul IME protection",
+      "Ctrl-C keyboard shortcut",
+      "keyboard-safe bottom layout and terminal scroll room",
+      "native Inbox push delivery",
+      "notification noise controls (LOCAL iOS NOTIFICATIONS setting, user-input-only banners)",
+      "Korean/CJK wide-glyph overlap rendering fix (#13)",
+      "command composer smart punctuation fix (#4)",
+      "five refreshed App Store screenshots"
+    ]
+  },
+  "screenshots": {
+    "6.9": [
+      "docs/launch-assets/screenshots/app-store-6.9/01-workspaces-remote-control.png",
+      "docs/launch-assets/screenshots/app-store-6.9/02-terminal-live-control.png",
+      "docs/launch-assets/screenshots/app-store-6.9/03-keyboard-shortcuts.png",
+      "docs/launch-assets/screenshots/app-store-6.9/04-inbox-notifications.png",
+      "docs/launch-assets/screenshots/app-store-6.9/05-settings-connection-guide.png"
+    ],
+    "dimensions": "1320x2868",
+    "verified": true
+  },
+  "build_upload": {
+    "status": "pending_rearchive",
+    "archived_at": null,
+    "ipa": null,
+    "delivery_tool": "Transporter",
+    "note": "build 9 archive (2026-07-05) superseded by 2026-07-23 fixes (CJK overlap #13, smart punctuation #4, release-build stall #11) before upload; rearchiving as build 10 from main"
+  },
+  "superseded_1_0_6": {
+    "version": "1.0.6",
+    "build": "8",
+    "asc_status_observed": "Ready for Distribution (배포 준비됨) with build 8 attached and metadata filled",
+    "decision": "abandoned in favor of 1.0.7 so notification-noise controls ship in the same public update; build 8 already consumed on ASC",
+    "observed_via": "user screenshot 2026-07-05"
+  },
+  "superseded_build_9": {
+    "version": "1.0.7",
+    "build": "9",
+    "status": "archived 2026-07-05, never uploaded to ASC; superseded by build 10 with 2026-07-23 fixes"
+  },
+  "previous_uploaded_build": {
+    "version": "1.0.5",
+    "build": "6",
+    "delivery_uuid": "8e42ff35-6b51-4803-9f9c-bea2dde9063b"
+  },
+  "asc_input": {
+    "version_record_1_0_7_created": false,
+    "screenshots": false,
+    "metadata_en": false,
+    "metadata_ko": false,
+    "build_select": false,
+    "submit_for_review": false
+  },
+  "submitted": false
+}

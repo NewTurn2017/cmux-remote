@@ -1,4 +1,4 @@
-# App Store Connect — Metadata Draft (v1.0.5)
+# App Store Connect — Metadata Draft (v1.0.7 build 10)
 
 App: **Cmux Remote** · Bundle ID `com.genie.CmuxRemote` · Team `2UANJX7ATM`
 
@@ -48,9 +48,9 @@ Private terminal companion
 ### Promotional Text (max 170, can change without review)
 
 ```
-Control cmux workspaces, agent sessions, and terminal surfaces over your own Tailscale network. Private by design, with no third-party relay.
+LIVE per-character input, a Ctrl-C key, and quieter notifications that ping you only when an agent needs input. Control cmux from your phone, private over Tailscale.
 ```
-*(141 chars)*
+*(165 chars)*
 
 ### Keywords (max 100, comma-separated, no spaces after commas)
 
@@ -86,10 +86,10 @@ The relay speaks directly to cmux's local Unix socket. This app speaks to the re
 FEATURES
 
 - Performance-tuned live mirror of cmux terminal surfaces with Korean / CJK width support and ANSI colors when styled relay data is available
-- Full keyboard accessory bar — Esc, Enter, Tab, arrows, Ctrl combos, /new, and Space
+- Full keyboard accessory bar — Esc, Enter, Tab, arrows, Ctrl-C, other Ctrl combos, /new, and Space
 - Keyboard-safe composer layout with automatic keyboard dismissal after submit
 - Paste text from the mobile clipboard and attach photos; files are saved by the relay under Downloads/cmux-remote
-- Local notifications and Inbox entries for cmux events plus AI-agent needs-input prompts
+- Local and native Inbox push notifications for cmux events plus AI-agent needs-input prompts
 - Workspace create, rename, close, and multi-surface chip-bar switching
 - Connected computer battery status when the relay can provide it
 - Pinch-to-zoom font, scroll-to-bottom on surface change
@@ -154,9 +154,9 @@ cmux Remote
 ### 프로모션 텍스트 (max 170)
 
 ```
-cmux 워크스페이스, 에이전트 세션, 터미널 surface를 본인 Tailscale 네트워크 안에서 원격 제어합니다. 외부 relay를 거치지 않습니다.
+이제 글자 단위 LIVE 터미널 입력, Ctrl-C 단축키, 그리고 더 조용한 알림 — 에이전트가 입력을 기다릴 때만 배너로. 본인 Tailscale로 cmux를 손안에서 제어하세요.
 ```
-*(86 chars)*
+*(102 chars)*
 
 ### 키워드 (max 100)
 
@@ -192,10 +192,10 @@ cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Code
 주요 기능
 
 - 한국어 / CJK 폭 처리와 styled relay 데이터 제공 시 ANSI 색상을 지원하는 성능 최적화 cmux 터미널 surface 라이브 미러
-- 전용 키보드 액세서리 바 — Esc, Enter, Tab, 방향키, Ctrl 조합, /new, Space
+- 전용 키보드 액세서리 바 — Esc, Enter, Tab, 방향키, Ctrl-C, 기타 Ctrl 조합, /new, Space
 - 전송 후 키보드 자동 닫힘과 키보드 표시 중 안정적인 터미널/입력창 레이아웃
 - 모바일 클립보드 붙여넣기와 사진 첨부. 파일은 relay가 Downloads/cmux-remote 아래에 저장
-- cmux 이벤트와 AI 에이전트 needs input 프롬프트를 로컬 알림 / Inbox로 표시
+- cmux 이벤트와 AI 에이전트 needs input 프롬프트를 로컬 알림 / native Inbox push로 표시
 - 워크스페이스 생성, 이름 변경, 닫기와 다중 surface 칩바 전환
 - relay가 제공하는 경우 연결된 컴퓨터 배터리 상태 표시
 - 핀치 줌 폰트 사이즈, surface 전환 시 자동 하단 스크롤
@@ -224,30 +224,74 @@ https://github.com/NewTurn2017/cmux-remote
 
 ---
 
-## Version 1.0.5 Release Notes
+## Version 1.0.7 Release Notes
 
 ### What’s New — en-US
 
 ```
-Cmux Remote 1.0.5 focuses on mobile terminal input polish and keyboard-safe viewing.
+Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
 
 - Adds LIVE input mode for immediate per-character terminal input, so English typing and quick key edits can be sent without pressing Enter or Submit.
 - Protects Korean/Hangul IME input by keeping composed Korean text out of LIVE immediate-send mode, preventing jamo from being split while typing.
+- Adds a dedicated Ctrl-C shortcut to the terminal keyboard bar for interrupting commands while coding.
 - Removes the bottom gap under the terminal input panel so the composer sits flush with the bottom edge when the software keyboard is hidden.
 - Adds five terminal rows of extra bottom scroll room, making it possible to pull terminal content above the input panel when the bottom rows would otherwise be covered.
-- Improves Claude/Codex-style “needs input” Inbox coverage and regression tests for notification visibility.
+- Adds native Inbox push delivery for cmux events and Claude/Codex-style “needs input” prompts, with APNs-backed routing and regression coverage.
+- Adds a Settings control to reduce notification noise — only events that need your input raise an iOS banner, while everything still lands in the Inbox with unread badges.
+- Fixes overlapping Korean/CJK text in the terminal mirror, so wide Hangul glyphs no longer bleed into neighboring columns on wide panes.
+- Stops iOS smart punctuation from turning "--" into an em dash in the command composer, so CLI flags reach the terminal verbatim.
+- Refreshes all five App Store screenshots to match the latest workspace, terminal, keyboard, Inbox, and settings screens.
+```
+
+### What's New
+
+```
+Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
+
+- Adds LIVE input mode for immediate per-character terminal input, so English typing and quick key edits can be sent without pressing Enter or Submit.
+- Protects Korean/Hangul IME input by keeping composed Korean text out of LIVE immediate-send mode, preventing jamo from being split while typing.
+- Adds a dedicated Ctrl-C shortcut to the terminal keyboard bar for interrupting commands while coding.
+- Removes the bottom gap under the terminal input panel so the composer sits flush with the bottom edge when the software keyboard is hidden.
+- Adds five terminal rows of extra bottom scroll room, making it possible to pull terminal content above the input panel when the bottom rows would otherwise be covered.
+- Adds native Inbox push delivery for cmux events and Claude/Codex-style “needs input” prompts, with APNs-backed routing and regression coverage.
+- Adds a Settings control to reduce notification noise — only events that need your input raise an iOS banner, while everything still lands in the Inbox with unread badges.
+- Fixes overlapping Korean/CJK text in the terminal mirror, so wide Hangul glyphs no longer bleed into neighboring columns on wide panes.
+- Stops iOS smart punctuation from turning "--" into an em dash in the command composer, so CLI flags reach the terminal verbatim.
+- Refreshes all five App Store screenshots to match the latest workspace, terminal, keyboard, Inbox, and settings screens.
+```
+
+### Release Notes
+
+```
+Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
+
+- Adds LIVE input mode for immediate per-character terminal input, so English typing and quick key edits can be sent without pressing Enter or Submit.
+- Protects Korean/Hangul IME input by keeping composed Korean text out of LIVE immediate-send mode, preventing jamo from being split while typing.
+- Adds a dedicated Ctrl-C shortcut to the terminal keyboard bar for interrupting commands while coding.
+- Removes the bottom gap under the terminal input panel so the composer sits flush with the bottom edge when the software keyboard is hidden.
+- Adds five terminal rows of extra bottom scroll room, making it possible to pull terminal content above the input panel when the bottom rows would otherwise be covered.
+- Adds native Inbox push delivery for cmux events and Claude/Codex-style “needs input” prompts, with APNs-backed routing and regression coverage.
+- Adds a Settings control to reduce notification noise — only events that need your input raise an iOS banner, while everything still lands in the Inbox with unread badges.
+- Fixes overlapping Korean/CJK text in the terminal mirror, so wide Hangul glyphs no longer bleed into neighboring columns on wide panes.
+- Stops iOS smart punctuation from turning "--" into an em dash in the command composer, so CLI flags reach the terminal verbatim.
+- Refreshes all five App Store screenshots to match the latest workspace, terminal, keyboard, Inbox, and settings screens.
 ```
 
 ### 새로운 기능 — ko
 
 ```
-cmux Remote 1.0.5는 모바일 터미널 입력과 키보드 표시 중 화면 가시성을 다듬은 업데이트입니다.
+cmux Remote 1.0.7은 모바일 터미널 입력, 코딩용 단축키, 알림 소음 줄이기, App Store 표시 문구를 다듬은 업데이트입니다.
 
 - 제출 버튼 없이 글자 단위로 바로 전송하는 LIVE 입력 모드를 추가했습니다.
 - 한글/Hangul IME 입력은 LIVE 즉시 전송에서 제외해 입력 중 자모가 분리되지 않도록 했습니다.
+- 코딩 중 실행 중인 명령을 끊을 수 있도록 터미널 키보드 바에 Ctrl-C 단축키를 추가했습니다.
 - 키보드가 숨겨진 상태에서 터미널 입력 패널 아래에 생기던 하단 공백을 제거했습니다.
 - 입력 패널에 가려질 수 있는 하단 터미널 내용을 위로 끌어올려 볼 수 있도록 터미널 하단에 5행 스크롤 여유를 추가했습니다.
-- Claude/Codex 계열 “needs input” Inbox 표시 회귀 테스트를 보강했습니다.
+- cmux 이벤트와 Claude/Codex 계열 “needs input” 프롬프트를 native Inbox push로 전달하도록 APNs 기반 라우팅과 회귀 테스트를 추가했습니다.
+- 알림 소음을 줄이는 설정을 추가했습니다 — 사용자 입력이 필요한 이벤트만 iOS 배너로 알리고, 나머지는 Inbox 기록과 안 읽음 배지로만 유지합니다.
+- 터미널 미러에서 한글/CJK 글자가 겹쳐 보이던 문제를 수정했습니다 — 넓은 pane에서도 겹치지 않습니다.
+- 커맨드 입력창에서 iOS 스마트 구두점이 "--"를 em dash로 바꿔 CLI 옵션이 깨지던 문제를 수정했습니다.
+- 워크스페이스, 터미널, 키보드, Inbox, 설정 화면을 반영해 App Store 스크린샷 5장을 모두 교체했습니다.
 ```
 
 ## App Privacy ("Data Used to Track You" / "Data Collected")
@@ -317,8 +361,8 @@ Source: `docs/launch-assets/screenshots/app-store-6.9/`
 |---|---|---|---|
 | 1 | `01-workspaces-remote-control.png` | All your cmux workspaces, one tap away | 모든 cmux 워크스페이스, 한 번에 |
 | 2 | `02-terminal-live-control.png` | Live terminal with full keyboard | 라이브 터미널 + 전용 키보드 |
-| 3 | `03-keyboard-shortcuts.png` | Esc, Tab, arrows, Ctrl combos built in | Esc · Tab · 방향키 · Ctrl 조합 내장 |
-| 4 | `04-inbox-notifications.png` | Local push for every cmux event | cmux 이벤트 로컬 푸시 |
+| 3 | `03-keyboard-shortcuts.png` | Esc, Tab, arrows, and Ctrl-C built in | Esc · Tab · 방향키 · Ctrl-C 내장 |
+| 4 | `04-inbox-notifications.png` | Native Inbox push for cmux events | cmux 이벤트 native Inbox push |
 | 5 | `05-settings-connection-guide.png` | Built-in setup walkthrough | 설치 가이드 내장 |
 
 Sizes needed:
@@ -339,7 +383,7 @@ App previews (video): not required for v1.0.
 
 - [ ] Apple Developer Program active ($99/yr)
 - [ ] App registered in App Store Connect with bundle id `com.genie.CmuxRemote`
-- [ ] Demo Mode verified to work in Release build for v1.0.5 build 6
+- [ ] Demo Mode verified to work in Release build for v1.0.7 build 9
 - [ ] `ITSAppUsesNonExemptEncryption=false` in Info.plist (✅ done)
 - [ ] PRIVACY.md committed and accessible at the URL above (✅ done)
 - [ ] App Review Notes pasted from this document
@@ -347,7 +391,10 @@ App previews (video): not required for v1.0.
 - [ ] Screenshots uploaded for at least 6.9"
 - [ ] In-App Purchases: none (v1.0)
 - [x] Build archived with Release config + Distribution provisioning profile for v1.0.5 build 6
-- [x] Build exported and validated for App Store Connect upload
-- [x] Build uploaded to App Store Connect. Delivery UUID: `8e42ff35-6b51-4803-9f9c-bea2dde9063b`
+- [x] Build exported and validated for App Store Connect upload for v1.0.5 build 6
+- [x] Build uploaded to App Store Connect for v1.0.5 build 6. Delivery UUID: `8e42ff35-6b51-4803-9f9c-bea2dde9063b`
+- [x] Build 1.0.6 (8) previously uploaded to ASC (superseded — abandoned in favor of 1.0.7)
+- [x] Build 1.0.7 (9) archived + exported with Push Notifications entitlement (aps-environment=production, App Store distribution profile)
+- [ ] Build 1.0.7 (9) uploaded to App Store Connect via Transporter
 - [ ] TestFlight internal test passes (recommended before public submit)
 - [ ] Submit for Review

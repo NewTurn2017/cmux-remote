@@ -15,7 +15,7 @@ cmux와 문서화된 JSON-RPC 프로토콜로만 통신하는 독립 네트워�
 
 ---
 
-## 이번 업데이트 — v1.0.6
+## 이번 업데이트 — v1.0.7
 
 <p align="center">
   <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote 브랜드마크" width="320">
@@ -26,6 +26,10 @@ v1.0.5 이후 새로 추가되거나 바뀐 점:
 - 🔔 **네이티브 푸시 알림 (APNs)** — cmux 이벤트와 Claude/Codex 계열 `needs input` 프롬프트를 relay가 APNs로 직접 보냅니다. relay에 `apns` 블록을 설정하면 앱이 백그라운드·종료 상태여도 배너가 도착하고, 설정하지 않으면 기존 로컬 알림으로 자동 폴백합니다.
 - ⌨️ **Ctrl-C 단축키** — 실행 중인 명령을 끊을 수 있도록 터미널 키보드 바에 전용 Ctrl-C 키를 추가했습니다.
 - 🖼️ **App Store 스크린샷 5장 전체 교체** — 최신 워크스페이스 · 터미널 · 키보드 · Inbox · 설정 화면을 반영했습니다.
+- 🔕 **알림 소음 줄이기** — 사용자 입력이 필요한 이벤트만 iOS 배너로 알리고, 나머지는 Inbox 기록과 안 읽음 배지로만 유지하는 설정을 추가했습니다.
+- 🇰🇷 **한글/CJK 겹침 렌더링 수정** — 넓은 pane에서 한글이 인접 글자와 겹쳐 보이던 문제를 실측 폰트 메트릭 + 셀 단위 클리핑으로 수정했습니다 ([#13](https://github.com/NewTurn2017/cmux-remote/issues/13)).
+- ➖ **`--` 입력 보호** — 커맨드 입력창에서 iOS 스마트 구두점이 `--`를 em dash로 바꿔 CLI 옵션이 깨지던 문제를 수정했습니다 ([#4](https://github.com/NewTurn2017/cmux-remote/issues/4)).
+- 🛠️ **(relay) 셋업 호환성** — cmux 0.64+ `socket-control-password` XDG state 경로 지원, GUI Tailscale.app CLI PATH 폴백, 연결 가이드 password 안내 교정. relay는 `git pull` 후 `./scripts/install-launchd.sh` 재실행으로 업데이트하세요.
 
 <table>
   <tr>
@@ -43,7 +47,7 @@ v1.0.5 이후 새로 추가되거나 바뀐 점:
 
 ## 상태
 
-**얼리 프리뷰 (v1.0.6).** 다음이 됩니다:
+**얼리 프리뷰 (v1.0.7).** 다음이 됩니다:
 
 - cmux 작업공간 / surface 목록 보기, 생성, 이름 변경, 닫기
 - 임의의 터미널 surface를 실시간 미러링 (15Hz diff 폴링, 120줄 bounded history)
@@ -72,7 +76,8 @@ macOS 14 + iOS 17 실기기 + 시뮬레이터에서 같은 Wi-Fi와 Tailnet
 > 버전별 App Store 상세 노트는
 > [`docs/launch-assets/release-notes/`](docs/launch-assets/release-notes/)에 있습니다.
 
-- **2026-06-23 · v1.0.6 (app + relay)** — 네이티브 APNs 푸시 알림(relay `apns` 블록 설정 시 앱 종료 상태에도 배너 도착, 미설정 시 로컬 알림 폴백), 터미널 키보드 바 Ctrl-C 단축키, App Store 6.9" 스크린샷 5장 전체 교체.
+- **2026-07-23 · v1.0.7 (app + relay)** — app: 한글/CJK wide glyph 겹침 렌더링 수정(실측 폰트 메트릭 + run 클리핑, 기하 회귀 테스트, #13), 커맨드 입력 스마트 구두점 비활성화(`--` → em dash 방지, #4), 알림 소음 컨트롤(입력 필요 이벤트만 배너), release 빌드 타입체크 스톨 해소(#11). relay: cmux 0.64+ `socket-control-password` XDG state 경로 지원(#8, #14), GUI Tailscale.app CLI PATH 폴백(#14), 연결 가이드 password 안내 교정.
+- **2026-06-23 · v1.0.6 (app + relay)** — 네이티브 APNs 푸시 알림(relay `apns` 블록 설정 시 앱 종료 상태에도 배너 도착, 미설정 시 로컬 알림 폴백), 터미널 키보드 바 Ctrl-C 단축키, App Store 6.9" 스크린샷 5장 전체 교체. *App Store에는 미공개 — v1.0.7에 통합 출시.*
 - **2026-06-06 · relay** — cmux 1.0.5가 Unix 소켓을 `~/Library/Application Support/cmux`에서 `~/.local/state/cmux`로 이전한 것에 대응. `cmuxSocketPath()`가 마커를 최신순(`/tmp/cmux-last-socket-path` → `~/.local/state/cmux/last-socket-path` → 레거시 Application Support)으로 추적하고, 없으면 `~/.local/state/cmux/cmux.sock`로 폴백. **iOS 앱 무변경 → App Store 재제출 불필요.**
 - **2026-06-05 · v1.0.5 (app)** — LIVE 즉시 입력 모드(문자 단위 즉시 전송), 한글 IME 보호(조합 중 자모 분리 방지), 입력 패널 하단 flush, 터미널 하단 스크롤 여유 5줄, `needs input` Inbox 커버리지 개선.
 - **2026-06-05 · setup** — relay 설치 스크립트 foolproof화 + 연결 가이드(`docs/connection-guide.md`) 추가.
@@ -475,7 +480,8 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
 - [x] v1.0.3 — 실기기 relay socket 회전/재연결 안정화
 - [x] v1.0.4 — 터미널 렌더링 성능 최적화, 120줄 history, ANSI 256색/truecolor 렌더링 기반, 실기기 live relay 스모크 검증
 - [x] v1.0.5 — LIVE 입력 모드, 한글 IME 보호, 하단 고정 입력 패널, 터미널 5행 하단 스크롤 여유, Claude/Codex Inbox 회귀 테스트
-- [x] v1.0.6 — 네이티브 APNs 푸시 알림(앱 종료 상태 도달), Ctrl-C 단축키, App Store 스크린샷 5장 교체
+- [x] v1.0.6 — 네이티브 APNs 푸시 알림(앱 종료 상태 도달), Ctrl-C 단축키, App Store 스크린샷 5장 교체 (App Store 미공개, 1.0.7에 통합)
+- [x] v1.0.7 — 한글/CJK 겹침 렌더링 수정, `--` 스마트 구두점 입력 보호, 알림 소음 컨트롤, cmux 0.64+ 셋업 호환성(relay)
 - [ ] **v1.1 — 푸시 후속** — 푸시 페이로드 → 딥링크로 surface 자동 오픈, 전달 신뢰성/재시도 강화
 - [ ] v1.2 — iPad 레이아웃, 외장 키보드 폴리시
 - [ ] v1.3 — cmux "open in pane" 인텐트용 파일 프리뷰
