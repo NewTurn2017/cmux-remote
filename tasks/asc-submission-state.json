@@ -36,7 +36,8 @@
     "verified": true
   },
   "build_upload": {
-    "status": "ipa_ready",
+    "status": "delivered_processing",
+    "delivered_at": "2026-07-23",
     "archived_at": "2026-07-23T21:00:00+09:00",
     "ipa": "ios/build/release/ipa/CmuxRemote.ipa",
     "entitlements": "aps-environment=production, beta-reports-active=true, get-task-allow=false",
