@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import UniformTypeIdentifiers
 import SharedKit
 
 struct WorkspaceView: View {
@@ -30,6 +31,8 @@ struct WorkspaceView: View {
     @State private var surfaceActionError: String?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var attachmentInFlight = false
+    @State private var showPhotoPicker = false
+    @State private var showFilePicker = false
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
     @FocusState private var commandFieldFocused: Bool
 
@@ -136,6 +139,20 @@ struct WorkspaceView: View {
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item else { return }
             Task { await attachPhoto(item) }
+        }
+        .photosPicker(isPresented: $showPhotoPicker,
+                      selection: $selectedPhotoItem,
+                      matching: .images)
+        .fileImporter(isPresented: $showFilePicker,
+                      allowedContentTypes: [.item],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                Task { await attachFile(url) }
+            case .failure(let error):
+                composer.failSubmit(error)
+            }
         }
     }
 
@@ -351,7 +368,9 @@ struct WorkspaceView: View {
                         accessibilityLabel: "Paste clipboard into command field",
                         identifier: "CommandPasteButton") { pasteClipboard() }
 
-                PhotoAttachButton(isBusy: attachmentInFlight, selection: $selectedPhotoItem)
+                AttachMenuButton(isBusy: attachmentInFlight,
+                                 onPhoto: { showPhotoPicker = true },
+                                 onFile: { showFilePicker = true })
 
                 Spacer(minLength: 4)
 
@@ -581,6 +600,77 @@ struct WorkspaceView: View {
             }
         } catch {
             await MainActor.run { composer.failSubmit(error) }
+        }
+    }
+
+    // Keep in sync with the relay's RelayFileUploadService.maxBytes (Sources/RelayServer/HostServices.swift).
+    private static let attachmentMaxUploadBytes = 12 * 1024 * 1024
+
+    private func attachFile(_ url: URL) async {
+        attachmentInFlight = true
+        defer { attachmentInFlight = false }
+
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let values = try url.resourceValues(
+                forKeys: [.fileSizeKey, .contentTypeKey, .nameKey]
+            )
+            let limit = Self.attachmentMaxUploadBytes
+            var bytes: Data?
+            // The reported size is only a cheap early-out that avoids opening an
+            // obviously oversized file. It is optional and can be missing or
+            // stale, so the read below re-enforces the cap on its own and caps
+            // how much we ever hold in memory (base64 encoding copies it again).
+            let reportedSize = values.fileSize ?? 0
+            if reportedSize <= limit {
+                // Read off the main actor — the file IO is blocking and this runs
+                // on the MainActor-isolated view. The security-scoped access
+                // granted above is process-wide, so it stays valid during the read.
+                bytes = try await Task.detached(priority: .userInitiated) {
+                    try AttachmentReader.readBounded(from: url, limit: limit)
+                }.value
+            }
+            guard let data = bytes else {
+                await MainActor.run {
+                    composer.failSubmit(AttachmentError.tooLarge(maxBytes: limit))
+                }
+                return
+            }
+            // The relay adds the timestamp prefix and enforces uniqueness, so we
+            // send just the sanitized original name (avoids a double timestamp).
+            let originalName = values.name ?? url.lastPathComponent
+            let filename = AttachmentNaming.sanitizedBasename(originalName)
+            let mimeType = AttachmentNaming.mimeType(for: values.contentType)
+            let uploaded = try await surfaceStore.uploadFile(
+                data: data, filename: filename, mimeType: mimeType
+            )
+            await MainActor.run {
+                appendPathToDraft(uploaded.path)
+                commandFieldFocused = true
+                composer.clearError()
+            }
+        } catch {
+            await MainActor.run { composer.failSubmit(error) }
+        }
+    }
+
+    // CustomStringConvertible matters here: CommandComposer.failSubmit surfaces
+    // errors via String(describing:), which uses `description` (not
+    // LocalizedError.errorDescription). Without it the user would see the raw
+    // enum case dump instead of the friendly message.
+    private enum AttachmentError: LocalizedError, CustomStringConvertible {
+        case tooLarge(maxBytes: Int)
+
+        var description: String { message }
+        var errorDescription: String? { message }
+
+        private var message: String {
+            switch self {
+            case .tooLarge(let maxBytes):
+                return "파일이 너무 큽니다 (최대 \(maxBytes / (1024 * 1024))MB)"
+            }
         }
     }
 
@@ -948,19 +1038,23 @@ private struct IconKey: View {
     }
 }
 
-private struct PhotoAttachButton: View {
+private struct AttachMenuButton: View {
     let isBusy: Bool
-    @Binding var selection: PhotosPickerItem?
+    let onPhoto: () -> Void
+    let onFile: () -> Void
 
     var body: some View {
-        PhotosPicker(selection: $selection, matching: .images) {
+        Menu {
+            Button { onPhoto() } label: { Label("사진", systemImage: "photo") }
+            Button { onFile() } label: { Label("파일", systemImage: "doc") }
+        } label: {
             Group {
                 if isBusy {
                     ProgressView()
                         .tint(CmuxTheme.ink)
                         .scaleEffect(0.65)
                 } else {
-                    Image(systemName: "photo.badge.plus")
+                    Image(systemName: "plus")
                         .font(.system(size: 13, weight: .bold))
                 }
             }
@@ -975,8 +1069,8 @@ private struct PhotoAttachButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isBusy)
-        .accessibilityIdentifier("CommandPhotoAttachButton")
-        .accessibilityLabel("Attach photo from iPhone")
+        .accessibilityIdentifier("CommandAttachButton")
+        .accessibilityLabel("Attach photo or file")
     }
 }
 

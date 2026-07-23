@@ -48,6 +48,49 @@ final class HostServicesTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: result.path)), data)
     }
 
+    private func uploadedFilename(filename: String, mimeType: String) throws -> String {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        return try RelayFileUploadService.save(
+            params: .object([
+                "filename": .string(filename),
+                "mime_type": .string(mimeType),
+                "data_base64": .string(Data([1, 2, 3]).base64EncodedString()),
+            ]),
+            date: Date(timeIntervalSince1970: 0),
+            directory: directory
+        ).filename
+    }
+
+    func testFileUploadPreservesExtensionlessFilename() throws {
+        // A non-image file with no extension (e.g. Dockerfile) must NOT get a
+        // bogus image extension appended — its name is kept verbatim.
+        let name = try uploadedFilename(filename: "Dockerfile", mimeType: "text/plain")
+        XCTAssertNotNil(
+            name.range(of: #"^\d{8}-\d{6}-Dockerfile$"#, options: .regularExpression),
+            "unexpected filename: \(name)"
+        )
+    }
+
+    func testFileUploadPreservesNonImageExtension() throws {
+        let name = try uploadedFilename(filename: "report.pdf", mimeType: "application/pdf")
+        XCTAssertNotNil(
+            name.range(of: #"^\d{8}-\d{6}-report\.pdf$"#, options: .regularExpression),
+            "unexpected filename: \(name)"
+        )
+    }
+
+    func testFileUploadSynthesizesNameFromMimeWhenBlank() throws {
+        // With no usable client name, fall back to a neutral name using a
+        // MIME-derived extension (not the image-biased default).
+        let name = try uploadedFilename(filename: "", mimeType: "application/pdf")
+        XCTAssertNotNil(
+            name.range(of: #"^\d{8}-\d{6}-upload\.pdf$"#, options: .regularExpression),
+            "unexpected filename: \(name)"
+        )
+    }
+
     func testProtocolMachineHandlesRelayOwnedBatteryWithoutCmuxDispatch() async {
         let cmux = RecordingCMUXFacade()
         let machine = WSProtocolMachine(cmux: cmux)

@@ -140,7 +140,7 @@ final class SmokeUITests: XCTestCase {
         assertAboveKeyboard(app.buttons["CommandKeyboardDismissButton"], keyboardTop: keyboardTop, name: "keyboard dismiss")
         assertAboveKeyboard(app.buttons["CommandBackspaceButton"], keyboardTop: keyboardTop, name: "backspace")
         assertAboveKeyboard(app.buttons["CommandPasteButton"], keyboardTop: keyboardTop, name: "paste")
-        assertAboveKeyboard(app.buttons["CommandPhotoAttachButton"], keyboardTop: keyboardTop, name: "photo attach")
+        assertAboveKeyboard(app.buttons["CommandAttachButton"], keyboardTop: keyboardTop, name: "attach")
         assertAboveKeyboard(app.buttons["CommandSubmitButton"], keyboardTop: keyboardTop, name: "send")
         let escShortcut = app.buttons["esc"]
         assertVisibleAboveKeyboard(escShortcut, keyboardTop: keyboardTop, name: "esc shortcut")
