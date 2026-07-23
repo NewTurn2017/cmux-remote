@@ -296,6 +296,7 @@ struct WorkspaceView: View {
                             .disabled(composer.isSending)
                             .onSubmit { submitCommand() }
                             .onTapGesture { commandFieldFocused = true }
+                            .background(CommandInputTraitsConfigurator())
                             .accessibilityIdentifier("CommandComposerField")
                     } else {
                         ZStack(alignment: .leading) {
@@ -1028,6 +1029,58 @@ private enum TerminalInputMode: Equatable {
         case .command: return "CMD"
         case .live: return "LIVE"
         }
+    }
+}
+
+private struct CommandInputTraitsConfigurator: UIViewRepresentable {
+    func makeUIView(context: Context) -> CommandInputTraitsView {
+        let view = CommandInputTraitsView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: CommandInputTraitsView, context: Context) {
+        uiView.disableSmartPunctuation()
+    }
+}
+
+private final class CommandInputTraitsView: UIView {
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        disableSmartPunctuation()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        disableSmartPunctuation()
+    }
+
+    func disableSmartPunctuation() {
+        var ancestor = superview
+        while let view = ancestor {
+            if configureTextInput(in: view) {
+                return
+            }
+            ancestor = view.superview
+        }
+    }
+
+    private func configureTextInput(in view: UIView) -> Bool {
+        guard view !== self else { return false }
+        if let textField = view as? UITextField {
+            textField.smartDashesType = .no
+            textField.smartQuotesType = .no
+            return true
+        }
+        if let textView = view as? UITextView {
+            textView.smartDashesType = .no
+            textView.smartQuotesType = .no
+            return true
+        }
+        for subview in view.subviews where configureTextInput(in: subview) {
+            return true
+        }
+        return false
     }
 }
 
