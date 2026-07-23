@@ -1,9 +1,13 @@
 # iPhone 임의 파일 첨부 (문서 피커) — design
 
 - **Date:** 2026-07-11
-- **Status:** Approved (pre-implementation)
-- **Area:** `ios/CmuxRemote/Workspace/WorkspaceView.swift` (iOS 전용)
-- **Depends on:** 없음 (relay 백엔드 무변경)
+- **Status:** Implemented (PR #12). 설계 당시 가정과 달라진 부분은 아래 본문에 반영돼 있다.
+- **Area:** iOS `ios/CmuxRemote/Workspace/` (`WorkspaceView`, `AttachmentNaming`,
+  `AttachmentReader`), relay `Sources/RelayServer/HostServices.swift`
+- **Depends on:** relay 변경 있음. 설계 시점엔 "relay 무변경"으로 잡았으나, 구현 중
+  `RelayFileUploadService` 의 파일명 생성이 이미지 전용이라 임의 파일에서 깨지는 것을 발견해
+  함께 고쳤다(아래 [저장 파일명 규칙](#저장-파일명-규칙-타임스탬프-접두) 참고). 이 iOS 변경은
+  그 relay 수정과 **같이** 배포돼야 확장자 없는 파일이 올바른 이름으로 저장된다.
 
 ## Problem
 
@@ -56,7 +60,7 @@
 `PhotosPicker(selection:)` 뷰를 직접 메뉴 항목으로 쓰는 대신, 입력바에 boolean-presented
 모디파이어 두 개를 붙여 프로그램적으로 띄운다 (iOS 17+):
 
-```
+```swift
 .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
 .fileImporter(isPresented: $showFilePicker,
               allowedContentTypes: [.item],
@@ -77,11 +81,14 @@
 2. **크기 사전 체크**: `URLResourceValues.fileSize` 로 바이트 확인. `> 12 MiB` 면 파일을 열지도
    않고 종료. 단 `fileSize` 는 옵셔널이고 provider 가 값을 안 주거나 실제와 다를 수 있으므로
    **이것만으로는 상한이 보장되지 않는다** — 아래 로드 단계에서 다시 강제한다.
-3. **바이트 로드(상한 강제)**: `AttachmentReader.readBounded(from:limit:)` 로 **최대 12 MiB + 1**
-   까지만 읽는다. 그보다 크면 `nil` 을 돌려주고 업로드하지 않는다. 사전 체크를 통과했든 아니든
-   메모리에 올라가는 양이 상한을 넘지 않는다(업로드 시 base64 사본이 한 벌 더 생기므로 중요).
-   초과 시 친절한 에러(`composer.failSubmit` 경유, "파일이 너무 큽니다 (최대 12MB)")를 표시.
-4. **파일명 = 타임스탬프 접두 + 원본 basename** (아래 규칙).
+3. **바이트 로드(상한 강제)**: `AttachmentReader.readBounded(from:limit:)` 로 **최대 12 MiB + 1
+   바이트**까지만 읽는다. 그보다 크면 `nil` 을 돌려주고 업로드하지 않는다. 초과 시 친절한
+   에러(`composer.failSubmit` 경유, "파일이 너무 큽니다 (최대 12MB)")를 표시.
+   여기서 12 MiB 는 **업로드 페이로드 상한**이지 프로세스 총 메모리 상한이 아니다 — 통과한
+   파일은 `uploadFile` 에서 base64 사본(약 1.33배)이 한 벌 더 생기므로 순간 사용량은 12 MiB 를
+   넘는다. 이 단계가 보장하는 건 그 사용량이 **사용자가 고른 파일의 크기와 무관하게 상한의
+   상수배로 묶인다**는 것이다(사전 체크가 없거나 틀렸더라도).
+4. **파일명 = sanitize 된 원본 basename만** 전송. 타임스탬프 접두는 relay 가 붙인다(아래 규칙).
 5. **MIME 추론**: `url.resourceValues(forKeys: [.contentTypeKey]).contentType?.preferredMIMEType`
    → 없으면 `application/octet-stream`.
 6. `surfaceStore.uploadFile(data:filename:mimeType:)` 호출 (이미지 준비 단계 없음, 원본 바이트).
@@ -112,7 +119,8 @@
 | `.fileImporter` 결과 핸들러 | 선택 URL → `attachFile` 호출, 취소/에러 처리 | — |
 | `attachFile(_:)` | URL → 크기체크 → 바이트 → uploadFile → draft 삽입 | `AttachmentReader`, `surfaceStore.uploadFile`, `appendPathToDraft` |
 | `AttachmentReader.readBounded(from:limit:)` | 상한까지만 읽고 초과 시 `nil` | Foundation 파일 IO만 (테스트 대상) |
-| `sanitizedAttachmentFilename(_:)` (순수 헬퍼) | basename sanitize + 타임스탬프 접두 | 없음 (테스트 대상) |
+| `AttachmentNaming.sanitizedBasename(_:)` / `.mimeType(for:)` (순수 헬퍼) | basename sanitize + MIME 추론. **타임스탬프는 붙이지 않는다** (relay 소관) | 없음 (테스트 대상) |
+| `RelayFileUploadService.uniqueFilename` (relay) | 타임스탬프 접두 + 충돌 회피 — 타임스탬프의 유일한 소유자 | — |
 
 `uploadFile` / `appendPathToDraft` / `attachmentTimestamp` 는 기존 그대로. `attachPhoto` 는
 `prepareImageAttachment` 를 계속 쓰되, 파일 경로만 새로 분기.
@@ -135,17 +143,19 @@ iOS 앱은 개발 중 실기기/시뮬레이터 e2e 테스트가 어렵다(운�
 - **기존 사진 흐름 무변경 보장**: `attachPhoto`/`prepareImageAttachment`/`uploadFile`/
   `appendPathToDraft` 는 건드리지 않고, 파일 경로만 새 분기로 추가. 사진 첨부가 깨질 여지 차단.
 - **검증된 경로 재사용**: 업로드는 이미 동작하는 `uploadFile` RPC 를 그대로 사용.
-- **relay 무변경**: 서버측 회귀 0. 임의 파일 업로드는 relay 단위 테스트로 이미 커버됨 →
-  구현 중 `swift test` 로 재확인(이건 로컬에서 실행 가능).
+- **relay 변경은 최소·테스트 동반**: 설계 시엔 무변경을 노렸지만 파일명 버그 때문에
+  `RelayFileUploadService.uniqueFilename` 을 고쳐야 했다. 대신 확장자 없는/이미지 아닌/빈
+  이름/경로 이탈 케이스를 `HostServicesTests` 로 덮고 `swift test` 로 재확인한다
+  (이건 로컬에서 실행 가능).
 - **실패 안전(fail-safe)**: 크기 초과·읽기 실패·취소는 모두 조용히 또는 명확한 에러로 처리하고
   입력창 상태를 오염시키지 않는다.
 
 ## Testing
 
-- **단위 테스트** (신규, `CmuxRemoteTests`): `sanitizedAttachmentFilename(_:)` —
-  - 일반 파일명 유지 + 타임스탬프 접두 형식,
-  - 경로 구분자/제어문자 제거,
-  - 빈/확장자만 있는 이름 → `file` 대체,
+- **단위 테스트** (신규, `CmuxRemoteTests`): `AttachmentNaming.sanitizedBasename(_:)` —
+  - 일반 파일명 그대로 유지(타임스탬프는 붙이지 않는다 — relay 소관),
+  - 경로 구분자/제어문자 제거, 디렉터리 이탈 방지,
+  - 빈 이름/구분자뿐인 이름 → `file` 대체,
   - 확장자 보존.
 - **MIME 추론**: 헬퍼로 분리해 `.pdf`, 확장자 없는 파일(→ octet-stream) 케이스 테스트.
 - **상한 읽기** (신규, `AttachmentReaderTests`): 상한 미만/정확히 상한/상한 +1 바이트/상한을
@@ -156,7 +166,8 @@ iOS 앱은 개발 중 실기기/시뮬레이터 e2e 테스트가 어렵다(운�
 
 ## Rollout notes
 
-- iOS 전용 변경 → **App Store 재빌드/재제출 필요.** relay 무변경.
+- iOS 변경 → **App Store 재빌드/재제출 필요.** relay 도 함께 변경되므로(파일명 생성)
+  relay 를 먼저 배포해야 확장자 없는 파일이 올바른 이름으로 저장된다.
 - `Info.plist`: 문서 피커는 별도 권한 문자열이 필요 없다(사용자가 명시적으로 파일 선택).
   iCloud/Documents 관련 entitlement 가 필요한지는 구현 시 빌드로 확인.
 - 이 브랜치(`feat/iphone-file-attachment`)는 `main` 기반이며, 릴리스 빌드 타입체커 수정
