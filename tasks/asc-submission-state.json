@@ -10,8 +10,8 @@
   },
   "metadata": {
     "path": "docs/launch-assets/asc-metadata.md",
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-07-23",
     "included_changes": [
       "LIVE terminal input",
       "Korean/Hangul IME protection",
@@ -36,11 +36,13 @@
     "verified": true
   },
   "build_upload": {
-    "status": "pending_rearchive",
-    "archived_at": null,
-    "ipa": null,
+    "status": "ipa_ready",
+    "archived_at": "2026-07-23T21:00:00+09:00",
+    "ipa": "ios/build/release/ipa/CmuxRemote.ipa",
+    "entitlements": "aps-environment=production, beta-reports-active=true, get-task-allow=false",
+    "profile": "iOS Team Store Provisioning Profile: com.genie.CmuxRemote",
     "delivery_tool": "Transporter",
-    "note": "build 9 archive (2026-07-05) superseded by 2026-07-23 fixes (CJK overlap #13, smart punctuation #4, release-build stall #11) before upload; rearchiving as build 10 from main"
+    "note": "build 9 archive (2026-07-05) superseded by 2026-07-23 fixes (CJK overlap #13, smart punctuation #4, release-build stall #11) before upload; build 10 archived from main @ 2f87f31"
   },
   "superseded_1_0_6": {
     "version": "1.0.6",
