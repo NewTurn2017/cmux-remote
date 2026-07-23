@@ -107,9 +107,7 @@ public final class TailscaledLocalAuth: AuthService {
 
     private static func runTailscaleWhoisCLI(addr: String) async throws -> Data {
         try await Task.detached {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["tailscale", "whois", "--json", addr]
+            let process = try tailscaleProcess(arguments: ["whois", "--json", addr])
 
             let stdout = Pipe()
             let stderr = Pipe()
@@ -155,9 +153,7 @@ public final class TailscaledLocalAuth: AuthService {
 
     private static func runTailscaleStatusCLI() async throws -> Data {
         try await Task.detached {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["tailscale", "status", "--json"]
+            let process = try tailscaleProcess(arguments: ["status", "--json"])
 
             let stdout = Pipe()
             let stderr = Pipe()
@@ -174,6 +170,38 @@ public final class TailscaledLocalAuth: AuthService {
             }
             throw RelayError.unauthorized("status")
         }.value
+    }
+
+    static func resolveTailscaleCLI(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        appExecutablePath: String = "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+        fileManager: FileManager = .default
+    ) -> String? {
+        for directory in (environment["PATH"] ?? "").split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(directory), isDirectory: true)
+                .appendingPathComponent("tailscale", isDirectory: false)
+                .path
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return fileManager.isExecutableFile(atPath: appExecutablePath)
+            ? appExecutablePath
+            : nil
+    }
+
+    private static func tailscaleProcess(arguments: [String]) throws -> Process {
+        guard let executablePath = resolveTailscaleCLI() else {
+            throw RelayError.unauthorized("tailscale CLI unavailable")
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        process.environment = ProcessInfo.processInfo.environment.merging(
+            ["TAILSCALE_BE_CLI": "1"],
+            uniquingKeysWith: { _, forcedValue in forcedValue }
+        )
+        return process
     }
 
     /// Extracts the host's own login from a `tailscale status --json` /

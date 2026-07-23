@@ -109,6 +109,25 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertEqual(p.nodeKey, "nodekey:fallback")
     }
 
+    func testTailscaleCLIResolutionFallsBackToAppBundle() throws {
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString)
+        let appExecutable = temp.appendingPathComponent("Tailscale")
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        XCTAssertTrue(FileManager.default.createFile(atPath: appExecutable.path, contents: Data()))
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: appExecutable.path
+        )
+
+        let resolved = TailscaledLocalAuth.resolveTailscaleCLI(
+            environment: ["PATH": temp.appendingPathComponent("empty").path],
+            appExecutablePath: appExecutable.path
+        )
+
+        XCTAssertEqual(resolved, appExecutable.path)
+    }
+
 }
 
 private final class LockedString: @unchecked Sendable {

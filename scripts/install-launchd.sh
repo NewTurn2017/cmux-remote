@@ -45,9 +45,9 @@ LOGDIR="${CMUX_RELAY_LOGDIR:-$DEST/log}"
 SOCKET="${CMUX_SOCKET_PATH:-}"
 DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
 # launchd starts agents with a stripped PATH; tailscale CLI on macOS lives in
-# /usr/local/bin (pkg install) or /opt/homebrew/bin (brew), so prepend both
-# before the system defaults so AuthService's whois fallback can find it.
-RELAY_PATH="${CMUX_RELAY_PATH:-/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+# /usr/local/bin (pkg install), /opt/homebrew/bin (brew), or the Tailscale.app
+# bundle, so prepend them before the system defaults for CLI fallback discovery.
+RELAY_PATH="${CMUX_RELAY_PATH:-/usr/local/bin:/opt/homebrew/bin:/Applications/Tailscale.app/Contents/MacOS:/usr/bin:/bin:/usr/sbin:/sbin}"
 LAUNCH_AGENTS_DIR="${CMUX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 PLIST="$LAUNCH_AGENTS_DIR/$LABEL.plist"
 TARGET="gui/$(id -u)"
