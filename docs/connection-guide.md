@@ -140,7 +140,42 @@ cmux event stream attached
 |---|---|---|
 | `cmux event stream unavailable: socketMissing` | cmux가 꺼져 있음 | cmux 앱을 켜고 `launchctl kickstart -k "$SERVICE"` |
 | `Connection refused` 반복 | cmux 재시작으로 소켓 이름이 바뀜 | `launchctl kickstart -k "$SERVICE"`, 그래도면 `./scripts/install-launchd.sh` 재실행 |
+| `cmux event stream attached` 직후 `detached` 반복 | cmux 소켓 접근 거부(cmux 0.64+) | 아래 **③a** 확인 |
 | 3줄 정상인데 앱만 못 붙음 | 네트워크/주소 문제 | ④⑤ 확인 |
+
+### ③a 소켓 접근 거부(cmux 0.64+)
+
+cmux 0.64부터 소켓 접근 제어 모드의 기본값은 `cmuxOnly`입니다. cmux
+안에서 실행된 프로세스만 연결할 수 있으므로, 외부 launchd agent인 relay는
+접근을 거부당합니다.
+
+비밀번호로 인증한 외부 연결을 허용하도록 `~/.config/cmux/cmux.json`을
+만드세요:
+
+```bash
+mkdir -p ~/.config/cmux
+cat > ~/.config/cmux/cmux.json <<EOF
+{
+  "automation": {
+    "socketControlMode": "password",
+    "socketPassword": "$(openssl rand -hex 24)"
+  }
+}
+EOF
+```
+
+직접 정한 강력한 비밀번호로 파일을 작성해도 됩니다. 그다음 **cmux
+터미널 안에서** 설정을 다시 읽히고 relay를 재시작하세요:
+
+```bash
+cmux reload-config
+launchctl kickstart -k "$SERVICE"
+```
+
+relay는 프로세스 시작 시
+`~/.local/state/cmux/socket-control-password`에서 비밀번호를 한 번
+읽습니다. cmux가 reload 때 파일을 기록하므로, 위 재시작을 해야 새
+비밀번호가 반영됩니다.
 
 ### ④ Tailscale이 양쪽 다 온라인인가?
 

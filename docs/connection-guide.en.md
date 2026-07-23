@@ -154,7 +154,7 @@ creating `~/.config/cmux/cmux.json` with:
 
 ```bash
 mkdir -p ~/.config/cmux
-cat > ~/.config/cmux/cmux.json << 'EOF'
+cat > ~/.config/cmux/cmux.json <<EOF
 {
   "automation": {
     "socketControlMode": "password",
@@ -169,11 +169,12 @@ reload from **inside a cmux terminal**:
 
 ```bash
 cmux reload-config
+launchctl kickstart -k "$SERVICE"
 ```
 
-The relay reads the password automatically from
+The relay reads the password once when its process starts, from
 `~/.local/state/cmux/socket-control-password` (written by cmux on
-reload). No relay restart is needed.
+reload). Restarting it after the reload makes it pick up the new password.
 
 ### ④ Is Tailscale online on both ends?
 
