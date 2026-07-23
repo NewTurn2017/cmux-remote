@@ -7,28 +7,29 @@ struct TerminalView: View {
     var topContentInset: CGFloat = 0
     var bottomContentInset: CGFloat = 0
     var scrollToBottomRequest: Int = 0
-    @State private var fontSize: CGFloat = 8
+    @State private var fontMetrics = TerminalFontMetrics(fontSize: 8)
     @State private var pinchAnchorFontSize: CGFloat?
 
     private static let fontSizeRange: ClosedRange<CGFloat> = 8...32
 
     var body: some View {
         GeometryReader { proxy in
-            let lineHeight = fontSize + 2
+            let cellWidth = fontMetrics.cellWidth
+            let lineHeight = fontMetrics.lineHeight
+            let layout = TerminalGridLayout(cellWidth: cellWidth, lineHeight: lineHeight)
             let bottomScrollPadding = Self.bottomScrollPadding(lineHeight: lineHeight)
-            let advance = fontSize * 0.6
             let leftInset: CGFloat = 16
             let topInset = max(0, topContentInset)
             let bottomInset = max(0, bottomContentInset)
             let viewportHeight = max(0, proxy.size.height - topInset - bottomInset)
-            let viewportColumns = max(0, Int((proxy.size.width - leftInset) / advance) + 1)
+            let viewportColumns = max(0, Int((proxy.size.width - leftInset) / cellWidth) + 1)
             let contentColumns = max(
                 viewportColumns,
                 store.grid.cols,
                 store.grid.cursor.x + 1,
                 store.grid.maxRenderedColumns
             )
-            let contentWidth = max(proxy.size.width, leftInset + CGFloat(contentColumns) * advance + 24)
+            let contentWidth = max(proxy.size.width, leftInset + CGFloat(contentColumns) * cellWidth + 24)
             let contentHeight = max(viewportHeight + 1, CGFloat(store.grid.renderRows.count) * lineHeight + 24)
             let visibleCols = contentColumns
 
@@ -44,41 +45,43 @@ struct TerminalView: View {
                             ScrollView(.vertical, showsIndicators: false) {
                                 Canvas { context, _ in
                                     for (y, row) in store.grid.renderRows.enumerated() {
-                                        let rowY = 8 + CGFloat(y) * lineHeight
                                         for run in row.runs where run.startColumn < visibleCols {
                                             guard run.attr.bg != .default, run.columns > 0 else { continue }
-                                            let x = leftInset + CGFloat(run.startColumn) * advance
-                                            let width = CGFloat(run.columns) * advance
+                                            let frame = layout.frame(
+                                                startColumn: run.startColumn,
+                                                columns: run.columns,
+                                                row: y
+                                            )
+                                                .offsetBy(dx: leftInset, dy: 8)
                                             context.fill(
-                                                Path(CGRect(x: x, y: rowY, width: width, height: lineHeight)),
+                                                Path(frame),
                                                 with: .color(run.attr.bg.swiftUI)
                                             )
                                         }
 
                                         for run in row.runs where run.startColumn < visibleCols {
-                                            let point = CGPoint(
-                                                x: leftInset + CGFloat(run.startColumn) * advance,
-                                                y: rowY
+                                            let frame = layout.frame(
+                                                startColumn: run.startColumn,
+                                                columns: run.columns,
+                                                row: y
                                             )
-                                            context.draw(
+                                                .offsetBy(dx: leftInset, dy: 8)
+                                            var runContext = context
+                                            runContext.clip(to: Path(frame))
+                                            runContext.draw(
                                                 Text(run.text)
-                                                    .font(CmuxFont.body(
-                                                        fontSize,
-                                                        weight: run.attr.bold ? .bold : .regular
-                                                    ))
+                                                    .font(fontMetrics.font(bold: run.attr.bold))
                                                     .foregroundStyle(run.attr.fg.swiftUI),
-                                                at: point,
+                                                at: frame.origin,
                                                 anchor: .topLeading
                                             )
                                             if run.attr.underline, run.columns > 0 {
-                                                let underlineY = rowY + lineHeight - 2
-                                                let width = CGFloat(run.columns) * advance
                                                 context.fill(
                                                     Path(CGRect(
-                                                        x: point.x,
-                                                        y: underlineY,
-                                                        width: width,
-                                                        height: max(1, fontSize / 12)
+                                                        x: frame.minX,
+                                                        y: frame.maxY - 2,
+                                                        width: frame.width,
+                                                        height: max(1, fontMetrics.fontSize / 12)
                                                     )),
                                                     with: .color(run.attr.fg.swiftUI)
                                                 )
@@ -87,10 +90,10 @@ struct TerminalView: View {
                                     }
 
                                     if store.grid.cursor.x < visibleCols {
-                                        let cursorX = leftInset + CGFloat(store.grid.cursor.x) * advance
+                                        let cursorX = leftInset + CGFloat(store.grid.cursor.x) * cellWidth
                                         let cursorY = 8 + CGFloat(store.grid.cursor.y) * lineHeight
                                         context.fill(
-                                            Path(CGRect(x: cursorX, y: cursorY, width: advance, height: lineHeight)),
+                                            Path(CGRect(x: cursorX, y: cursorY, width: cellWidth, height: lineHeight)),
                                             with: .color(CmuxTheme.accentGreen.opacity(0.85))
                                         )
                                     }
@@ -123,13 +126,19 @@ struct TerminalView: View {
             .simultaneousGesture(
                 MagnifyGesture(minimumScaleDelta: 0.005)
                     .onChanged { value in
-                        if pinchAnchorFontSize == nil { pinchAnchorFontSize = fontSize }
-                        let base = pinchAnchorFontSize ?? fontSize
-                        fontSize = Self.fontSizeRange.clamping(base * value.magnification)
+                        if pinchAnchorFontSize == nil { pinchAnchorFontSize = fontMetrics.fontSize }
+                        let base = pinchAnchorFontSize ?? fontMetrics.fontSize
+                        let size = Self.fontSizeRange.clamping(base * value.magnification)
+                        if size != fontMetrics.fontSize {
+                            fontMetrics = TerminalFontMetrics(fontSize: size)
+                        }
                     }
                     .onEnded { value in
-                        let base = pinchAnchorFontSize ?? fontSize
-                        fontSize = Self.fontSizeRange.clamping(base * value.magnification)
+                        let base = pinchAnchorFontSize ?? fontMetrics.fontSize
+                        let size = Self.fontSizeRange.clamping(base * value.magnification)
+                        if size != fontMetrics.fontSize {
+                            fontMetrics = TerminalFontMetrics(fontSize: size)
+                        }
                         pinchAnchorFontSize = nil
                     }
             )
