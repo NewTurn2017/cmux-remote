@@ -194,6 +194,24 @@ final class CmuxSocketPathTests: XCTestCase {
         XCTAssertEqual(password, "state-secret")
     }
 
+    func testSocketPasswordXdgStateHomeOverridesDefaultStateDir() throws {
+        let temp = freshTemp()
+        let xdgDir = try makeCmuxDir(temp.appendingPathComponent("xdg-state"))
+        let defaultStateDir = try makeCmuxDir(temp.appendingPathComponent("home/.local/state"))
+        try "xdg-secret\n".write(to: xdgDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+        try "default-secret\n".write(to: defaultStateDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+
+        let password = cmuxSocketPassword(
+            [
+                "HOME": temp.appendingPathComponent("home").path,
+                "XDG_STATE_HOME": temp.appendingPathComponent("xdg-state").path,
+            ],
+            appSupportDirectory: temp.appendingPathComponent("appsupport")
+        )
+
+        XCTAssertEqual(password, "xdg-secret")
+    }
+
     func testSocketPasswordFallsBackToAppSupportWhenStateAbsent() throws {
         let temp = freshTemp()
         let appSupportDir = try makeCmuxDir(temp.appendingPathComponent("appsupport"))
