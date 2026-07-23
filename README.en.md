@@ -16,7 +16,7 @@ cmux exclusively over a documented JSON-RPC protocol.
 
 ---
 
-## What's new — v1.0.7
+## What's new — v1.0.8
 
 <p align="center">
   <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote brandmark" width="320">
@@ -48,7 +48,7 @@ New or changed since v1.0.5:
 
 ## Status
 
-**Early preview (v1.0.7).** It can:
+**Early preview (v1.0.8).** It can:
 
 - list, open, create, rename, and close cmux workspaces and surfaces
 - mirror any terminal surface in near real-time (15 Hz diff polling, 120-line bounded history)
@@ -82,8 +82,8 @@ Smoke-tested against macOS 14 + iOS 17 on both LAN and across a Tailnet
 > Per-version App Store notes live in
 > [`docs/launch-assets/release-notes/`](docs/launch-assets/release-notes/).
 
-- **2026-07-23 · v1.0.7 (app + relay)** — app: fixed Korean/CJK wide-glyph overlap in the terminal mirror (measured font metrics + per-run clipping, geometry regression tests, #13), disabled smart punctuation in the command composer so `--` survives verbatim (#4), notification noise controls (banners only for needs-input events), release-build type-check stall fix (#11). relay: cmux 0.64+ `socket-control-password` XDG state path support (#8, #14), GUI Tailscale.app CLI PATH fallback (#14), connection-guide password fixes.
-- **2026-06-23 · v1.0.6 (app + relay)** — Native APNs push notifications (banners reach a killed app when an `apns` block is configured on the relay; local-notification fallback otherwise), a dedicated Ctrl-C shortcut on the terminal keyboard bar, and all five App Store 6.9" screenshots refreshed. *Never released on the App Store — folded into v1.0.7.*
+- **2026-07-23 · v1.0.8 (app + relay)** — app: fixed Korean/CJK wide-glyph overlap in the terminal mirror (measured font metrics + per-run clipping, geometry regression tests, #13), disabled smart punctuation in the command composer so `--` survives verbatim (#4), notification noise controls (banners only for needs-input events), release-build type-check stall fix (#11). relay: cmux 0.64+ `socket-control-password` XDG state path support (#8, #14), GUI Tailscale.app CLI PATH fallback (#14), connection-guide password fixes.
+- **2026-06-23 · v1.0.6 (app + relay)** — Native APNs push notifications (banners reach a killed app when an `apns` block is configured on the relay; local-notification fallback otherwise), a dedicated Ctrl-C shortcut on the terminal keyboard bar, and all five App Store 6.9" screenshots refreshed. *Never released on the App Store — folded into v1.0.8.*
 - **2026-06-06 · relay** — Track cmux's relocated socket after cmux 1.0.5 moved its Unix socket from `~/Library/Application Support/cmux` to `~/.local/state/cmux`. `cmuxSocketPath()` now follows the markers newest-convention-first (`/tmp/cmux-last-socket-path` → `~/.local/state/cmux/last-socket-path` → legacy Application Support), falling back to `~/.local/state/cmux/cmux.sock`. **No iOS app change → no App Store resubmission.**
 - **2026-06-05 · v1.0.5 (app)** — LIVE per-character input mode, Korean/Hangul IME protection (no jamo splitting), bottom-flush input panel, five extra terminal scroll rows, improved `needs input` Inbox coverage.
 - **2026-06-05 · setup** — Foolproof relay install script + connection guide (`docs/connection-guide.md`).
@@ -507,8 +507,8 @@ the fastest way to re-attach after a socket rotation is
 - [x] v1.0.3 — real-device relay socket rotation / reconnection reliability
 - [x] v1.0.4 — terminal rendering performance, 120-line history, ANSI 256-color / true-color groundwork, physical iPhone live-relay smoke validation
 - [x] v1.0.5 — LIVE input mode, Hangul IME guard, bottom-flush input panel, five-row terminal scroll padding, Claude/Codex Inbox regression coverage
-- [x] v1.0.6 — native APNs push (reaches a killed app), Ctrl-C shortcut, all five App Store screenshots refreshed (never released — folded into 1.0.7)
-- [x] v1.0.7 — Korean/CJK overlap rendering fix, `--` smart-punctuation input protection, notification noise controls, cmux 0.64+ setup compatibility (relay)
+- [x] v1.0.6 — native APNs push (reaches a killed app), Ctrl-C shortcut, all five App Store screenshots refreshed (never released — folded into 1.0.8)
+- [x] v1.0.8 — Korean/CJK overlap rendering fix, `--` smart-punctuation input protection, notification noise controls, cmux 0.64+ setup compatibility (relay)
 - [ ] **v1.1 — push follow-ups** — payload-driven deep-link auto-open to the surface, delivery reliability / retries
 - [ ] v1.2 — iPad layout, external keyboard polish
 - [ ] v1.3 — file preview for cmux's "open in pane" intents

@@ -1,4 +1,4 @@
-# App Store Connect — Metadata Draft (v1.0.7 build 10)
+# App Store Connect — Metadata Draft (v1.0.8 build 10)
 
 App: **Cmux Remote** · Bundle ID `com.genie.CmuxRemote` · Team `2UANJX7ATM`
 
@@ -224,12 +224,12 @@ https://github.com/NewTurn2017/cmux-remote
 
 ---
 
-## Version 1.0.7 Release Notes
+## Version 1.0.8 Release Notes
 
 ### What’s New — en-US
 
 ```
-Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
+Cmux Remote 1.0.8 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
 
 - Adds LIVE input mode for immediate per-character terminal input, so English typing and quick key edits can be sent without pressing Enter or Submit.
 - Protects Korean/Hangul IME input by keeping composed Korean text out of LIVE immediate-send mode, preventing jamo from being split while typing.
@@ -246,7 +246,7 @@ Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, q
 ### What's New
 
 ```
-Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
+Cmux Remote 1.0.8 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
 
 - Adds LIVE input mode for immediate per-character terminal input, so English typing and quick key edits can be sent without pressing Enter or Submit.
 - Protects Korean/Hangul IME input by keeping composed Korean text out of LIVE immediate-send mode, preventing jamo from being split while typing.
@@ -263,7 +263,7 @@ Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, q
 ### Release Notes
 
 ```
-Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
+Cmux Remote 1.0.8 focuses on mobile terminal input polish, keyboard shortcuts, quieter notifications, and refreshed App Store copy.
 
 - Adds LIVE input mode for immediate per-character terminal input, so English typing and quick key edits can be sent without pressing Enter or Submit.
 - Protects Korean/Hangul IME input by keeping composed Korean text out of LIVE immediate-send mode, preventing jamo from being split while typing.
@@ -280,7 +280,7 @@ Cmux Remote 1.0.7 focuses on mobile terminal input polish, keyboard shortcuts, q
 ### 새로운 기능 — ko
 
 ```
-cmux Remote 1.0.7은 모바일 터미널 입력, 코딩용 단축키, 알림 소음 줄이기, App Store 표시 문구를 다듬은 업데이트입니다.
+cmux Remote 1.0.8은 모바일 터미널 입력, 코딩용 단축키, 알림 소음 줄이기, App Store 표시 문구를 다듬은 업데이트입니다.
 
 - 제출 버튼 없이 글자 단위로 바로 전송하는 LIVE 입력 모드를 추가했습니다.
 - 한글/Hangul IME 입력은 LIVE 즉시 전송에서 제외해 입력 중 자모가 분리되지 않도록 했습니다.
@@ -383,7 +383,7 @@ App previews (video): not required for v1.0.
 
 - [ ] Apple Developer Program active ($99/yr)
 - [ ] App registered in App Store Connect with bundle id `com.genie.CmuxRemote`
-- [ ] Demo Mode verified to work in Release build for v1.0.7 build 9
+- [ ] Demo Mode verified to work in Release build for v1.0.8 build 10
 - [ ] `ITSAppUsesNonExemptEncryption=false` in Info.plist (✅ done)
 - [ ] PRIVACY.md committed and accessible at the URL above (✅ done)
 - [ ] App Review Notes pasted from this document
@@ -393,8 +393,8 @@ App previews (video): not required for v1.0.
 - [x] Build archived with Release config + Distribution provisioning profile for v1.0.5 build 6
 - [x] Build exported and validated for App Store Connect upload for v1.0.5 build 6
 - [x] Build uploaded to App Store Connect for v1.0.5 build 6. Delivery UUID: `8e42ff35-6b51-4803-9f9c-bea2dde9063b`
-- [x] Build 1.0.6 (8) previously uploaded to ASC (superseded — abandoned in favor of 1.0.7)
+- [x] Build 1.0.6 (8) previously uploaded to ASC (superseded — abandoned in favor of 1.0.8)
 - [x] Build 1.0.7 (9) archived + exported with Push Notifications entitlement (aps-environment=production, App Store distribution profile)
-- [ ] Build 1.0.7 (9) uploaded to App Store Connect via Transporter
+- [x] Build 1.0.7 (9) uploaded to ASC on 2026-07-05 (train 1.0.7 now closed — superseded by 1.0.8)
 - [ ] TestFlight internal test passes (recommended before public submit)
 - [ ] Submit for Review
