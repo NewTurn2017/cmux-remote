@@ -617,20 +617,27 @@ struct WorkspaceView: View {
             let values = try url.resourceValues(
                 forKeys: [.fileSizeKey, .contentTypeKey, .nameKey]
             )
-            if let size = values.fileSize, size > Self.attachmentMaxUploadBytes {
+            let limit = Self.attachmentMaxUploadBytes
+            var bytes: Data?
+            // The reported size is only a cheap early-out that avoids opening an
+            // obviously oversized file. It is optional and can be missing or
+            // stale, so the read below re-enforces the cap on its own and caps
+            // how much we ever hold in memory (base64 encoding copies it again).
+            let reportedSize = values.fileSize ?? 0
+            if reportedSize <= limit {
+                // Read off the main actor — the file IO is blocking and this runs
+                // on the MainActor-isolated view. The security-scoped access
+                // granted above is process-wide, so it stays valid during the read.
+                bytes = try await Task.detached(priority: .userInitiated) {
+                    try AttachmentReader.readBounded(from: url, limit: limit)
+                }.value
+            }
+            guard let data = bytes else {
                 await MainActor.run {
-                    composer.failSubmit(
-                        AttachmentError.tooLarge(maxBytes: Self.attachmentMaxUploadBytes)
-                    )
+                    composer.failSubmit(AttachmentError.tooLarge(maxBytes: limit))
                 }
                 return
             }
-            // Read off the main actor — Data(contentsOf:) is blocking and this
-            // runs on the MainActor-isolated view. The security-scoped access
-            // granted above is process-wide, so it stays valid during the read.
-            let data = try await Task.detached(priority: .userInitiated) {
-                try Data(contentsOf: url)
-            }.value
             // The relay adds the timestamp prefix and enforces uniqueness, so we
             // send just the sanitized original name (avoids a double timestamp).
             let originalName = values.name ?? url.lastPathComponent

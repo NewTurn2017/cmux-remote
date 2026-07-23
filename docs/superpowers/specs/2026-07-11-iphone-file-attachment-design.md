@@ -74,9 +74,13 @@
 
 1. **보안 스코프 접근**: 문서 피커가 돌려준 URL 은 security-scoped 이므로
    `let scoped = url.startAccessingSecurityScopedResource(); defer { if scoped { url.stopAccessingSecurityScopedResource() } }`.
-2. **크기 사전 체크**: `URLResourceValues.fileSize` 로 바이트 확인. `> 12 MiB` 면 업로드하지 않고
-   친절한 에러(`composer.failSubmit` 경유, "파일이 너무 큽니다 (최대 12MB)")를 표시하고 종료.
-3. **바이트 로드**: `let data = try Data(contentsOf: url)`.
+2. **크기 사전 체크**: `URLResourceValues.fileSize` 로 바이트 확인. `> 12 MiB` 면 파일을 열지도
+   않고 종료. 단 `fileSize` 는 옵셔널이고 provider 가 값을 안 주거나 실제와 다를 수 있으므로
+   **이것만으로는 상한이 보장되지 않는다** — 아래 로드 단계에서 다시 강제한다.
+3. **바이트 로드(상한 강제)**: `AttachmentReader.readBounded(from:limit:)` 로 **최대 12 MiB + 1**
+   까지만 읽는다. 그보다 크면 `nil` 을 돌려주고 업로드하지 않는다. 사전 체크를 통과했든 아니든
+   메모리에 올라가는 양이 상한을 넘지 않는다(업로드 시 base64 사본이 한 벌 더 생기므로 중요).
+   초과 시 친절한 에러(`composer.failSubmit` 경유, "파일이 너무 큽니다 (최대 12MB)")를 표시.
 4. **파일명 = 타임스탬프 접두 + 원본 basename** (아래 규칙).
 5. **MIME 추론**: `url.resourceValues(forKeys: [.contentTypeKey]).contentType?.preferredMIMEType`
    → 없으면 `application/octet-stream`.
@@ -106,7 +110,8 @@
 |---|---|---|
 | `AttachMenuButton` (View) | 첨부 메뉴 표시, 두 상태 flag 토글 | 부모의 `showPhotoPicker`/`showFilePicker` 바인딩 |
 | `.fileImporter` 결과 핸들러 | 선택 URL → `attachFile` 호출, 취소/에러 처리 | — |
-| `attachFile(_:)` | URL → 크기체크 → 바이트 → uploadFile → draft 삽입 | `surfaceStore.uploadFile`, `appendPathToDraft` |
+| `attachFile(_:)` | URL → 크기체크 → 바이트 → uploadFile → draft 삽입 | `AttachmentReader`, `surfaceStore.uploadFile`, `appendPathToDraft` |
+| `AttachmentReader.readBounded(from:limit:)` | 상한까지만 읽고 초과 시 `nil` | Foundation 파일 IO만 (테스트 대상) |
 | `sanitizedAttachmentFilename(_:)` (순수 헬퍼) | basename sanitize + 타임스탬프 접두 | 없음 (테스트 대상) |
 
 `uploadFile` / `appendPathToDraft` / `attachmentTimestamp` 는 기존 그대로. `attachPhoto` 는
@@ -143,6 +148,8 @@ iOS 앱은 개발 중 실기기/시뮬레이터 e2e 테스트가 어렵다(운�
   - 빈/확장자만 있는 이름 → `file` 대체,
   - 확장자 보존.
 - **MIME 추론**: 헬퍼로 분리해 `.pdf`, 확장자 없는 파일(→ octet-stream) 케이스 테스트.
+- **상한 읽기** (신규, `AttachmentReaderTests`): 상한 미만/정확히 상한/상한 +1 바이트/상한을
+  크게 초과/빈 파일/없는 파일 케이스. 임시 파일로 실제 파일 IO 를 돌린다.
 - **relay**: `RelayFileUploadService` 는 이미 임의 파일 업로드 테스트가 존재하므로 추가 불필요.
 - **수동 검증**: iOS 시뮬레이터/실기기에서 Files 앱의 PDF·텍스트·확장자 없는 파일을 첨부 →
   Mac `~/Downloads/cmux-remote/` 에 타임스탬프 파일 생성 + draft 에 경로 삽입 확인.
