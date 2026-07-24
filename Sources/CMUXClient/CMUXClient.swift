@@ -15,6 +15,7 @@ public enum CMUXClientError: Error, Equatable {
 public actor CMUXClient {
     private let channel: Channel
     private let requestTimeout: TimeAmount
+    private let socketCapability: String?
     private let logger = Logger(label: "CMUXClient")
 
     private var pending: [String: CheckedContinuation<RPCResponse, Error>] = [:]
@@ -23,9 +24,12 @@ public actor CMUXClient {
     private var bridgeReady = false
     private var bridgeWaiters: [CheckedContinuation<Void, Never>] = []
 
-    public init(channel: Channel, requestTimeout: TimeAmount = .seconds(5)) {
+    public init(channel: Channel,
+                requestTimeout: TimeAmount = .seconds(5),
+                socketCapability: String? = nil) {
         self.channel = channel
         self.requestTimeout = requestTimeout
+        self.socketCapability = normalizedSocketCapability(socketCapability)
         Task { await self.installInboundHandler() }
     }
 
@@ -56,9 +60,7 @@ public actor CMUXClient {
 
         let id = UUID().uuidString
         let req = RPCRequest(id: id, method: method, params: params)
-        let body = try JSONEncoder().encode(req)
-        var buf = channel.allocator.buffer(capacity: body.count)
-        buf.writeBytes(body)
+        let buf = try requestBuffer(for: req)
 
         // Wait for response with timeout
         return try await withCheckedThrowingContinuation { cont in
@@ -90,9 +92,7 @@ public actor CMUXClient {
         guard channel.isActive else { throw CMUXClientError.channelClosed }
         let id = UUID().uuidString
         let req = RPCRequest(id: id, method: method, params: params)
-        let body = try JSONEncoder().encode(req)
-        var buf = channel.allocator.buffer(capacity: body.count)
-        buf.writeBytes(body)
+        let buf = try requestBuffer(for: req)
         // Fire-and-forget, but don't drop a write failure. Unlike `call`, there
         // is no pending continuation to fail, so a silently-dropped subscribe
         // would leave the event-stream supervisor blocked in `awaitClosed()` on
@@ -123,6 +123,15 @@ public actor CMUXClient {
         guard response.isOk else {
             throw CMUXClientError.decoding("auth.login returned ok=false without an RPC error")
         }
+    }
+
+    private func requestBuffer(for request: RPCRequest) throws -> ByteBuffer {
+        let body = try JSONEncoder().encode(request)
+        let prefix = socketCapability.map { "_cmux_capability_v1 \($0) " } ?? ""
+        var buffer = channel.allocator.buffer(capacity: prefix.utf8.count + body.count)
+        if !prefix.isEmpty { buffer.writeString(prefix) }
+        buffer.writeBytes(body)
+        return buffer
     }
 
     private func doTimeoutContinuation(id: String) {

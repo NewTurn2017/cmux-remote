@@ -6,6 +6,12 @@ final class ConfigLoaderTests: XCTestCase {
         let json = #"""
         {
           "listen": "0.0.0.0:4399",
+          "transport": "both",
+          "broker": {
+            "url": "wss://relay.example.com",
+            "relay_id": "studio-mac",
+            "relay_token": "relay-secret"
+          },
           "allow_login": ["alice@example.com"],
           "apns": { "key_path": "/k.p8", "key_id": "K", "team_id": "T",
                     "topic": "com.example", "env": "prod" },
@@ -16,6 +22,10 @@ final class ConfigLoaderTests: XCTestCase {
         """#
         let cfg = try RelayConfig.decode(jsonString: json)
         XCTAssertEqual(cfg.listen, "0.0.0.0:4399")
+        XCTAssertEqual(cfg.transport, .both)
+        XCTAssertEqual(cfg.broker?.url, "wss://relay.example.com")
+        XCTAssertEqual(cfg.broker?.relayId, "studio-mac")
+        XCTAssertEqual(cfg.broker?.relayToken, "relay-secret")
         XCTAssertEqual(cfg.allowLogin, ["alice@example.com"])
         XCTAssertEqual(cfg.apns.keyId, "K")
         XCTAssertEqual(cfg.snippets.first?.label, "ll")
@@ -36,6 +46,8 @@ final class ConfigLoaderTests: XCTestCase {
         """#
         let cfg = try RelayConfig.decode(jsonString: json)
         XCTAssertEqual(cfg.listen, "0.0.0.0:4399")
+        XCTAssertEqual(cfg.transport, .direct)
+        XCTAssertNil(cfg.broker)
         XCTAssertEqual(cfg.allowLogin, [])
         XCTAssertEqual(cfg.snippets, [])
         XCTAssertEqual(cfg.apns.env, "sandbox")
@@ -56,6 +68,28 @@ final class ConfigLoaderTests: XCTestCase {
     func testRejectsMalformedValue() {
         let json = #"{"allow_login": "not-an-array"}"#
         XCTAssertThrowsError(try RelayConfig.decode(jsonString: json))
+    }
+
+    func testParsesBrokerOnlyConfig() throws {
+        let json = #"""
+        {
+          "transport": "broker",
+          "broker": {
+            "url": "https://relay.example.com",
+            "relay_id": "home-mac",
+            "relay_token": "secret"
+          }
+        }
+        """#
+        let cfg = try RelayConfig.decode(jsonString: json)
+        XCTAssertEqual(cfg.transport, .broker)
+        XCTAssertFalse(cfg.transport.enablesDirect)
+        XCTAssertTrue(cfg.transport.enablesBroker)
+        XCTAssertEqual(cfg.broker?.relayId, "home-mac")
+    }
+
+    func testRejectsUnknownTransport() {
+        XCTAssertThrowsError(try RelayConfig.decode(jsonString: #"{"transport":"vpn"}"#))
     }
 
     /// `authorizing(login:)` folds the relay host's own tailnet login into

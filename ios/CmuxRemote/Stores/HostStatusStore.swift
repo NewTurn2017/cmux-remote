@@ -83,9 +83,9 @@ public struct HostBatteryState: Equatable, Sendable {
     }
 
     public var accessibilityText: String {
-        guard available, let percent else { return "MacBook battery unavailable" }
-        if isCharging == true { return "MacBook battery \(percent) percent, charging" }
-        return "MacBook battery \(percent) percent"
+        guard available, let percent else { return L10n.string("MacBook battery unavailable") }
+        if isCharging == true { return L10n.format("MacBook battery %lld percent, charging", percent) }
+        return L10n.format("MacBook battery %lld percent", percent)
     }
 }
 

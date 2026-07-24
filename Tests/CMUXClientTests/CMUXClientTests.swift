@@ -41,6 +41,30 @@ final class CMUXClientTests: XCTestCase {
         try await auth
     }
 
+    func testCapabilityWrapsEverySocketCommand() async throws {
+        let capability = "v1.test-nonce.test-signature"
+        let fix = try await MTELGCmuxFixture.make(
+            requestTimeout: .seconds(2),
+            socketCapability: capability
+        )
+        defer { Task { await fix.shutdown() } }
+
+        async let result = fix.client.call(method: "workspace.list", params: .object([:]))
+
+        let outString = try await fix.awaitRequestLine()
+        let prefix = "_cmux_capability_v1 \(capability) "
+        XCTAssertTrue(outString.hasPrefix(prefix), "missing capability envelope")
+        let command = String(outString.dropFirst(prefix.count))
+        XCTAssertNotNil(command.data(using: .utf8).flatMap {
+            try? JSONSerialization.jsonObject(with: $0)
+        })
+        let outId = try Self.extractId(from: command)
+
+        try await fix.sendToClient(line: #"{"id":"\#(outId)","result":{"workspaces":[]}}"#)
+        let value = try await result
+        XCTAssertTrue(value.isOk)
+    }
+
     func testPlainAccessDeniedFailsPendingAndFutureCalls() async throws {
         let fix = try await MTELGCmuxFixture.make(requestTimeout: .seconds(2))
         defer { Task { await fix.shutdown() } }

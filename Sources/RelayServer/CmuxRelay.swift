@@ -28,7 +28,7 @@ struct CmuxRelay: AsyncParsableCommand {
 struct Serve: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "serve",
-        abstract: "Run the HTTP + WebSocket relay."
+        abstract: "Run the configured direct and/or broker relay transports."
     )
 
     @Option(name: .customLong("config"),
@@ -43,6 +43,8 @@ struct Serve: AsyncParsableCommand {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
         let conn = CmuxConnection(group: group)
         let facade = CMUXFacadeImpl(connection: conn)
+        let historyFacade = CMUXFacadeImpl(connection: conn, lane: .history)
+        let history = SurfaceHistoryService(cmux: historyFacade)
         let reader = CmuxSurfaceReader(connection: conn)
         let manager = SessionManager(reader: reader,
                                      defaultFps: store.current.defaultFps,
@@ -90,32 +92,6 @@ struct Serve: AsyncParsableCommand {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
         }
-        let auth = TailscaledLocalAuth()
-
-        // Foolproof pairing: a fresh relay.json has an empty allow_login, which
-        // would 403 every phone. The relay runs on the operator's own Mac, so its
-        // own tailnet login is the same account their phone signs in with —
-        // authorise it automatically. Tagged/headless nodes resolve to nil and we
-        // fall back to whatever allow_login lists. Opt out with CMUX_NO_SELF_LOGIN=1.
-        var effectiveConfig = store.current
-        if ProcessInfo.processInfo.environment["CMUX_NO_SELF_LOGIN"] == nil,
-           let selfLogin = await auth.selfLogin() {
-            if !effectiveConfig.allowLogin.contains(selfLogin) {
-                logger.info("auto-authorising this Mac's tailnet login for pairing: \(selfLogin)")
-            }
-            effectiveConfig = effectiveConfig.authorizing(login: selfLogin)
-        }
-
-        let routes = Routes(deviceStore: deviceStore,
-                            config: effectiveConfig,
-                            auth: auth)
-        let server = HTTPServer(group: group, routes: routes, auth: auth,
-                                deviceStore: deviceStore,
-                                sessionManager: manager,
-                                cmux: facade)
-
-        let (host, port) = parseListen(store.current.listen)
-
         let sighup = DispatchSource.makeSignalSource(signal: SIGHUP, queue: .global())
         sighup.setEventHandler {
             do {
@@ -128,8 +104,57 @@ struct Serve: AsyncParsableCommand {
         sighup.resume()
         signal(SIGHUP, SIG_IGN)
 
-        logger.info("starting cmux-relay on \(host):\(port)")
-        try await server.run(host: host, port: port)
+        var brokerRunner: Task<Void, Never>?
+        if store.current.transport.enablesBroker {
+            guard let brokerConfig = store.current.broker else {
+                throw ValidationError("transport '\(store.current.transport.rawValue)' requires a broker block")
+            }
+            guard !brokerConfig.relayToken.isEmpty else {
+                throw ValidationError("broker.relay_token must not be empty")
+            }
+            let tunnel = try BrokerTunnelClient(config: brokerConfig)
+            let bridge = RemoteSessionBridge(sessionManager: manager, cmux: facade, history: history) { envelope in
+                await tunnel.send(envelope)
+            }
+            await tunnel.setOnEnvelope { envelope in
+                await bridge.receive(envelope)
+            }
+            await tunnel.setOnDisconnect {
+                await bridge.disconnectAll()
+            }
+            brokerRunner = Task { await tunnel.runForever() }
+            logger.info("broker transport enabled for relay_id=\(brokerConfig.relayId)")
+        }
+        defer { brokerRunner?.cancel() }
+
+        if store.current.transport.enablesDirect {
+            let auth = TailscaledLocalAuth()
+
+            // A fresh direct-mode config has an empty allow_login. Authorise
+            // this Mac's own tailnet login unless the operator opts out.
+            var effectiveConfig = store.current
+            if ProcessInfo.processInfo.environment["CMUX_NO_SELF_LOGIN"] == nil,
+               let selfLogin = await auth.selfLogin() {
+                if !effectiveConfig.allowLogin.contains(selfLogin) {
+                    logger.info("auto-authorising this Mac's tailnet login for pairing: \(selfLogin)")
+                }
+                effectiveConfig = effectiveConfig.authorizing(login: selfLogin)
+            }
+
+            let routes = Routes(deviceStore: deviceStore,
+                                config: effectiveConfig,
+                                auth: auth)
+            let server = HTTPServer(group: group, routes: routes, auth: auth,
+                                    deviceStore: deviceStore,
+                                    sessionManager: manager,
+                                    cmux: facade,
+                                    history: history)
+            let (host, port) = parseListen(store.current.listen)
+            logger.info("direct transport listening on \(host):\(port)")
+            try await server.run(host: host, port: port)
+        } else if let brokerRunner {
+            await brokerRunner.value
+        }
     }
 }
 

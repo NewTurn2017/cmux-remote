@@ -99,9 +99,10 @@ private func defaultAppSupportDirectory(_ env: [String: String]) -> URL {
 /// Resolves the password used by cmux `socketControlMode=password`.
 ///
 /// Order intentionally matches current cmux CLI behavior for non-interactive
-/// local automation: `CMUX_SOCKET_PASSWORD` first, then the per-user password
-/// file written by cmux Settings. The relay does not put secrets into launchd
-/// plists; a launchd-started relay can read the same owner-only file.
+/// local automation: `CMUX_SOCKET_PASSWORD` first, then the XDG state password
+/// file, then the legacy Application Support file. The relay does not put
+/// secrets into launchd plists; a launchd-started relay can read the same
+/// owner-only file.
 public func cmuxSocketPassword(
     _ env: [String: String] = ProcessInfo.processInfo.environment,
     appSupportDirectory: URL? = nil,
@@ -112,42 +113,84 @@ public func cmuxSocketPassword(
         return p
     }
 
-    // cmux 0.64+ writes socket-control-password to the XDG state dir
-    // (~/.local/state/cmux/) rather than Application Support.
-    // Check state dir first (newer convention), then fall back to App Support.
-    let stateCmuxDir = (stateDirectory ?? defaultStateDirectory(env))
+    let stateCmuxDirectory = (stateDirectory ?? defaultStateDirectory(env))
         .appendingPathComponent("cmux", isDirectory: true)
-    let statePasswordFile = stateCmuxDir
-        .appendingPathComponent("socket-control-password", isDirectory: false)
-    if fileManager.fileExists(atPath: statePasswordFile.path),
-       let data = try? Data(contentsOf: statePasswordFile),
-       let raw = String(data: data, encoding: .utf8),
-       let p = normalizedSocketPassword(raw) {
-        return p
-    }
-
-    guard let appSupportDirectory = appSupportDirectory
+    let legacyBase = appSupportDirectory
         ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-    else {
-        return nil
+    let passwordFiles = [
+        stateCmuxDirectory.appendingPathComponent("socket-control-password", isDirectory: false),
+        legacyBase?
+            .appendingPathComponent("cmux", isDirectory: true)
+            .appendingPathComponent("socket-control-password", isDirectory: false),
+    ].compactMap { $0 }
+
+    for passwordFile in passwordFiles {
+        guard fileManager.fileExists(atPath: passwordFile.path),
+              let data = try? Data(contentsOf: passwordFile),
+              let raw = String(data: data, encoding: .utf8),
+              let password = normalizedSocketPassword(raw)
+        else {
+            continue
+        }
+        return password
+    }
+    return nil
+}
+
+/// Resolves the capability used by cmux's owner-only control-socket mode.
+///
+/// cmux exports `CMUX_SOCKET_CAPABILITY` only to processes launched inside a
+/// cmux terminal. A launchd relay cannot inherit that environment, so the
+/// installer stores the capability in its owner-only home and points the
+/// relay at it with `CMUX_SOCKET_CAPABILITY_FILE`.
+public func cmuxSocketCapability(
+    _ env: [String: String] = ProcessInfo.processInfo.environment,
+    capabilityFile: URL? = nil,
+    fileManager: FileManager = .default
+) -> String? {
+    if let capability = normalizedSocketCapability(env["CMUX_SOCKET_CAPABILITY"]) {
+        return capability
     }
 
-    let passwordFile = appSupportDirectory
-        .appendingPathComponent("cmux", isDirectory: true)
-        .appendingPathComponent("socket-control-password", isDirectory: false)
-    guard fileManager.fileExists(atPath: passwordFile.path),
-          let data = try? Data(contentsOf: passwordFile),
+    let fileURL: URL
+    if let capabilityFile {
+        fileURL = capabilityFile
+    } else if let configuredPath = env["CMUX_SOCKET_CAPABILITY_FILE"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+        !configuredPath.isEmpty {
+        fileURL = URL(fileURLWithPath: configuredPath)
+    } else {
+        let home = env["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = (home?.isEmpty == false) ? home! : NSHomeDirectory()
+        fileURL = URL(fileURLWithPath: base)
+            .appendingPathComponent(".cmuxremote", isDirectory: true)
+            .appendingPathComponent("socket-control-capability", isDirectory: false)
+    }
+
+    guard fileManager.fileExists(atPath: fileURL.path),
+          let data = try? Data(contentsOf: fileURL),
           let raw = String(data: data, encoding: .utf8)
     else {
         return nil
     }
-    return normalizedSocketPassword(raw)
+    return normalizedSocketCapability(raw)
 }
 
 private func normalizedSocketPassword(_ raw: String?) -> String? {
     guard let raw else { return nil }
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
+}
+
+func normalizedSocketCapability(_ raw: String?) -> String? {
+    guard let raw else { return nil }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty,
+          trimmed.unicodeScalars.allSatisfy({ !$0.properties.isWhitespace })
+    else {
+        return nil
+    }
+    return trimmed
 }
 
 /// Connects to a Unix-domain socket and installs the JSON line framer.

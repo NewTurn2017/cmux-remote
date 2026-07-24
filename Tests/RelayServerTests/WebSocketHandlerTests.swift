@@ -115,6 +115,27 @@ final class WebSocketHandlerTests: XCTestCase {
         XCTAssertEqual(calls, [])
         XCTAssertEqual(actions, [.unsubscribe(responseId: "10", surfaceId: "s")])
     }
+
+    func testSurfaceHistoryBecomesRelayActionWithCursor() async {
+        let cmux = RecordingCMUXFacade()
+        let machine = WSProtocolMachine(cmux: cmux)
+        _ = await machine.processText(#"{"deviceId":"d","appVersion":"1","protocolVersion":1}"#)
+
+        let actions = await machine.processText(#"{"id":"11","method":"surface.history","params":{"workspace_id":"w","surface_id":"s","cursor":"opaque","tail_lines":120,"limit":200}}"#)
+
+        let calls = await cmux.snapshot()
+        XCTAssertEqual(calls, [])
+        XCTAssertEqual(actions, [
+            .history(
+                responseId: "11",
+                workspaceId: "w",
+                surfaceId: "s",
+                cursor: "opaque",
+                tailLines: 120,
+                limit: 200
+            ),
+        ])
+    }
 }
 
 // MARK: - Test doubles

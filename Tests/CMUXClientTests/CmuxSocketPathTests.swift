@@ -133,109 +133,110 @@ final class CmuxSocketPathTests: XCTestCase {
     }
 
     func testSocketPasswordEnvWins() throws {
-        let temp = freshTemp()
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
-        try makeCmuxDir(temp)
+        try FileManager.default.createDirectory(at: temp.appendingPathComponent("cmux", isDirectory: true), withIntermediateDirectories: true)
         try "file-secret\n".write(to: temp.appendingPathComponent("cmux/socket-control-password"), atomically: true, encoding: .utf8)
 
         let password = cmuxSocketPassword(
             ["CMUX_SOCKET_PASSWORD": " env-secret\n"],
             appSupportDirectory: temp,
-            stateDirectory: freshTemp()
+            stateDirectory: temp.appendingPathComponent("state")
         )
 
         XCTAssertEqual(password, "env-secret")
     }
 
     func testSocketPasswordFallsBackToCmuxPasswordFile() throws {
-        let temp = freshTemp()
-        try makeCmuxDir(temp)
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: temp.appendingPathComponent("cmux", isDirectory: true), withIntermediateDirectories: true)
         try "file-secret\n".write(to: temp.appendingPathComponent("cmux/socket-control-password"), atomically: true, encoding: .utf8)
 
         let password = cmuxSocketPassword(
             [:],
             appSupportDirectory: temp,
-            stateDirectory: freshTemp()
+            stateDirectory: temp.appendingPathComponent("state")
         )
 
         XCTAssertEqual(password, "file-secret")
     }
 
     func testSocketPasswordIgnoresMissingOrBlankValues() throws {
-        let temp = freshTemp()
-        try makeCmuxDir(temp)
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: temp.appendingPathComponent("cmux", isDirectory: true), withIntermediateDirectories: true)
         try "\n".write(to: temp.appendingPathComponent("cmux/socket-control-password"), atomically: true, encoding: .utf8)
 
         let password = cmuxSocketPassword(
             ["CMUX_SOCKET_PASSWORD": "   "],
             appSupportDirectory: temp,
-            stateDirectory: freshTemp()
+            stateDirectory: temp.appendingPathComponent("state")
         )
 
         XCTAssertNil(password)
     }
 
-    // cmux 0.64+ writes socket-control-password to ~/.local/state/cmux/ (XDG
-    // state dir) rather than ~/Library/Application Support/cmux/.
-
-    func testSocketPasswordReadsFromStateDirFirst() throws {
+    func testSocketPasswordPrefersStateDirectoryOverLegacyFile() throws {
         let temp = freshTemp()
-        let stateDir = try makeCmuxDir(temp.appendingPathComponent("state"))
-        let appSupportDir = try makeCmuxDir(temp.appendingPathComponent("appsupport"))
-        try "state-secret\n".write(to: stateDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
-        try "appsupport-secret\n".write(to: appSupportDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+        let state = temp.appendingPathComponent("state")
+        let appSupport = temp.appendingPathComponent("appsupport")
+        try makeCmuxDir(state)
+        try makeCmuxDir(appSupport)
+        try "state-secret\n".write(
+            to: state.appendingPathComponent("cmux/socket-control-password"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "legacy-secret\n".write(
+            to: appSupport.appendingPathComponent("cmux/socket-control-password"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let password = cmuxSocketPassword(
             [:],
-            appSupportDirectory: temp.appendingPathComponent("appsupport"),
-            stateDirectory: temp.appendingPathComponent("state")
+            appSupportDirectory: appSupport,
+            stateDirectory: state
         )
 
         XCTAssertEqual(password, "state-secret")
     }
 
-    func testSocketPasswordXdgStateHomeOverridesDefaultStateDir() throws {
-        let temp = freshTemp()
-        let xdgDir = try makeCmuxDir(temp.appendingPathComponent("xdg-state"))
-        let defaultStateDir = try makeCmuxDir(temp.appendingPathComponent("home/.local/state"))
-        try "xdg-secret\n".write(to: xdgDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
-        try "default-secret\n".write(to: defaultStateDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+    func testSocketCapabilityEnvWinsOverFile() throws {
+        let directory = freshTemp()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let capabilityFile = directory.appendingPathComponent("socket-capability")
+        try "file-capability\n".write(to: capabilityFile, atomically: true, encoding: .utf8)
 
-        let password = cmuxSocketPassword(
-            [
-                "HOME": temp.appendingPathComponent("home").path,
-                "XDG_STATE_HOME": temp.appendingPathComponent("xdg-state").path,
-            ],
-            appSupportDirectory: temp.appendingPathComponent("appsupport")
+        let capability = cmuxSocketCapability(
+            ["CMUX_SOCKET_CAPABILITY": " env-capability\n"],
+            capabilityFile: capabilityFile
         )
 
-        XCTAssertEqual(password, "xdg-secret")
+        XCTAssertEqual(capability, "env-capability")
     }
 
-    func testSocketPasswordFallsBackToAppSupportWhenStateAbsent() throws {
-        let temp = freshTemp()
-        let appSupportDir = try makeCmuxDir(temp.appendingPathComponent("appsupport"))
-        try "appsupport-secret\n".write(to: appSupportDir.appendingPathComponent("socket-control-password"), atomically: true, encoding: .utf8)
+    func testSocketCapabilityFallsBackToRelayFile() throws {
+        let directory = freshTemp()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let capabilityFile = directory.appendingPathComponent("socket-capability")
+        try "v1.nonce.signature\n".write(to: capabilityFile, atomically: true, encoding: .utf8)
 
-        let password = cmuxSocketPassword(
-            [:],
-            appSupportDirectory: temp.appendingPathComponent("appsupport"),
-            stateDirectory: temp.appendingPathComponent("empty-state")
-        )
+        let capability = cmuxSocketCapability([:], capabilityFile: capabilityFile)
 
-        XCTAssertEqual(password, "appsupport-secret")
+        XCTAssertEqual(capability, "v1.nonce.signature")
     }
 
-    func testSocketPasswordReturnsNilWhenBothAbsent() throws {
-        let temp = freshTemp()
+    func testSocketCapabilityRejectsWhitespaceInsideToken() throws {
+        let directory = freshTemp()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let capabilityFile = directory.appendingPathComponent("socket-capability")
+        try "invalid capability\n".write(to: capabilityFile, atomically: true, encoding: .utf8)
 
-        let password = cmuxSocketPassword(
-            [:],
-            appSupportDirectory: temp.appendingPathComponent("appsupport"),
-            stateDirectory: temp.appendingPathComponent("state")
-        )
-
-        XCTAssertNil(password)
+        XCTAssertNil(cmuxSocketCapability([:], capabilityFile: capabilityFile))
+        XCTAssertNil(cmuxSocketCapability(
+            ["CMUX_SOCKET_CAPABILITY": "  "],
+            capabilityFile: directory.appendingPathComponent("missing-capability")
+        ))
     }
 
     // MARK: - Helpers

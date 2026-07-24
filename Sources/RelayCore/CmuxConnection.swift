@@ -20,14 +20,17 @@ public final class CmuxConnection: @unchecked Sendable {
     private let logger = Logger(label: "CmuxConnection")
     private let socketPathResolver: @Sendable () -> String
     private let socketPassword: String?
+    private let socketCapability: String?
     private var lastBootId: String?
     private let dispatchResource: ReconnectingResource<CMUXClient>
+    private let historyResource: ReconnectingResource<CMUXClient>
     private let eventsResource: ReconnectingResource<CMUXClient>
 
     public init(socketPath: String? = nil,
                 socketPathResolver: (@Sendable () -> String)? = nil,
                 group: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1),
-                socketPassword: String? = cmuxSocketPassword())
+                socketPassword: String? = cmuxSocketPassword(),
+                socketCapability: String? = cmuxSocketCapability())
     {
         let resolver: @Sendable () -> String
         if let socketPath {
@@ -40,13 +43,20 @@ public final class CmuxConnection: @unchecked Sendable {
         self.socketPathResolver = resolver
         self.group = group
         self.socketPassword = socketPassword
+        self.socketCapability = socketCapability
         let opener: @Sendable () async throws -> CMUXClient = {
             try await CmuxConnection.openClient(socketPath: resolver(),
                                                 group: group,
-                                                socketPassword: socketPassword)
+                                                socketPassword: socketPassword,
+                                                socketCapability: socketCapability)
         }
         let alive: @Sendable (CMUXClient) async -> Bool = { await $0.isUsable() }
         self.dispatchResource = ReconnectingResource(open: opener, isAlive: alive)
+        // Scrollback snapshots can be several megabytes. Keep them off the
+        // dispatch channel that DiffEngine polls 5–15 times per second, or a
+        // history prewarm can queue real-time screen reads behind one huge
+        // `surface.read_text` response.
+        self.historyResource = ReconnectingResource(open: opener, isAlive: alive)
         self.eventsResource = ReconnectingResource(open: opener, isAlive: alive)
     }
 
@@ -55,13 +65,22 @@ public final class CmuxConnection: @unchecked Sendable {
     /// behavior) is callable in isolation without needing a real cmux.
     public static func makeForTesting() -> CmuxConnection {
         CmuxConnection(socketPath: "/tmp/.no-such-cmux-socket",
-                       group: MultiThreadedEventLoopGroup(numberOfThreads: 1))
+                       group: MultiThreadedEventLoopGroup(numberOfThreads: 1),
+                       socketPassword: nil,
+                       socketCapability: nil)
     }
 
     /// Default entry point — returns the dispatch client used for ordinary
     /// RPC traffic (workspace.list, surface.subscribe, screen.diff, …).
     public func connect() async throws -> CMUXClient {
         try await dispatchResource.get()
+    }
+
+    /// Dedicated ordinary-RPC channel for large, low-priority scrollback
+    /// snapshots. It deliberately does not share `connect()`'s channel with
+    /// the real-time DiffEngine reader.
+    public func connectForHistory() async throws -> CMUXClient {
+        try await historyResource.get()
     }
 
     /// Dedicated channel for the long-lived `events.stream` subscription.
@@ -81,10 +100,13 @@ public final class CmuxConnection: @unchecked Sendable {
 
     private static func openClient(socketPath: String,
                                    group: EventLoopGroup,
-                                   socketPassword: String?) async throws -> CMUXClient {
+                                   socketPassword: String?,
+                                   socketCapability: String?) async throws -> CMUXClient {
         let chan = try await UnixSocketChannel(path: socketPath, group: group)
             .connect { _ in group.next().makeSucceededFuture(()) }
-        let c = CMUXClient(channel: chan, requestTimeout: .seconds(5))
+        let c = CMUXClient(channel: chan,
+                           requestTimeout: .seconds(5),
+                           socketCapability: socketCapability)
         // CMUXClient installs its inbound bridge in a fire-and-forget Task
         // inside its initializer; without this gate the very first RPC
         // races the bridge install and its response is dropped before

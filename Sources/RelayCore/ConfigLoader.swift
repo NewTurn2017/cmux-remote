@@ -2,6 +2,31 @@ import Foundation
 
 /// `relay.json` schema. Spec section 7.3.
 public struct RelayConfig: Codable, Equatable, Sendable {
+    public enum Transport: String, Codable, Equatable, Sendable {
+        case direct
+        case broker
+        case both
+
+        public var enablesDirect: Bool { self == .direct || self == .both }
+        public var enablesBroker: Bool { self == .broker || self == .both }
+    }
+
+    public struct Broker: Codable, Equatable, Sendable {
+        public var url: String
+        public var relayId: String
+        public var relayToken: String
+
+        enum CodingKeys: String, CodingKey {
+            case url, relayId = "relay_id", relayToken = "relay_token"
+        }
+
+        public init(url: String, relayId: String, relayToken: String) {
+            self.url = url
+            self.relayId = relayId
+            self.relayToken = relayToken
+        }
+    }
+
     public struct APNs: Codable, Equatable, Sendable {
         public var keyPath: String
         public var keyId: String
@@ -24,6 +49,8 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     }
 
     public var listen: String
+    public var transport: Transport
+    public var broker: Broker?
     public var allowLogin: [String]
     public var apns: APNs
     public var snippets: [Snippet]
@@ -31,14 +58,16 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     public var idleFps: Int
 
     enum CodingKeys: String, CodingKey {
-        case listen, allowLogin = "allow_login", apns, snippets,
+        case listen, transport, broker, allowLogin = "allow_login", apns, snippets,
              defaultFps = "default_fps", idleFps = "idle_fps"
     }
 
-    public init(listen: String, allowLogin: [String], apns: APNs,
+    public init(listen: String, transport: Transport = .direct, broker: Broker? = nil,
+                allowLogin: [String], apns: APNs,
                 snippets: [Snippet], defaultFps: Int, idleFps: Int)
     {
-        self.listen = listen; self.allowLogin = allowLogin; self.apns = apns
+        self.listen = listen; self.transport = transport; self.broker = broker
+        self.allowLogin = allowLogin; self.apns = apns
         self.snippets = snippets; self.defaultFps = defaultFps; self.idleFps = idleFps
     }
 
@@ -51,6 +80,8 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     /// nobody until the operator lists their tailnet login.
     public static let defaults = RelayConfig(
         listen: "0.0.0.0:4399",
+        transport: .direct,
+        broker: nil,
         allowLogin: [],
         apns: .init(keyPath: "", keyId: "", teamId: "", topic: "", env: "sandbox"),
         snippets: [],
@@ -65,6 +96,8 @@ public struct RelayConfig: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = RelayConfig.defaults
         self.listen     = try c.decodeIfPresent(String.self,    forKey: .listen)     ?? d.listen
+        self.transport  = try c.decodeIfPresent(Transport.self, forKey: .transport)  ?? d.transport
+        self.broker     = try c.decodeIfPresent(Broker.self,    forKey: .broker)     ?? d.broker
         self.allowLogin = try c.decodeIfPresent([String].self,  forKey: .allowLogin) ?? d.allowLogin
         self.apns       = try c.decodeIfPresent(APNs.self,      forKey: .apns)       ?? d.apns
         self.snippets   = try c.decodeIfPresent([Snippet].self, forKey: .snippets)   ?? d.snippets

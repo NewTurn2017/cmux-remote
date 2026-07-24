@@ -119,3 +119,54 @@ public struct TerminalRenderRun: Equatable {
         self.canMergeAdjacentCells = canMergeAdjacentCells
     }
 }
+
+/// The cmux `surface.read_text` API delivers plain rows but not the terminal's
+/// original column count.  A long command or log line therefore must be laid
+/// out for the device viewport rather than allowed to widen the Canvas beyond
+/// the screen.
+enum TerminalVisualLayout {
+    struct Result {
+        let rows: [TerminalRenderRow]
+        let cursor: CursorPos?
+    }
+
+    static func make(rows: [[ANSICell]], cursor: CursorPos, wrappingAt columns: Int) -> Result {
+        let limit = max(2, columns)
+        var visualRows: [TerminalRenderRow] = []
+        var visualCursor: CursorPos?
+
+        for (logicalRow, cells) in rows.enumerated() {
+            if logicalRow == cursor.y, cursor.x >= 0 {
+                visualCursor = CursorPos(
+                    x: cursor.x % limit,
+                    y: visualRows.count + cursor.x / limit
+                )
+            }
+            visualRows.append(contentsOf: wrap(cells, at: limit))
+        }
+
+        return Result(rows: visualRows, cursor: visualCursor)
+    }
+
+    private static func wrap(_ cells: [ANSICell], at columns: Int) -> [TerminalRenderRow] {
+        guard !cells.isEmpty else { return [.empty] }
+
+        var chunks: [[ANSICell]] = [[]]
+        var currentColumns = 0
+
+        for cell in cells {
+            let cellColumns = TerminalCellWidth.columns(for: cell.character)
+            if cellColumns > 0,
+               currentColumns > 0,
+               currentColumns + cellColumns > columns
+            {
+                chunks.append([])
+                currentColumns = 0
+            }
+            chunks[chunks.count - 1].append(cell)
+            currentColumns += cellColumns
+        }
+
+        return chunks.map(TerminalRenderRow.init(cells:))
+    }
+}

@@ -1,0 +1,10 @@
+{
+  "transport": "broker",
+  "broker": {
+    "url": "https://relay.example.com",
+    "relay_id": "home-mac",
+    "relay_token": "replace-with-the-same-value-as-CMUX_RELAY_TOKEN"
+  },
+  "default_fps": 15,
+  "idle_fps": 5
+}

@@ -13,7 +13,7 @@ public enum Key: Sendable, Equatable {
         switch self {
         case .enter:     return "enter"
         case .tab:       return "tab"
-        case .esc:       return "esc"
+        case .esc:       return "escape"
         case .up:        return "up"
         case .down:      return "down"
         case .left:      return "left"
@@ -37,14 +37,22 @@ public enum Key: Sendable, Equatable {
 public enum KeyEncoder {
     public static func encode(_ key: Key) -> String {
         let mods = KeyModifier.canonicalOrder.filter { key.modifiers.contains($0) }
-        let prefix = mods.map(\.rawValue).joined(separator: "+")
+        // cmux's control-socket vocabulary uses hyphens (`ctrl-c`), not
+        // UI-style pluses (`ctrl+c`). The latter is accepted by neither the
+        // terminal key parser nor NSEvent synthesis, so a successful RPC
+        // could still be a no-op for Ctrl-C.
+        let prefix = mods.map(\.rawValue).joined(separator: "-")
         let name = key.rawName
-        return prefix.isEmpty ? name : "\(prefix)+\(name)"
+        return prefix.isEmpty ? name : "\(prefix)-\(name)"
     }
 
     public static func decode(_ s: String) -> Key? {
         guard !s.isEmpty else { return nil }
-        var parts = s.split(separator: "+").map(String.init)
+        // Decode the old plus-delimited spelling as well so stored drafts or
+        // old clients can still be interpreted; all new sends are canonical
+        // cmux hyphen-delimited key names.
+        let separator: Character = s.contains("+") ? "+" : "-"
+        var parts = s.split(separator: separator).map(String.init)
         guard !parts.isEmpty else { return nil }
         let name = parts.removeLast()
         var mods: Set<KeyModifier> = []
@@ -56,7 +64,7 @@ public enum KeyEncoder {
             switch name {
             case "enter": return .enter
             case "tab":   return .tab
-            case "esc":   return .esc
+            case "esc", "escape": return .esc
             case "up":    return .up
             case "down":  return .down
             case "left":  return .left
