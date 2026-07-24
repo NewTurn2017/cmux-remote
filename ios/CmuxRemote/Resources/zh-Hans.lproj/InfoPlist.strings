@@ -1,0 +1,1 @@
+"NSLocalNetworkUsageDescription" = "需要访问本地网络，才能连接运行在 Mac 上的 cmux relay 并远程控制工作区和终端。";

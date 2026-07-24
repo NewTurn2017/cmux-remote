@@ -33,6 +33,7 @@ public actor WSProtocolMachine {
         case attachSession(deviceId: String)
         case subscribe(responseId: String, workspaceId: String, surfaceId: String, lines: Int)
         case unsubscribe(responseId: String, surfaceId: String)
+        case history(responseId: String, workspaceId: String, surfaceId: String, cursor: String?, tailLines: Int, limit: Int)
     }
 
     private let cmux: CMUXFacade
@@ -119,6 +120,39 @@ public actor WSProtocolMachine {
                                                            message: "surface.unsubscribe requires surface_id")))
             }
             return .unsubscribe(responseId: req.id, surfaceId: surfaceId)
+        case "surface.history":
+            guard case .string(let workspaceId)? = params["workspace_id"],
+                  case .string(let surfaceId)? = params["surface_id"]
+            else {
+                return .sendText(Self.encode(errorResponse(id: req.id, code: "invalid_params",
+                                                           message: "surface.history requires workspace_id and surface_id")))
+            }
+            let cursor: String?
+            if case .string(let value)? = params["cursor"], !value.isEmpty {
+                cursor = value
+            } else {
+                cursor = nil
+            }
+            let tailLines: Int
+            if case .int(let value)? = params["tail_lines"] {
+                tailLines = min(max(1, Int(value)), 2_000)
+            } else {
+                tailLines = 120
+            }
+            let limit: Int
+            if case .int(let value)? = params["limit"] {
+                limit = min(max(1, Int(value)), SurfaceHistoryService.maximumPageLines)
+            } else {
+                limit = 200
+            }
+            return .history(
+                responseId: req.id,
+                workspaceId: workspaceId,
+                surfaceId: surfaceId,
+                cursor: cursor,
+                tailLines: tailLines,
+                limit: limit
+            )
         default:
             return nil
         }
@@ -189,6 +223,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
     private let deviceStore: DeviceStore
     private let sessionManager: SessionManager
     private let machine: WSProtocolMachine
+    private let history: SurfaceHistoryService
     private let actionQueue = WSActionQueue()
     private let logger = Logger(label: "cmux-relay.ws")
 
@@ -198,12 +233,14 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
     public init(deviceId: String,
                 deviceStore: DeviceStore,
                 sessionManager: SessionManager,
-                cmuxClient: CMUXFacade)
+                cmuxClient: CMUXFacade,
+                history: SurfaceHistoryService)
     {
         self.deviceId = deviceId
         self.deviceStore = deviceStore
         self.sessionManager = sessionManager
         self.machine = WSProtocolMachine(cmux: cmuxClient)
+        self.history = history
     }
 
     public func channelActive(context: ChannelHandlerContext) {
@@ -278,6 +315,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                     continue
                 }
                 await session.subscribe(workspaceId: workspaceId, surfaceId: surfaceId, lines: lines)
+                Task { await history.prewarm(workspaceId: workspaceId, surfaceId: surfaceId) }
                 let text = WSProtocolMachine.encodeForHandler(.init(id: responseId, ok: true, result: .object([:])))
                 channel.execute { self.writeText(text, on: $0) }
             case .unsubscribe(let responseId, let surfaceId):
@@ -292,6 +330,26 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                 await session.unsubscribe(surfaceId: surfaceId)
                 let text = WSProtocolMachine.encodeForHandler(.init(id: responseId, ok: true, result: .object([:])))
                 channel.execute { self.writeText(text, on: $0) }
+            case .history(let responseId, let workspaceId, let surfaceId, let cursor, let tailLines, let limit):
+                do {
+                    let result = try await history.page(
+                        workspaceId: workspaceId,
+                        surfaceId: surfaceId,
+                        cursor: cursor,
+                        tailLines: tailLines,
+                        limit: limit
+                    )
+                    let text = WSProtocolMachine.encodeForHandler(.init(id: responseId, ok: true, result: result))
+                    channel.execute { self.writeText(text, on: $0) }
+                } catch {
+                    let text = WSProtocolMachine.encodeForHandler(.init(
+                        id: responseId,
+                        ok: false,
+                        result: nil,
+                        error: RPCError(code: "history_unavailable", message: String(describing: error))
+                    ))
+                    channel.execute { self.writeText(text, on: $0) }
+                }
             }
         }
     }
@@ -307,7 +365,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
             case .sendText(let text): writeText(text, on: context)
             case .close:              context.close(promise: nil)
             case .attachSession:      break
-            case .subscribe, .unsubscribe: break
+            case .subscribe, .unsubscribe, .history: break
             }
         }
     }

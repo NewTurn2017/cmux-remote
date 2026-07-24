@@ -1,0 +1,34 @@
+services:
+  broker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CMUX_BROKER_HOST: 0.0.0.0
+      CMUX_BROKER_PORT: 4398
+      CMUX_BROKER_DATA_DIR: /data
+      CMUX_TRUST_PROXY: 1
+    volumes:
+      - broker-data:/data
+    networks:
+      nginx-network:
+        aliases:
+          - cmux-remote-broker
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:4398/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  nginx-network:
+    external: true
+    name: card-note-web_nginx_network
+
+volumes:
+  broker-data:

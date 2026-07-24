@@ -9,6 +9,10 @@ ios/CmuxRemote.xcodeproj/xcuserdata/
 .DS_Store
 *.xcuserstate
 Package.resolved
+node_modules/
+broker/data/
+broker/.env
+.tmp-e2e-*
 
 ios/CmuxRemote.xcodeproj/
 
@@ -21,4 +25,3 @@ ios/CmuxRemote.xcodeproj/
 evidence/
 plans/
 docs/cmux-iphone-improvement-research.md
-.senior-mode/

@@ -107,7 +107,7 @@ public final class TailscaledLocalAuth: AuthService {
 
     private static func runTailscaleWhoisCLI(addr: String) async throws -> Data {
         try await Task.detached {
-            let process = try tailscaleProcess(arguments: ["whois", "--json", addr])
+            let process = Self.makeTailscaleProcess(arguments: ["whois", "--json", addr])
 
             let stdout = Pipe()
             let stderr = Pipe()
@@ -153,7 +153,7 @@ public final class TailscaledLocalAuth: AuthService {
 
     private static func runTailscaleStatusCLI() async throws -> Data {
         try await Task.detached {
-            let process = try tailscaleProcess(arguments: ["status", "--json"])
+            let process = Self.makeTailscaleProcess(arguments: ["status", "--json"])
 
             let stdout = Pipe()
             let stderr = Pipe()
@@ -172,36 +172,37 @@ public final class TailscaledLocalAuth: AuthService {
         }.value
     }
 
-    static func resolveTailscaleCLI(
+    private static func makeTailscaleProcess(arguments: [String]) -> Process {
+        let process = Process()
+        if let executable = resolveTailscaleExecutable() {
+            process.executableURL = executable
+            process.arguments = arguments
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["tailscale"] + arguments
+        }
+        return process
+    }
+
+    /// Resolve a normal CLI first, then the standalone macOS app binary.
+    /// The GUI distribution does not install a CLI symlink or LocalAPI socket.
+    public static func resolveTailscaleExecutable(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        appExecutablePath: String = "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+        guiExecutablePath: String = "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
         fileManager: FileManager = .default
-    ) -> String? {
+    ) -> URL? {
         for directory in (environment["PATH"] ?? "").split(separator: ":") {
             let candidate = URL(fileURLWithPath: String(directory), isDirectory: true)
                 .appendingPathComponent("tailscale", isDirectory: false)
-                .path
-            if fileManager.isExecutableFile(atPath: candidate) {
+            if fileManager.isExecutableFile(atPath: candidate.path) {
                 return candidate
             }
         }
-        return fileManager.isExecutableFile(atPath: appExecutablePath)
-            ? appExecutablePath
-            : nil
-    }
 
-    private static func tailscaleProcess(arguments: [String]) throws -> Process {
-        guard let executablePath = resolveTailscaleCLI() else {
-            throw RelayError.unauthorized("tailscale CLI unavailable")
+        if fileManager.isExecutableFile(atPath: guiExecutablePath) {
+            return URL(fileURLWithPath: guiExecutablePath)
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-        process.environment = ProcessInfo.processInfo.environment.merging(
-            ["TAILSCALE_BE_CLI": "1"],
-            uniquingKeysWith: { _, forcedValue in forcedValue }
-        )
-        return process
+        return nil
     }
 
     /// Extracts the host's own login from a `tailscale status --json` /

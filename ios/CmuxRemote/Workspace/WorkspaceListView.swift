@@ -16,88 +16,97 @@ struct WorkspaceListView: View {
     var onSelect: (Workspace) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                searchBar
+        GeometryReader { proxy in
+            let isPadLandscape = AdaptiveLayout.isPadLandscape(proxy.size)
+            let columns = isPadLandscape
+                ? [GridItem(.flexible(minimum: 300), spacing: 12), GridItem(.flexible(minimum: 300), spacing: 12)]
+                : [GridItem(.flexible())]
 
-                VStack(alignment: .leading, spacing: 10) {
-                    CmuxRule(title: "workspaces")
-                    LazyVStack(spacing: 10) {
-                        ForEach(filteredWorkspaces) { workspace in
-                            WorkspaceCard(
-                                workspace: workspace,
-                                surfaceCount: store.surfaceCount(for: workspace.id),
-                                unreadCount: notifStore.unreadByWorkspace[workspace.id] ?? 0,
-                                isSelected: store.selectedId == workspace.id,
-                                isRenaming: renamingWorkspaceId == workspace.id,
-                                isClosing: closingWorkspaceId == workspace.id,
-                                onRename: {
-                                    renameName = workspace.name
-                                    pendingRenameWorkspace = workspace
-                                },
-                                onClose: { pendingCloseWorkspace = workspace }
-                            ) {
-                                store.selectedId = workspace.id
-                                onSelect(workspace)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    searchBar
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        CmuxRule(title: L10n.string("workspaces"))
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            ForEach(filteredWorkspaces) { workspace in
+                                WorkspaceCard(
+                                    workspace: workspace,
+                                    surfaceCount: store.surfaceCount(for: workspace.id),
+                                    unreadCount: notifStore.unreadByWorkspace[workspace.id] ?? 0,
+                                    isSelected: store.selectedId == workspace.id,
+                                    isRenaming: renamingWorkspaceId == workspace.id,
+                                    isClosing: closingWorkspaceId == workspace.id,
+                                    onRename: {
+                                        renameName = workspace.name
+                                        pendingRenameWorkspace = workspace
+                                    },
+                                    onClose: { pendingCloseWorkspace = workspace }
+                                ) {
+                                    store.selectedId = workspace.id
+                                    onSelect(workspace)
+                                }
                             }
                         }
                     }
-                }
 
-                if let workspaceActionError {
-                    HStack(spacing: 8) {
-                        Text("!")
-                            .cmuxDisplay(11)
-                        Text(workspaceActionError)
-                            .cmuxMono(11)
-                            .lineLimit(3)
+                    if let workspaceActionError {
+                        HStack(spacing: 8) {
+                            Text("!")
+                                .cmuxDisplay(11)
+                            Text(workspaceActionError)
+                                .cmuxMono(11)
+                                .lineLimit(3)
+                        }
+                        .foregroundStyle(CmuxTheme.accentRed)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(CmuxTheme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(CmuxTheme.accentRed.opacity(0.5), lineWidth: 1)
+                        )
+                        .accessibilityIdentifier("WorkspaceActionError")
                     }
-                    .foregroundStyle(CmuxTheme.accentRed)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(CmuxTheme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(CmuxTheme.accentRed.opacity(0.5), lineWidth: 1)
-                    )
-                    .accessibilityIdentifier("WorkspaceActionError")
-                }
 
-                if filteredWorkspaces.isEmpty {
-                    VStack(spacing: 10) {
-                        Text("[ no workspaces ]")
-                            .cmuxDisplay(13)
-                            .foregroundStyle(CmuxTheme.muted)
-                        Text("pull to refresh — check relay connection")
-                            .cmuxMono(11)
-                            .foregroundStyle(CmuxTheme.muted)
+                    if filteredWorkspaces.isEmpty {
+                        VStack(spacing: 10) {
+                            Text(L10n.string("[ no workspaces ]"))
+                                .cmuxDisplay(13)
+                                .foregroundStyle(CmuxTheme.muted)
+                            Text(L10n.string("pull to refresh — check relay connection"))
+                                .cmuxMono(11)
+                                .foregroundStyle(CmuxTheme.muted)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
                 }
+                .frame(maxWidth: isPadLandscape ? 1120 : .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, 40)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-            .padding(.bottom, 40)
         }
         .scrollContentBackground(.hidden)
         .background(CmuxTheme.canvas)
-        .alert("New Workspace", isPresented: $creating) {
-            TextField("name", text: $newName)
-            Button("Create") {
+        .alert(L10n.string("New Workspace"), isPresented: $creating) {
+            TextField(L10n.string("name"), text: $newName)
+            Button(L10n.string("Create")) {
                 let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                 Task {
                     if !name.isEmpty { try? await store.create(name: name) }
                     newName = ""
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.string("Cancel"), role: .cancel) {}
         }
         .alert(
-            "Rename Workspace",
+            L10n.string("Rename Workspace"),
             isPresented: Binding(
                 get: { pendingRenameWorkspace != nil },
                 set: { isPresented in
@@ -108,8 +117,8 @@ struct WorkspaceListView: View {
                 }
             )
         ) {
-            TextField("name", text: $renameName)
-            Button("Rename") {
+            TextField(L10n.string("name"), text: $renameName)
+            Button(L10n.string("Rename")) {
                 guard let workspace = pendingRenameWorkspace else { return }
                 let title = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
                 pendingRenameWorkspace = nil
@@ -118,13 +127,13 @@ struct WorkspaceListView: View {
                     renameWorkspace(workspace, title: title)
                 }
             }
-            Button("Cancel", role: .cancel) {
+            Button(L10n.string("Cancel"), role: .cancel) {
                 pendingRenameWorkspace = nil
                 renameName = ""
             }
         }
         .confirmationDialog(
-            "Close workspace?",
+            L10n.string("Close workspace?"),
             isPresented: Binding(
                 get: { pendingCloseWorkspace != nil },
                 set: { isPresented in
@@ -134,14 +143,14 @@ struct WorkspaceListView: View {
             titleVisibility: .visible
         ) {
             if let workspace = pendingCloseWorkspace {
-                Button("Close \(workspace.name)", role: .destructive) {
+                Button(L10n.format("Close %@", workspace.name), role: .destructive) {
                     pendingCloseWorkspace = nil
                     closeWorkspace(workspace)
                 }
             }
-            Button("Cancel", role: .cancel) { pendingCloseWorkspace = nil }
+            Button(L10n.string("Cancel"), role: .cancel) { pendingCloseWorkspace = nil }
         } message: {
-            Text("This closes the workspace in cmux.")
+            Text(L10n.string("This closes the workspace in cmux."))
         }
         .task { await store.refresh() }
         .refreshable { await store.refresh() }
@@ -175,7 +184,7 @@ struct WorkspaceListView: View {
             Text("/")
                 .cmuxDisplay(14)
                 .foregroundStyle(CmuxTheme.accentGreen)
-            TextField("filter…", text: $searchText)
+            TextField(L10n.string("filter…"), text: $searchText)
                 .cmuxMono(14)
                 .foregroundStyle(CmuxTheme.ink)
                 .textInputAutocapitalization(.never)
@@ -199,10 +208,10 @@ struct WorkspaceListView: View {
 
     private var connectionSubtitle: String {
         switch store.connection {
-        case .connected:   return "relay connected"
-        case .connecting:  return "connecting…"
-        case .disconnected: return "offline"
-        case .error:       return "needs attention"
+        case .connected:   return L10n.string("relay connected")
+        case .connecting:  return L10n.string("connecting…")
+        case .disconnected: return L10n.string("offline")
+        case .error:       return L10n.string("needs attention")
         }
     }
 
@@ -282,7 +291,7 @@ private struct WorkspaceCard: View {
                             Text("\(surfaceCount)")
                                 .cmuxDisplay(11)
                                 .foregroundStyle(CmuxTheme.accentBlue)
-                            Text("surfaces")
+                            Text(L10n.string("surfaces"))
                                 .cmuxMono(11)
                                 .foregroundStyle(CmuxTheme.muted)
                         }
@@ -298,7 +307,7 @@ private struct WorkspaceCard: View {
                             .frame(minWidth: 18, minHeight: 18)
                             .background(CmuxTheme.accentRed)
                             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                            .accessibilityLabel("\(unreadCount) unread notifications")
+                            .accessibilityLabel(L10n.format("%lld unread notifications", unreadCount))
                     }
 
                     if isSelected {
@@ -318,7 +327,7 @@ private struct WorkspaceCard: View {
                 action: onRename
             )
             .disabled(isRenaming || isClosing)
-            .accessibilityLabel("Rename workspace \(workspace.name)")
+            .accessibilityLabel(L10n.format("Rename workspace %@", workspace.name))
 
             WorkspaceCardIconButton(
                 systemName: "xmark",
@@ -326,7 +335,7 @@ private struct WorkspaceCard: View {
                 action: onClose
             )
             .disabled(isClosing || isRenaming)
-            .accessibilityLabel("Close workspace \(workspace.name)")
+            .accessibilityLabel(L10n.format("Close workspace %@", workspace.name))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

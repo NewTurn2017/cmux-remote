@@ -35,7 +35,8 @@ final class MTELGCmuxFixture: @unchecked Sendable {
         self.serverInbox = serverInbox
     }
 
-    static func make(requestTimeout: TimeAmount = .seconds(2)) async throws -> MTELGCmuxFixture {
+    static func make(requestTimeout: TimeAmount = .seconds(2),
+                     socketCapability: String? = nil) async throws -> MTELGCmuxFixture {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let inbox = ServerInbox()
         let acceptedPromise: EventLoopPromise<Channel> = group.next().makePromise(of: Channel.self)
@@ -68,7 +69,9 @@ final class MTELGCmuxFixture: @unchecked Sendable {
             .get()
 
         let acceptedChannel = try await acceptedPromise.futureResult.get()
-        let client = CMUXClient(channel: clientChannel, requestTimeout: requestTimeout)
+        let client = CMUXClient(channel: clientChannel,
+                                requestTimeout: requestTimeout,
+                                socketCapability: socketCapability)
         // Give the CMUXClient init's `Task { await self.installInboundHandler() }`
         // a chance to land before the test starts pumping bytes.
         try await Task.sleep(nanoseconds: 30_000_000)

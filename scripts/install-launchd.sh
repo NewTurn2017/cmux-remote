@@ -37,6 +37,8 @@ BIN_SRC="$ROOT/.build/release/cmux-relay"
 BIN_DEST="$DEST/bin/cmux-relay"
 CONFIG="${CMUX_RELAY_CONFIG:-$DEST/relay.json}"
 LOGDIR="${CMUX_RELAY_LOGDIR:-$DEST/log}"
+CAPABILITY_FILE="${CMUX_SOCKET_CAPABILITY_FILE:-$DEST/socket-control-capability}"
+SOCKET_CAPABILITY="${CMUX_SOCKET_CAPABILITY:-}"
 # Leave CMUX_SOCKET_PATH empty by default so cmux-relay discovers the live cmux
 # socket at runtime: it follows cmux's last-socket-path markers (the fixed
 # /tmp/cmux-last-socket-path, then ~/.local/state/cmux, then the legacy
@@ -45,9 +47,9 @@ LOGDIR="${CMUX_RELAY_LOGDIR:-$DEST/log}"
 SOCKET="${CMUX_SOCKET_PATH:-}"
 DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
 # launchd starts agents with a stripped PATH; tailscale CLI on macOS lives in
-# /usr/local/bin (pkg install), /opt/homebrew/bin (brew), or the Tailscale.app
-# bundle, so prepend them before the system defaults for CLI fallback discovery.
-RELAY_PATH="${CMUX_RELAY_PATH:-/usr/local/bin:/opt/homebrew/bin:/Applications/Tailscale.app/Contents/MacOS:/usr/bin:/bin:/usr/sbin:/sbin}"
+# /usr/local/bin (pkg install) or /opt/homebrew/bin (brew), so prepend both
+# before the system defaults so AuthService's whois fallback can find it.
+RELAY_PATH="${CMUX_RELAY_PATH:-/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
 LAUNCH_AGENTS_DIR="${CMUX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 PLIST="$LAUNCH_AGENTS_DIR/$LABEL.plist"
 TARGET="gui/$(id -u)"
@@ -76,6 +78,7 @@ render_plist() {
     -e "s|__CONFIG__|$(render_token "$CONFIG")|g" \
     -e "s|__SOCKET__|$(render_token "$SOCKET")|g" \
     -e "s|__LOGDIR__|$(render_token "$LOGDIR")|g" \
+    -e "s|__CAPABILITY_FILE__|$(render_token "$CAPABILITY_FILE")|g" \
     -e "s|__DEV_ALLOW_LOCALHOST__|$(render_token "$DEV_ALLOW_LOCALHOST")|g" \
     -e "s|__RELAY_PATH__|$(render_token "$RELAY_PATH")|g" \
     "$TEMPLATE"
@@ -115,6 +118,13 @@ if [ "$DRY_RUN" -eq 1 ]; then
     note "socket override: <dynamic via cmux last-socket-path>"
   fi
   note "logdir: $LOGDIR"
+  if [ -n "$SOCKET_CAPABILITY" ]; then
+    note "socket capability: inherited from cmux (would store at $CAPABILITY_FILE)"
+  elif [ -f "$CAPABILITY_FILE" ]; then
+    note "socket capability: $CAPABILITY_FILE (exists)"
+  else
+    note "socket capability: unavailable (cmux automation/password modes may not require it)"
+  fi
   note "plist: $PLIST"
   note "would run: swift build -c release"
   note "would copy: $BIN_SRC -> $BIN_DEST"
@@ -131,7 +141,7 @@ command -v launchctl >/dev/null 2>&1 || fail "missing required tool: launchctl"
 
 # First-run convenience: if there is no config yet, write a sane default so a
 # brand-new user does not have to hand-author relay.json before the first
-# install. Existing configs are never touched.
+# install. Existing config contents are never touched.
 if [ ! -f "$CONFIG" ]; then
   note "no config at $CONFIG; writing default relay.json"
   mkdir -p "$(dirname "$CONFIG")"
@@ -145,6 +155,31 @@ JSON
   note "this Mac's own tailnet login is auto-authorised, so a phone on the"
   note "  same Tailscale account pairs out of the box. For other accounts, add"
   note "  the login to \"allow_login\" in $CONFIG (CMUX_NO_SELF_LOGIN=1 to opt out)."
+fi
+chmod 600 "$CONFIG"
+
+# cmux's default owner-only mode gives each cmux-created terminal an opaque
+# capability. launchd cannot inherit it, so persist it outside the plist and
+# let the relay read the owner-only file at startup. Existing credentials are
+# retained when reinstalling from a shell that is not running inside cmux.
+mkdir -p "$DEST"
+chmod 700 "$DEST"
+if [ -n "$SOCKET_CAPABILITY" ]; then
+  case "$SOCKET_CAPABILITY" in
+    *[[:space:]]*) fail "CMUX_SOCKET_CAPABILITY must be a single token" ;;
+  esac
+  capability_dir="$(dirname "$CAPABILITY_FILE")"
+  mkdir -p "$capability_dir"
+  capability_tmp="$(mktemp "$capability_dir/.socket-control-capability.XXXXXX")"
+  printf '%s\n' "$SOCKET_CAPABILITY" > "$capability_tmp"
+  chmod 600 "$capability_tmp"
+  mv -f "$capability_tmp" "$CAPABILITY_FILE"
+  note "stored cmux socket capability at $CAPABILITY_FILE"
+elif [ -f "$CAPABILITY_FILE" ]; then
+  chmod 600 "$CAPABILITY_FILE"
+  note "using existing cmux socket capability at $CAPABILITY_FILE"
+else
+  note "no cmux socket capability found; cmux owner-only mode may reject the relay"
 fi
 
 note "building release binary"

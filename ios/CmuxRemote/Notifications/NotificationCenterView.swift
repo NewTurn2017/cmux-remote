@@ -9,7 +9,7 @@ struct NotificationCenterView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("inbox")
+                    Text(L10n.string("inbox"))
                         .cmuxDisplay(28)
                         .foregroundStyle(CmuxTheme.ink)
                     Text("[\(store.items.count)]")
@@ -35,14 +35,14 @@ struct NotificationCenterView: View {
                     }
                 }
 
-                CmuxRule(title: "events")
+                CmuxRule(title: L10n.string("events"))
 
                 if store.items.isEmpty {
                     VStack(spacing: 10) {
-                        Text("[ no events ]")
+                        Text(L10n.string("[ no events ]"))
                             .cmuxDisplay(13)
                             .foregroundStyle(CmuxTheme.muted)
-                        Text("cmux relay events will appear here")
+                        Text(L10n.string("cmux relay events will appear here"))
                             .cmuxMono(11)
                             .foregroundStyle(CmuxTheme.muted)
                     }
@@ -91,6 +91,8 @@ struct NotificationCenterView: View {
                     }
                 }
             }
+            .frame(maxWidth: 920, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 18)
             .padding(.top, 16)
             .padding(.bottom, 40)

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import SharedKit
 
 struct ContentView: View {
@@ -14,50 +15,69 @@ struct ContentView: View {
     let onTriggerTestNotification: @MainActor () -> TestNotificationResult
 
     var body: some View {
-        Group {
-            switch selectedTab {
-            case .workspaces:
-                WorkspaceListView(store: workspaceStore, notifStore: notifStore) { workspace in
-                    notifStore.markWorkspaceSeen(workspace.id)
-                    selectedTab = .active
+        GeometryReader { proxy in
+            if AdaptiveLayout.isPadLandscape(proxy.size) {
+                HStack(spacing: 0) {
+                    IPadSidebar(selectedTab: $selectedTab, inboxCount: notifStore.unreadCount)
+                    Rectangle()
+                        .fill(CmuxTheme.divider)
+                        .frame(width: 1)
+                    selectedContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            case .active:
-                WorkspaceView(
-                    workspaceStore: workspaceStore,
-                    surfaceStore: surfaceStore,
-                    notifStore: notifStore,
-                    hostStatusStore: hostStatusStore,
-                    preferredSurfaceId: $requestedSurfaceId,
-                    onBack: { selectedTab = .workspaces }
-                )
-            case .inbox:
-                NotificationCenterView(store: notifStore) { notification in
-                    open(notification: notification)
-                }
-            case .settings:
-                SettingsView(
-                    store: workspaceStore,
-                    onDisconnect: onDisconnect,
-                    onReconnect: onReconnect,
-                    onTriggerTestNotification: onTriggerTestNotification
-                )
+            } else {
+                selectedContent
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if selectedTab != .active {
+                            FloatingTabBar(selectedTab: $selectedTab, inboxCount: notifStore.unreadCount)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 8)
+                                .padding(.bottom, 0)
+                                .offset(y: 14)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .cmuxRemoteNotificationResponse)) { notification in
             openNotificationUserInfo(notification.userInfo)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedTab != .active {
-                FloatingTabBar(selectedTab: $selectedTab, inboxCount: notifStore.unreadCount)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 0)
-                    .offset(y: 14)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
         .background(CmuxTheme.canvas.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private var selectedContent: some View {
+        switch selectedTab {
+        case .workspaces:
+            WorkspaceListView(store: workspaceStore, notifStore: notifStore) { workspace in
+                notifStore.markWorkspaceSeen(workspace.id)
+                selectedTab = .active
+            }
+        case .active:
+            WorkspaceView(
+                workspaceStore: workspaceStore,
+                surfaceStore: surfaceStore,
+                notifStore: notifStore,
+                hostStatusStore: hostStatusStore,
+                preferredSurfaceId: $requestedSurfaceId,
+                onBack: { selectedTab = .workspaces }
+            )
+        case .inbox:
+            NotificationCenterView(store: notifStore) { notification in
+                open(notification: notification)
+            }
+        case .settings:
+            SettingsView(
+                store: workspaceStore,
+                onDisconnect: onDisconnect,
+                onReconnect: onReconnect,
+                onTerminalPreferencesChanged: {
+                    Task { await surfaceStore.refreshSubscriptionPreferences() }
+                },
+                onTriggerTestNotification: onTriggerTestNotification
+            )
+        }
     }
 
     private func open(notification: NotificationRecord) {
@@ -104,6 +124,15 @@ private enum AppTab: String, CaseIterable, Hashable {
         case .settings: return "gearshape.fill"
         }
     }
+
+    var title: String {
+        switch self {
+        case .workspaces: return L10n.string("Workspaces")
+        case .active: return L10n.string("Active")
+        case .inbox: return L10n.string("Inbox")
+        case .settings: return L10n.string("Settings")
+        }
+    }
 }
 
 private struct FloatingTabBar: View {
@@ -122,7 +151,7 @@ private struct FloatingTabBar: View {
                         VStack(spacing: 4) {
                             Image(systemName: tab.icon)
                                 .font(.system(size: 18, weight: .semibold))
-                            Text(tab.rawValue.uppercased())
+                            Text(tab.title.uppercased())
                                 .cmuxDisplay(9)
                         }
                         .foregroundStyle(selectedTab == tab ? CmuxTheme.accentGreen : CmuxTheme.muted)
@@ -147,12 +176,12 @@ private struct FloatingTabBar: View {
                                 .padding(.top, 4)
                                 .padding(.trailing, 10)
                                 .accessibilityIdentifier("InboxUnreadBadge")
-                                .accessibilityLabel("\(inboxCount) unread inbox notifications")
+                                .accessibilityLabel(L10n.format("%lld unread inbox notifications", inboxCount))
                         }
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(tab.rawValue)
+                .accessibilityLabel(tab.title)
             }
         }
         .padding(6)
@@ -166,4 +195,65 @@ private struct FloatingTabBar: View {
     }
 
     @Namespace private var namespace
+}
+
+private struct IPadSidebar: View {
+    @Binding var selectedTab: AppTab
+    let inboxCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("cmux")
+                    .cmuxDisplay(22)
+                    .foregroundStyle(CmuxTheme.ink)
+                Text("remote")
+                    .cmuxDisplay(22)
+                    .foregroundStyle(CmuxTheme.accentGreen)
+            }
+            .padding(.horizontal, 18)
+
+            VStack(spacing: 6) {
+                ForEach(AppTab.allCases, id: \.self) { tab in
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(width: 20)
+                            Text(tab.title)
+                                .cmuxMono(13, weight: .medium)
+                            Spacer()
+                            if tab == .inbox, inboxCount > 0 {
+                                Text(inboxCount > 99 ? "99+" : "\(inboxCount)")
+                                    .cmuxDisplay(9)
+                                    .foregroundStyle(CmuxTheme.canvas)
+                                    .padding(.horizontal, 5)
+                                    .frame(minWidth: 18, minHeight: 18)
+                                    .background(CmuxTheme.accentRed)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .foregroundStyle(selectedTab == tab ? CmuxTheme.accentGreen : CmuxTheme.inkDim)
+                        .padding(.horizontal, 12)
+                        .frame(height: 48)
+                        .background(selectedTab == tab ? CmuxTheme.surfaceRaised : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tab.title)
+                }
+            }
+            .padding(.horizontal, 10)
+
+            Spacer()
+        }
+        .padding(.top, 28)
+        .frame(width: 190)
+        .background(CmuxTheme.surface)
+        .accessibilityIdentifier("IPadSidebar")
+    }
 }

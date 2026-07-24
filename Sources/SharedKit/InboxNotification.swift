@@ -18,23 +18,33 @@ public enum InboxNotification {
         }
 
         guard case .object(let payload) = event.payload else { return nil }
-        let workspaceId = payload.firstStringValue(forAny: [
-            "workspace_id", "workspaceId", "workspaceID", "workspace",
-        ]) ?? "unknown"
-        let title = payload.firstStringValue(forAny: ["title", "headline"])
+        let workspaceId = payload.stringValue(for: "workspace_id")
+            ?? payload.stringValue(for: "workspaceId")
+            ?? payload.stringValue(for: "workspaceID")
+            ?? payload.stringValue(for: "workspace")
+            ?? "unknown"
+        let title = payload.stringValue(for: "title")
+            ?? payload.stringValue(for: "headline")
             ?? event.titleFallback
-        let body = payload.firstStringValue(forAny: [
-            "body", "message", "text", "summary", "reason", "status", "prompt",
-        ])
+        let body = payload.stringValue(for: "body")
+            ?? payload.stringValue(for: "message")
+            ?? payload.stringValue(for: "text")
+            ?? payload.stringValue(for: "summary")
+            ?? payload.stringValue(for: "reason")
+            ?? payload.stringValue(for: "status")
+            ?? payload.stringValue(for: "prompt")
             ?? payload.nestedStringValue(["details", "message"])
             ?? payload.nestedStringValue(["details", "body"])
             ?? title
-        let surfaceId = payload.firstStringValue(forAny: [
-            "surface_id", "surfaceId", "surfaceID", "surface",
-        ])
-        let id = payload.firstStringValue(forAny: [
-            "id", "notification_id", "notificationId", "event_id", "eventId",
-        ])
+        let surfaceId = payload.stringValue(for: "surface_id")
+            ?? payload.stringValue(for: "surfaceId")
+            ?? payload.stringValue(for: "surfaceID")
+            ?? payload.stringValue(for: "surface")
+        let id = payload.stringValue(for: "id")
+            ?? payload.stringValue(for: "notification_id")
+            ?? payload.stringValue(for: "notificationId")
+            ?? payload.stringValue(for: "event_id")
+            ?? payload.stringValue(for: "eventId")
             ?? payload.nestedStringValue(["details", "id"])
             ?? (event.isNeedsInputEvent
                 ? event.syntheticNeedsInputNotificationId(
@@ -50,12 +60,15 @@ public enum InboxNotification {
             workspaceId: workspaceId,
             surfaceId: surfaceId,
             title: title,
-            subtitle: payload.firstStringValue(forAny: [
-                "subtitle", "workspace_title", "workspaceTitle", "surface_title", "surfaceTitle",
-            ]),
+            subtitle: payload.stringValue(for: "subtitle")
+                ?? payload.stringValue(for: "workspace_title")
+                ?? payload.stringValue(for: "workspaceTitle")
+                ?? payload.stringValue(for: "surface_title")
+                ?? payload.stringValue(for: "surfaceTitle"),
             body: body,
             ts: payload.intValue(for: "ts") ?? now,
-            threadId: payload.firstStringValue(forAny: ["thread_id", "threadId"])
+            threadId: payload.stringValue(for: "thread_id")
+                ?? payload.stringValue(for: "threadId")
                 ?? "workspace-\(workspaceId)"
         )
     }
@@ -160,15 +173,6 @@ private extension Dictionary where Key == String, Value == JSONValue {
     func stringValue(for key: String) -> String? {
         guard case .string(let value)? = self[key], !value.isEmpty else { return nil }
         return value
-    }
-
-    // Returns the first non-empty string value among `keys`, in order. Replaces
-    // long `?? stringValue(for:)` chains that overwhelm the Swift type-checker.
-    func firstStringValue(forAny keys: [String]) -> String? {
-        for key in keys {
-            if let value = stringValue(for: key) { return value }
-        }
-        return nil
     }
 
     func intValue(for key: String) -> Int64? {

@@ -12,7 +12,9 @@ final class LiveSocketSmokeTests: XCTestCase {
         defer { try? group.syncShutdownGracefully() }
         let chan = try await UnixSocketChannel(path: cmuxSocketPath(), group: group)
             .connect { _ in group.next().makeSucceededFuture(()) }
-        let client = CMUXClient(channel: chan, requestTimeout: .seconds(5))
+        let client = CMUXClient(channel: chan,
+                                requestTimeout: .seconds(5),
+                                socketCapability: cmuxSocketCapability())
         let workspaces = try await client.workspaceList()
         print("live workspaces: \(workspaces.map(\.name))")
         XCTAssertNotNil(workspaces)

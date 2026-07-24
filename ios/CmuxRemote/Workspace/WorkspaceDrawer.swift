@@ -38,7 +38,7 @@ struct WorkspaceDrawer: View {
                 }
                 .padding(18)
             }
-            .navigationTitle("surfaces")
+            .navigationTitle(L10n.string("surfaces"))
             .navigationBarTitleDisplayMode(.inline)
             .background(CmuxTheme.canvas)
         }

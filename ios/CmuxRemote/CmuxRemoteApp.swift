@@ -1,6 +1,7 @@
 import SwiftUI
 import SharedKit
 import os.log
+import UIKit
 
 @main
 struct CmuxRemoteApp: App {
@@ -14,7 +15,8 @@ struct CmuxRemoteApp: App {
     @State private var activeRPC: RPCClient?
     @State private var splashFinished = Self.shouldSkipSplash()
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
-    @AppStorage("cmux.localNotificationsEnabled") private var localNotificationsEnabled: Bool = true
+    @AppStorage("cmux.theme") private var themeRaw: String = CmuxColorTheme.storm.rawValue
+    @AppStorage("cmux.keepScreenAwake") private var keepScreenAwake: Bool = false
 
     var body: some Scene {
         WindowGroup {
@@ -30,15 +32,6 @@ struct CmuxRemoteApp: App {
                 )
                 .task { await bootstrapOnce() }
                 .onOpenURL(perform: handleDeepLink(_:))
-                .onChange(of: localNotificationsEnabled) { _, enabled in
-                    notifStore.localNotificationsEnabled = enabled
-                    if enabled {
-                        Task { @MainActor in
-                            guard await notifPresenter.requestAuthorizationIfNeeded() else { return }
-                            await remoteNotifications.registerForRemoteNotifications()
-                        }
-                    }
-                }
                 .opacity(splashFinished ? 1 : 0)
 
                 if !splashFinished {
@@ -49,6 +42,16 @@ struct CmuxRemoteApp: App {
                     }
                     .transition(.opacity)
                 }
+            }
+            .onAppear {
+                CmuxTheme.apply(themeRawValue: themeRaw)
+                UIApplication.shared.isIdleTimerDisabled = keepScreenAwake
+            }
+            .onChange(of: themeRaw) { _, newValue in
+                CmuxTheme.apply(themeRawValue: newValue)
+            }
+            .onChange(of: keepScreenAwake) { _, enabled in
+                UIApplication.shared.isIdleTimerDisabled = enabled
             }
         }
     }
@@ -78,17 +81,57 @@ struct CmuxRemoteApp: App {
         #endif
     }
 
+    /// Copies an explicitly supplied launch configuration into the app
+    /// container. This is intended for trusted development-device installs so
+    /// the operator does not need to manually transcribe a broker URL, relay
+    /// ID, or pairing code into the Settings UI.
+    ///
+    /// The switch is deliberately opt-in: ordinary launches and simulator
+    /// smoke tests can still override settings with environment values without
+    /// mutating persistent user configuration.
+    private static func persistConnectionSettingsIfRequested(
+        _ info: ProcessInfo,
+        defaults: UserDefaults = .standard
+    ) {
+        let environment = info.environment
+        guard environment["CMUX_PERSIST_CONNECTION_SETTINGS"] == "1",
+              let modeRaw = environment["CMUX_CONNECTION_MODE"],
+              let mode = ConnectionMode(rawValue: modeRaw)
+        else { return }
+
+        switch mode {
+        case .direct:
+            guard let host = environment["CMUX_HOST"], !host.isEmpty else { return }
+            defaults.set(ConnectionMode.direct.rawValue, forKey: "cmux.connectionMode")
+            defaults.set(host, forKey: "cmux.host")
+            if let port = Int(environment["CMUX_PORT"] ?? ""), port > 0 {
+                defaults.set(port, forKey: "cmux.port")
+            }
+
+        case .broker:
+            guard let brokerURL = environment["CMUX_BROKER_URL"],
+                  let relayId = environment["CMUX_RELAY_ID"],
+                  let pairingCode = environment["CMUX_PAIRING_CODE"],
+                  !brokerURL.isEmpty,
+                  !relayId.isEmpty,
+                  !pairingCode.isEmpty
+            else { return }
+            defaults.set(ConnectionMode.broker.rawValue, forKey: "cmux.connectionMode")
+            defaults.set(brokerURL, forKey: "cmux.brokerURL")
+            defaults.set(relayId, forKey: "cmux.relayId")
+            defaults.set(pairingCode, forKey: "cmux.pairingCode")
+        }
+    }
+
     @MainActor
     private func bootstrapOnce() async {
         guard !bootstrapped else { return }
         bootstrapped = true
         let presenter = notifPresenter
-        notifStore.localNotificationsEnabled = localNotificationsEnabled
         notifStore.onNew = { record in presenter.present(record) }
-        if localNotificationsEnabled {
-            Task { await presenter.requestAuthorizationIfNeeded() }
-        }
+        Task { await presenter.requestAuthorizationIfNeeded() }
         let processInfo = ProcessInfo.processInfo
+        Self.persistConnectionSettingsIfRequested(processInfo)
         if demoMode || Self.shouldUseFakeRelay(processInfo) {
             await bootstrapDemo()
             return
@@ -103,9 +146,12 @@ struct CmuxRemoteApp: App {
             guard result == .ok else { return }
         }
 
-        // Env vars beat UserDefaults so the simulator can seed config via
-        // `SIMCTL_CHILD_CMUX_HOST=...` even when NSUserDefaults launch-arg
-        // overrides silently fail on iOS Simulator.
+        // Environment values beat UserDefaults so simulator smoke tests can
+        // seed either transport without mutating the app container.
+        let modeRaw = processInfo.environment["CMUX_CONNECTION_MODE"]
+            ?? UserDefaults.standard.string(forKey: "cmux.connectionMode")
+            ?? ConnectionMode.direct.rawValue
+        let connectionMode = ConnectionMode(rawValue: modeRaw) ?? .direct
         let envHost = processInfo.environment["CMUX_HOST"] ?? ""
         let envPort = Int(processInfo.environment["CMUX_PORT"] ?? "") ?? 0
         let host = !envHost.isEmpty
@@ -118,36 +164,63 @@ struct CmuxRemoteApp: App {
             let defaultsPort = UserDefaults.standard.integer(forKey: "cmux.port")
             port = defaultsPort == 0 ? 4399 : defaultsPort
         }
-        os_log("cmux bootstrap host=%{public}@ port=%{public}d", host, port)
-        guard !host.isEmpty else { return }
-        guard EndpointPolicy.isAllowedRelayHost(host) else {
-            workspaceStore.connection = .error("Tailscale host or 100.64.0.0/10 address required")
-            return
+        let endpoint: RelayEndpoint
+        let pairingCode: String
+        switch connectionMode {
+        case .direct:
+            endpoint = .direct(host: host, port: port)
+            pairingCode = ""
+        case .broker:
+            let brokerURL = processInfo.environment["CMUX_BROKER_URL"]
+                ?? UserDefaults.standard.string(forKey: "cmux.brokerURL")
+                ?? ""
+            let relayId = processInfo.environment["CMUX_RELAY_ID"]
+                ?? UserDefaults.standard.string(forKey: "cmux.relayId")
+                ?? ""
+            endpoint = .broker(baseURL: brokerURL, relayId: relayId)
+            pairingCode = processInfo.environment["CMUX_PAIRING_CODE"]
+                ?? UserDefaults.standard.string(forKey: "cmux.pairingCode")
+                ?? ""
         }
+        os_log("cmux bootstrap mode=%{public}@", connectionMode.rawValue)
 
-        let auth = AuthClient(host: host, port: port, keychain: keychain, http: URLSessionHTTP(), scheme: "http")
-        os_log("cmux register start host=%{public}@", host)
+        let auth = AuthClient(
+            endpoint: endpoint,
+            keychain: keychain,
+            http: URLSessionHTTP(),
+            pairingCode: pairingCode,
+            clientId: Self.clientIdentifier(),
+            deviceName: UIDevice.current.name
+        )
+        let token: String
+        let deviceId: String
+        let wsURL: URL
+        os_log("cmux register start mode=%{public}@", connectionMode.rawValue)
         do {
             try await auth.registerIfNeeded()
+            Self.clearStoredPairingCode(
+                afterSuccessfulRegistration: connectionMode,
+                defaults: .standard
+            )
+            guard let storedToken = try keychain.get("bearer"),
+                  let storedDeviceId = try keychain.get("device_id")
+            else { throw AuthError.missingBearer }
+            token = storedToken
+            deviceId = storedDeviceId
+            wsURL = try endpoint.webSocketURL()
             os_log("cmux register ok")
             remoteNotifications.configure(authClient: auth)
-            if localNotificationsEnabled {
-                Task { @MainActor in
-                    guard await presenter.requestAuthorizationIfNeeded() else { return }
-                    await remoteNotifications.registerForRemoteNotifications()
-                }
+            Task { @MainActor in
+                guard await presenter.requestAuthorizationIfNeeded() else { return }
+                await remoteNotifications.registerForRemoteNotifications()
             }
         } catch {
             os_log("cmux register FAILED: %{public}@", String(describing: error))
             workspaceStore.connection = .error(String(describing: error))
             return
         }
-        guard let token = try? keychain.get("bearer"),
-              let deviceId = try? keychain.get("device_id"),
-              let url = URL(string: "ws://\(host):\(port)/v1/ws")
-        else { return }
 
-        let ws = WSClient(url: url, headers: [
+        let ws = WSClient(url: wsURL, headers: [
             "Sec-WebSocket-Protocol": "cmuxremote.v1",
             "Authorization": "Bearer \(token)",
         ])
@@ -156,7 +229,7 @@ struct CmuxRemoteApp: App {
         let liveSurfaceStore = SurfaceStore(rpc: rpc)
         let liveHostStatusStore = HostStatusStore(rpc: rpc)
         await MainActor.run {
-            liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0, deliveryPolicy: .userInputRequired) }
+            liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0) }
             workspaceStore = liveWorkspaceStore
             surfaceStore = liveSurfaceStore
             hostStatusStore = liveHostStatusStore
@@ -207,7 +280,7 @@ struct CmuxRemoteApp: App {
         let liveWorkspaceStore = WorkspaceStore(rpc: rpc)
         let liveSurfaceStore = SurfaceStore(rpc: rpc)
         let liveHostStatusStore = HostStatusStore(rpc: rpc)
-        liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0, deliveryPolicy: .userInputRequired) }
+        liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0) }
         workspaceStore = liveWorkspaceStore
         surfaceStore = liveSurfaceStore
         hostStatusStore = liveHostStatusStore
@@ -231,7 +304,7 @@ struct CmuxRemoteApp: App {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             for record in DemoContent.notifications() {
-                store.append(record, deliveryPolicy: .inboxOnly)
+                store.append(record)
             }
         }
     }
@@ -276,33 +349,28 @@ struct CmuxRemoteApp: App {
             id: id,
             workspaceId: workspaceId,
             surfaceId: nil,
-            title: "cmux 테스트 알림",
-            subtitle: "Settings → SEND TEST NOTIFICATION",
-            body: "Inbox에 쌓이고 백그라운드면 iOS 배너가 떠야 합니다.",
+            title: L10n.string("cmux 테스트 알림"),
+            subtitle: L10n.string("Settings → SEND TEST NOTIFICATION"),
+            body: L10n.string("Inbox에 쌓이고 백그라운드면 iOS 배너가 떠야 합니다."),
             ts: Int64(Date().timeIntervalSince1970),
             threadId: "workspace-\(workspaceId)"
         )
-        let shouldRequestLocalBanner = localNotificationsEnabled
-        notifStore.localNotificationsEnabled = shouldRequestLocalBanner
-        notifStore.append(
-            record,
-            deliveryPolicy: shouldRequestLocalBanner ? .userInitiatedTest : .inboxOnly
-        )
+        notifStore.append(record)
 
         let roundTrip: Task<Void, Error>?
         if let rpc = activeRPC {
             roundTrip = Task {
                 let response = try await rpc.call(method: "notification.create", params: .object([
                     "workspace_id": .string(workspaceId),
-                    "title": .string("cmux round-trip"),
-                    "body": .string("relay → cmux → events.stream → iOS"),
+                    "title": .string(L10n.string("cmux round-trip")),
+                    "body": .string(L10n.string("relay → cmux → events.stream → iOS")),
                 ]))
                 _ = try response.requireOk()
             }
         } else {
             roundTrip = nil
         }
-        return TestNotificationResult(localBannerRequested: shouldRequestLocalBanner, roundTrip: roundTrip)
+        return TestNotificationResult(localInjected: true, roundTrip: roundTrip)
     }
 
     static func shouldSkipHardeningForDevelopment(
@@ -315,16 +383,39 @@ struct CmuxRemoteApp: App {
         return false
         #endif
     }
+
+    private static func clientIdentifier() -> String {
+        if let identifier = UIDevice.current.identifierForVendor?.uuidString {
+            return identifier
+        }
+        let key = "cmux.clientId"
+        if let stored = UserDefaults.standard.string(forKey: key), !stored.isEmpty {
+            return stored
+        }
+        let generated = UUID().uuidString
+        UserDefaults.standard.set(generated, forKey: key)
+        return generated
+    }
+
+    static func clearStoredPairingCode(
+        afterSuccessfulRegistration mode: ConnectionMode,
+        defaults: UserDefaults
+    ) {
+        // The pairing code is only needed to mint the per-device bearer token.
+        // Do not retain the shared server secret after pairing succeeds.
+        guard mode == .broker else { return }
+        defaults.removeObject(forKey: "cmux.pairingCode")
+    }
 }
 
 public struct TestNotificationResult: Sendable {
-    public let localBannerRequested: Bool
+    public let localInjected: Bool
     public let roundTrip: Task<Void, Error>?
 }
 
 actor OfflineRPCDispatch: RPCDispatch {
     func call(method: String, params: JSONValue) async throws -> RPCResponse {
-        throw CmuxRemoteRPCError.rpc(code: "offline", message: "Configure Mac host in Settings")
+        throw CmuxRemoteRPCError.rpc(code: "offline", message: L10n.string("Configure Mac host in Settings"))
     }
 }
 
@@ -423,6 +514,12 @@ actor FakeRPCDispatch: RPCDispatch {
             ]))
         case "surface.read_text":
             return RPCResponse(id: "fake", result: .object(["text": .string("hello from fake relay")]))
+        case "surface.history":
+            return RPCResponse(id: "fake", result: .object([
+                "rows": .array([]),
+                "anchor_rows": .array([.string("hello from fake relay")]),
+                "next_cursor": .null,
+            ]))
         default:
             return RPCResponse(id: "fake", ok: true, result: .object([:]))
         }

@@ -80,6 +80,23 @@ public actor DemoRPCDispatch: RPCDispatch {
             }
             return RPCResponse(id: "demo", result: .object(["text": .string("")]))
 
+        case "surface.history":
+            if case .object(let p) = params,
+               case .string(let surfaceId)? = p["surface_id"],
+               let surface = surface(for: surfaceId)
+            {
+                return RPCResponse(id: "demo", result: .object([
+                    "rows": .array([]),
+                    "anchor_rows": .array(surface.screen.map(JSONValue.string)),
+                    "next_cursor": .null,
+                ]))
+            }
+            return RPCResponse(id: "demo", result: .object([
+                "rows": .array([]),
+                "anchor_rows": .array([]),
+                "next_cursor": .null,
+            ]))
+
         case "workspace.create":
             let title: String
             if case .object(let p) = params, case .string(let value)? = p["title"] {
