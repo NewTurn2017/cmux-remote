@@ -6,12 +6,21 @@ import SharedKit
 @Observable
 public final class SurfaceStore {
     public static let defaultSubscriptionLines = 120
+    static let liveHistoryAnchorID = "terminal-live-anchor"
 
     public var grid: CellGrid = CellGrid(cols: 80, rows: 24)
     public var rev: Int = 0
     public var subscribed: String?
     public var subscribedWorkspaceId: String?
     public var inputStatus: TerminalInputStatus = .idle
+    private(set) var historyPages: [TerminalHistoryPage] = []
+    var historyRows: [String] { historyPages.flatMap(\.rows) }
+    public private(set) var historyAnchorRows: [String]?
+    public private(set) var historyNextCursor: String?
+    private(set) var historyRestoreAnchorID: String?
+    public private(set) var historyLoadGeneration: Int = 0
+    public private(set) var isLoadingOlderHistory = false
+    public private(set) var historyUnavailable = false
 
     private let rpc: any RPCDispatch
 
@@ -23,6 +32,7 @@ public final class SurfaceStore {
         if let current = subscribed, current != surfaceId {
             await unsubscribe(surfaceId: current)
         }
+        clearHistorySnapshot()
         subscribed = surfaceId
         subscribedWorkspaceId = workspaceId
         _ = try? await rpc.call(
@@ -31,7 +41,7 @@ public final class SurfaceStore {
                 "workspace_id": .string(workspaceId),
                 "surface_id": .string(surfaceId),
                 "fps": .int(15),
-                "lines": .int(Int64(Self.defaultSubscriptionLines)),
+                "lines": .int(Int64(subscriptionLines)),
             ])
         )
         await focusCurrentSurface()
@@ -40,17 +50,78 @@ public final class SurfaceStore {
 
     public func resubscribe() async {
         guard let workspaceId = subscribedWorkspaceId, let surfaceId = subscribed else { return }
+        clearHistorySnapshot()
         _ = try? await rpc.call(
             method: "surface.subscribe",
             params: .object([
                 "workspace_id": .string(workspaceId),
                 "surface_id": .string(surfaceId),
                 "fps": .int(15),
-                "lines": .int(Int64(Self.defaultSubscriptionLines)),
+                "lines": .int(Int64(subscriptionLines)),
             ])
         )
         await focusCurrentSurface()
         await requestFull(surfaceId: surfaceId)
+    }
+
+    /// Apply a changed terminal-history preference to an already subscribed
+    /// surface. The relay owns the subscription shape, so it must be replaced
+    /// rather than merely asking for another full frame.
+    public func refreshSubscriptionPreferences() async {
+        guard let workspaceId = subscribedWorkspaceId, let surfaceId = subscribed else { return }
+        await unsubscribe(surfaceId: surfaceId)
+        await subscribe(workspaceId: workspaceId, surfaceId: surfaceId)
+    }
+
+    /// Starts (or continues) an immutable, cursor-based scrollback snapshot.
+    /// The live grid keeps receiving frames in the background; once history is
+    /// opened the view renders the stable anchor supplied by the relay so
+    /// incoming output cannot make the reader lose their place.
+    public func loadOlderHistory() async {
+        guard let workspaceId = subscribedWorkspaceId, let surfaceId = subscribed else { return }
+        guard !isLoadingOlderHistory else { return }
+        guard !historyUnavailable else { return }
+
+        let isFirstPage = historyAnchorRows == nil
+        guard isFirstPage || historyNextCursor != nil else { return }
+
+        isLoadingOlderHistory = true
+        defer { isLoadingOlderHistory = false }
+
+        do {
+            var params: [String: JSONValue] = [
+                "workspace_id": .string(workspaceId),
+                "surface_id": .string(surfaceId),
+                "tail_lines": .int(Int64(max(grid.rawRows.count, subscriptionLines))),
+                "limit": .int(200),
+            ]
+            if let historyNextCursor {
+                params["cursor"] = .string(historyNextCursor)
+            }
+            let response = try await rpc.call(method: "surface.history", params: .object(params))
+            let page = try response.unwrapResult().decode(SurfaceHistoryPagePayload.self)
+
+            if isFirstPage {
+                let anchorRows = page.anchorRows ?? grid.rawRows
+                historyPages = [TerminalHistoryPage(rows: page.rows)]
+                historyAnchorRows = anchorRows
+                historyRestoreAnchorID = Self.liveHistoryAnchorID
+            } else {
+                historyRestoreAnchorID = historyPages.first?.id ?? Self.liveHistoryAnchorID
+                historyPages.insert(TerminalHistoryPage(rows: page.rows), at: 0)
+            }
+            historyNextCursor = page.nextCursor
+            historyLoadGeneration &+= 1
+        } catch {
+            historyUnavailable = true
+            inputStatus = .failed(String(describing: error))
+        }
+    }
+
+    /// Return to the current terminal frame after browsing a frozen history
+    /// snapshot. The latest live grid has continued updating in the meantime.
+    public func resumeLiveHistory() {
+        clearHistorySnapshot()
     }
 
     /// Pin cmux's pane focus to the surface we're viewing — without it, key
@@ -111,8 +182,8 @@ public final class SurfaceStore {
     public func sendText(workspaceId: String, surfaceId: String, text: String) async throws {
         try await dispatchInput(
             successMessage: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "Sent text"
-                : "Sent \(text.trimmingCharacters(in: .whitespacesAndNewlines))"
+                ? L10n.string("Sent text")
+                : L10n.format("Sent %@", text.trimmingCharacters(in: .whitespacesAndNewlines))
         ) {
             try await rpc.call(
                 method: "surface.send_text",
@@ -137,7 +208,7 @@ public final class SurfaceStore {
                 ])
             ).requireOk()
             let payload = try response.unwrapResult().decode(UploadedFilePayload.self)
-            inputStatus = .sent("Attached \(payload.filename)")
+            inputStatus = .sent(L10n.format("Attached %@", payload.filename))
             return payload
         } catch {
             inputStatus = .failed(String(describing: error))
@@ -151,7 +222,7 @@ public final class SurfaceStore {
             try await sendKey(workspaceId: workspaceId, surfaceId: surfaceId, key: .enter)
             return
         }
-        try await dispatchInput(successMessage: "Sent \(trimmed)") {
+        try await dispatchInput(successMessage: L10n.format("Sent %@", trimmed)) {
             _ = try await rpc.call(
                 method: "surface.send_text",
                 params: .object([
@@ -173,7 +244,7 @@ public final class SurfaceStore {
 
     public func sendKey(workspaceId: String, surfaceId: String, key: Key) async throws {
         let encoded = KeyEncoder.encode(key)
-        try await dispatchInput(successMessage: "Sent \(encoded)") {
+        try await dispatchInput(successMessage: L10n.format("Sent %@", encoded)) {
             // cmux's `surface.send_key` synthesizes one NSEvent so multi-byte
             // sequences (arrows, ctrl combos) arrive atomically — vital for
             // Ink-based TUIs (Claude Code) whose ESC parser fires on the
@@ -204,6 +275,7 @@ public final class SurfaceStore {
         subscribed = nil
         subscribedWorkspaceId = nil
         inputStatus = .idle
+        clearHistorySnapshot()
     }
 
     private func dispatchInput(
@@ -227,7 +299,7 @@ public final class SurfaceStore {
             params: .object([
                 "workspace_id": .string(workspaceId),
                 "surface_id": .string(surfaceId),
-                "lines": .int(Int64(max(grid.rawRows.count, Self.defaultSubscriptionLines))),
+                "lines": .int(Int64(max(grid.rawRows.count, subscriptionLines))),
             ])
         ),
         let payload = try? response.unwrapResult().decode(ReadTextPayload.self)
@@ -248,6 +320,29 @@ public final class SurfaceStore {
             cursor: grid.cursor
         )
     }
+
+    private var subscriptionLines: Int {
+        let configured = UserDefaults.standard.integer(forKey: "cmux.terminalHistoryLines")
+        return min(max(configured == 0 ? Self.defaultSubscriptionLines : configured, 60), 400)
+    }
+
+    private func clearHistorySnapshot() {
+        historyPages = []
+        historyAnchorRows = nil
+        historyNextCursor = nil
+        historyRestoreAnchorID = nil
+        historyUnavailable = false
+        historyLoadGeneration &+= 1
+    }
+}
+
+struct TerminalHistoryPage: Identifiable {
+    let id = UUID().uuidString
+    let rows: [String]
+
+    init(rows: [String]) {
+        self.rows = rows
+    }
 }
 
 public enum TerminalInputStatus: Equatable {
@@ -261,7 +356,7 @@ public enum TerminalInputStatus: Equatable {
         case .idle:
             return nil
         case .sending:
-            return "Sending…"
+            return L10n.string("Sending…")
         case .sent(let text), .failed(let text):
             return text
         }

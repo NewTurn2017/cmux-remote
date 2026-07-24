@@ -47,6 +47,7 @@ actor StubRPCDispatch: RPCDispatch {
     private var workspaces: [(id: String, title: String)]
     private var surfaces: [(id: String, title: String)]
     private var workspaceExtras: [String: [String: JSONValue]]
+    private var historyRequests = 0
 
     init(
         workspaces: [(String, String)] = [("w1", "Demo")],
@@ -133,6 +134,19 @@ actor StubRPCDispatch: RPCDispatch {
             return RPCResponse(id: "stub", ok: true, result: .object([:]))
         case "surface.read_text":
             return RPCResponse(id: "stub", result: .object(["text": .string("fresh")]))
+        case "surface.history":
+            historyRequests += 1
+            if historyRequests == 1 {
+                return RPCResponse(id: "stub", result: .object([
+                    "rows": .array([.string("older-2")]),
+                    "anchor_rows": .array([.string("fresh")]),
+                    "next_cursor": .string("older-page"),
+                ]))
+            }
+            return RPCResponse(id: "stub", result: .object([
+                "rows": .array([.string("older-1")]),
+                "next_cursor": .null,
+            ]))
         case "file.upload":
             return RPCResponse(id: "stub", result: .object([
                 "filename": .string("photo.jpg"),

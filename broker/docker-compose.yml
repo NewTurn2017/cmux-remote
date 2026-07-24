@@ -1,0 +1,33 @@
+services:
+  broker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CMUX_BROKER_HOST: 0.0.0.0
+      CMUX_BROKER_PORT: 4398
+      CMUX_BROKER_DATA_DIR: /data
+      CMUX_TRUST_PROXY: 1
+    volumes:
+      - broker-data:/data
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      CMUX_BROKER_DOMAIN: ${CMUX_BROKER_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - broker
+
+volumes:
+  broker-data:
+  caddy-data:
+  caddy-config:

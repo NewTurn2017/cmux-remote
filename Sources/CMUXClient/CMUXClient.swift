@@ -15,6 +15,7 @@ public enum CMUXClientError: Error, Equatable {
 public actor CMUXClient {
     private let channel: Channel
     private let requestTimeout: TimeAmount
+    private let socketCapability: String?
     private let logger = Logger(label: "CMUXClient")
 
     private var pending: [String: CheckedContinuation<RPCResponse, Error>] = [:]
@@ -23,9 +24,12 @@ public actor CMUXClient {
     private var bridgeReady = false
     private var bridgeWaiters: [CheckedContinuation<Void, Never>] = []
 
-    public init(channel: Channel, requestTimeout: TimeAmount = .seconds(5)) {
+    public init(channel: Channel,
+                requestTimeout: TimeAmount = .seconds(5),
+                socketCapability: String? = nil) {
         self.channel = channel
         self.requestTimeout = requestTimeout
+        self.socketCapability = normalizedSocketCapability(socketCapability)
         Task { await self.installInboundHandler() }
     }
 
@@ -56,9 +60,7 @@ public actor CMUXClient {
 
         let id = UUID().uuidString
         let req = RPCRequest(id: id, method: method, params: params)
-        let body = try JSONEncoder().encode(req)
-        var buf = channel.allocator.buffer(capacity: body.count)
-        buf.writeBytes(body)
+        let buf = try requestBuffer(for: req)
 
         // Wait for response with timeout
         return try await withCheckedThrowingContinuation { cont in
@@ -79,6 +81,34 @@ public actor CMUXClient {
         }
     }
 
+    /// Fire-and-forget write: encodes a request and flushes it without
+    /// registering a continuation or awaiting a response. Used for the
+    /// `events.stream` subscribe — cmux 0.64.12 acks it with a `cmux-events`
+    /// subscription envelope that carries no matching RPC `id`, so awaiting a
+    /// response (via `call`) would always pay the full request timeout before
+    /// the stream is considered "attached".
+    public func send(method: String, params: JSONValue) throws {
+        if let terminalError { throw terminalError }
+        guard channel.isActive else { throw CMUXClientError.channelClosed }
+        let id = UUID().uuidString
+        let req = RPCRequest(id: id, method: method, params: params)
+        let buf = try requestBuffer(for: req)
+        // Fire-and-forget, but don't drop a write failure. Unlike `call`, there
+        // is no pending continuation to fail, so a silently-dropped subscribe
+        // would leave the event-stream supervisor blocked in `awaitClosed()` on
+        // a half-dead channel with no events ever arriving. Close the channel so
+        // `closeFuture` fires and the supervisor re-attaches.
+        self.channel.writeAndFlush(buf).whenFailure { [weak self] error in
+            Task { await self?.handleSendFailure(error) }
+        }
+    }
+
+    private func handleSendFailure(_ error: Error) {
+        logger.warning("fire-and-forget send failed; closing channel to trigger re-attach: \(String(describing: error))")
+        if terminalError == nil { terminalError = .channelClosed }
+        channel.close(promise: nil)
+    }
+
     public func authenticate(password: String) async throws {
         let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -93,6 +123,15 @@ public actor CMUXClient {
         guard response.isOk else {
             throw CMUXClientError.decoding("auth.login returned ok=false without an RPC error")
         }
+    }
+
+    private func requestBuffer(for request: RPCRequest) throws -> ByteBuffer {
+        let body = try JSONEncoder().encode(request)
+        let prefix = socketCapability.map { "_cmux_capability_v1 \($0) " } ?? ""
+        var buffer = channel.allocator.buffer(capacity: prefix.utf8.count + body.count)
+        if !prefix.isEmpty { buffer.writeString(prefix) }
+        buffer.writeBytes(body)
+        return buffer
     }
 
     private func doTimeoutContinuation(id: String) {
@@ -134,6 +173,24 @@ public actor CMUXClient {
         // Called from channel handler via Task { await ... }
         guard let str = line.getString(at: 0, length: line.readableBytes),
               let data = str.data(using: .utf8) else { return }
+
+        // cmux 0.64.12 `cmux-events` protocol. These frames carry their own
+        // `id` (a per-boot sequence) and a `protocol` tag, so the RPCResponse
+        // path below would decode them, find no matching pending request, and
+        // silently drop them. Detect by the protocol tag and route by shape:
+        // frames with category+name are events; the subscription envelope and
+        // heartbeats have neither and are ignored (the subscribe is
+        // fire-and-forget, so there is no pending call to resolve).
+        if let env = try? JSONDecoder().decode(CmuxEventsFrame.self, from: data),
+           env.protocolTag == "cmux-events" {
+            if let category = env.category, let name = env.name {
+                let frame = EventFrame(category: EventCategory(rawValue: category) ?? .unknown,
+                                       name: name,
+                                       payload: env.payload ?? .null)
+                pushHandler?(.event(frame))
+            }
+            return
+        }
 
         // Try response first
         if let resp = try? JSONDecoder().decode(RPCResponse.self, from: data) {
@@ -187,5 +244,21 @@ private final class ClientInboundBridge: ChannelInboundHandler, @unchecked Senda
     func channelInactive(context: ChannelHandlerContext) {
         Task { await self.client?.didClose() }
         context.fireChannelInactive()
+    }
+}
+
+/// Top-level decode of a cmux 0.64.12 `cmux-events` frame. All fields are
+/// optional so a single decode covers both the subscription envelope (which
+/// has neither `category` nor `name`) and event frames (which have both). The
+/// `protocol` tag is the discriminator that separates these from RPC responses.
+private struct CmuxEventsFrame: Decodable {
+    let protocolTag: String?
+    let category: String?
+    let name: String?
+    let payload: JSONValue?
+
+    enum CodingKeys: String, CodingKey {
+        case protocolTag = "protocol"
+        case category, name, payload
     }
 }

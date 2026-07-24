@@ -39,7 +39,7 @@ final class CommandComposerTests: XCTestCase {
 
         let key = composer.key("c")
 
-        XCTAssertEqual(KeyEncoder.encode(key), "ctrl+c")
+        XCTAssertEqual(KeyEncoder.encode(key), "ctrl-c")
         XCTAssertEqual(composer.activeModifiers, [])
     }
 

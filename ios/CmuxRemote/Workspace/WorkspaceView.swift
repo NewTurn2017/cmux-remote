@@ -31,16 +31,23 @@ struct WorkspaceView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var attachmentInFlight = false
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
+    @AppStorage("cmux.defaultLiveInput") private var defaultLiveInput: Bool = false
+    @AppStorage("cmux.keepKeyboardAfterSubmit") private var keepKeyboardAfterSubmit: Bool = false
+    @AppStorage("cmux.showTerminalShortcutBar") private var showTerminalShortcutBar: Bool = true
+    @AppStorage("cmux.terminalHaptics") private var terminalHaptics: Bool = false
     @FocusState private var commandFieldFocused: Bool
 
     var body: some View {
         GeometryReader { proxy in
-            let keyboardVisible = keyboardHeight > proxy.safeAreaInsets.bottom + 20
+            let isPadLandscape = AdaptiveLayout.isPadLandscape(proxy.size)
+            let keyboardVisible = keyboardHeight > 0
             let keyboardControlsActive = keyboardVisible || commandFieldFocused || liveInputFocused
-            let keyboardAccessoryOffset: CGFloat = keyboardControlsActive ? -112 : 0
-            let bottomObstruction = keyboardVisible ? 0 : proxy.safeAreaInsets.bottom
-            let accessoryBottomPadding: CGFloat = keyboardVisible ? keyboardAccessoryOffset + 12 : 0
-            let terminalBottomInset = max(0, accessoryHeight + keyboardAccessoryOffset + 10)
+            // Keep the composer just above the actual keyboard frame.  SwiftUI's
+            // automatic keyboard avoidance is disabled below so the terminal and
+            // its overlay always use this one, window-relative measurement.
+            let bottomObstruction = keyboardVisible ? keyboardHeight : proxy.safeAreaInsets.bottom
+            let accessoryBottomPadding = bottomObstruction + 12
+            let terminalBottomInset = accessoryHeight + accessoryBottomPadding + 10
             let terminalTopInset = keyboardControlsActive
                 ? proxy.safeAreaInsets.top + 20
                 : proxy.safeAreaInsets.top + headerHeight + 10
@@ -57,19 +64,22 @@ struct WorkspaceView: View {
                     terminalHeader
                         .padding(.horizontal, 18)
                         .padding(.top, 12)
+                        .frame(maxWidth: isPadLandscape ? 1080 : .infinity)
                         .readHeight($headerHeight)
                     Spacer()
                     terminalAccessory()
+                        .frame(maxWidth: isPadLandscape ? 920 : .infinity)
+                        .readHeight($accessoryHeight)
                         .padding(.horizontal, 16)
                         .padding(.bottom, accessoryBottomPadding)
-                        .readHeight($accessoryHeight)
                 }
 
                 scrollToBottomButton
                     .padding(.trailing, 24)
-                    .padding(.bottom, bottomObstruction + keyboardAccessoryOffset + accessoryHeight + 22)
+                    .padding(.bottom, accessoryHeight + accessoryBottomPadding + 22)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .background(CmuxTheme.terminal.ignoresSafeArea())
         }
         .sheet(isPresented: $showDrawer) {
@@ -85,7 +95,7 @@ struct WorkspaceView: View {
             .presentationDetents([.medium, .large])
         }
         .confirmationDialog(
-            "Close surface?",
+            L10n.string("Close surface?"),
             isPresented: Binding(
                 get: { pendingCloseSurface != nil },
                 set: { isPresented in
@@ -95,16 +105,17 @@ struct WorkspaceView: View {
             titleVisibility: .visible
         ) {
             if let surface = pendingCloseSurface {
-                Button("Close \(surface.title)", role: .destructive) {
+                Button(L10n.format("Close %@", surface.title), role: .destructive) {
                     pendingCloseSurface = nil
                     closeSurface(surface)
                 }
             }
-            Button("Cancel", role: .cancel) { pendingCloseSurface = nil }
+            Button(L10n.string("Cancel"), role: .cancel) { pendingCloseSurface = nil }
         } message: {
-            Text("This closes the terminal surface in cmux.")
+            Text(L10n.string("This closes the terminal surface in cmux."))
         }
         .task {
+            inputMode = defaultLiveInput ? .live : .command
             await subscribeFirstSurfaceIfNeeded()
             await consumePreferredSurfaceIfNeeded()
             await hostStatusStore.refreshBattery()
@@ -141,43 +152,54 @@ struct WorkspaceView: View {
 
     private func updateKeyboardHeight(from notification: Notification) {
         guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-        let screenHeight = UIScreen.main.bounds.height
-        updateKeyboardHeight(max(0, screenHeight - frame.minY))
+        let overlap: CGFloat
+        if let window = keyWindow {
+            let frameInWindow = window.convert(frame, from: nil)
+            overlap = window.bounds.intersection(frameInWindow).height
+        } else {
+            overlap = UIScreen.main.bounds.intersection(frame).height
+        }
+        updateKeyboardHeight(overlap)
     }
 
     private func updateKeyboardHeight(_ nextHeight: CGFloat) {
-        let screenHeight = UIScreen.main.bounds.height
-        let clampedHeight = min(max(0, nextHeight), screenHeight * 0.58)
-        guard abs(keyboardHeight - clampedHeight) > 0.5 else { return }
+        guard abs(keyboardHeight - nextHeight) > 0.5 else { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            keyboardHeight = clampedHeight
+            keyboardHeight = nextHeight
         }
+    }
+
+    private var keyWindow: UIWindow? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
     }
 
     private var terminalHeader: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
-                HeaderSquare(systemName: "chevron.left", action: onBack)
+                HeaderSquare(systemName: "chevron.left", identifier: "WorkspaceBackButton", action: onBack)
 
                 HStack(spacing: 8) {
                     Text("●")
                         .cmuxDisplay(11)
                         .foregroundStyle(demoMode ? CmuxTheme.accentYellow : CmuxTheme.accentGreen)
-                    Text(currentWorkspace?.name ?? "no workspace")
+                    Text(currentWorkspace?.name ?? L10n.string("no workspace"))
                         .cmuxMono(13, weight: .medium)
                         .foregroundStyle(CmuxTheme.ink)
                         .lineLimit(1)
                     if demoMode {
-                        Text("DEMO")
+                        Text(L10n.string("DEMO"))
                             .cmuxDisplay(9)
                             .foregroundStyle(CmuxTheme.canvas)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(CmuxTheme.accentYellow)
                             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                            .accessibilityLabel("Demo mode active")
+                            .accessibilityLabel(L10n.string("Demo mode active"))
                     }
                     BatteryBadge(battery: hostStatusStore.battery) {
                         Task { await hostStatusStore.refreshBattery() }
@@ -239,6 +261,7 @@ struct WorkspaceView: View {
 
     private var scrollToBottomButton: some View {
         Button {
+            surfaceStore.resumeLiveHistory()
             scrollToBottomRequest &+= 1
         } label: {
             Image(systemName: "arrow.down.to.line")
@@ -255,7 +278,7 @@ struct WorkspaceView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("TerminalScrollToBottomButton")
-        .accessibilityLabel("Scroll terminal to bottom")
+        .accessibilityLabel(L10n.string("Scroll terminal to bottom"))
     }
 
     private func terminalAccessory() -> some View {
@@ -278,14 +301,14 @@ struct WorkspaceView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("InputModeToggleButton")
-                    .accessibilityLabel(inputMode == .live ? "Switch to command input mode" : "Switch to live input mode")
+                    .accessibilityLabel(L10n.string(inputMode == .live ? "Switch to command input mode" : "Switch to live input mode"))
 
                     Text("$")
                         .cmuxDisplay(14)
                         .foregroundStyle(CmuxTheme.accentGreen)
 
                     if inputMode == .command {
-                        TextField("type a command…", text: $composer.draft, axis: .vertical)
+                        TextField(L10n.string("type a command…"), text: $composer.draft, axis: .vertical)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .focused($commandFieldFocused)
@@ -312,10 +335,10 @@ struct WorkspaceView: View {
                                 }
                             )
                             .accessibilityIdentifier("LiveInputField")
-                            .accessibilityLabel("Live terminal input")
+                            .accessibilityLabel(L10n.string("Live terminal input"))
 
                             if liveInputEcho.isEmpty {
-                                Text("입력하면 바로 전송됩니다…")
+                                Text(L10n.string("입력하면 바로 전송됩니다…"))
                                     .cmuxMono(14)
                                     .foregroundStyle(CmuxTheme.muted)
                                     .lineLimit(1)
@@ -359,7 +382,7 @@ struct WorkspaceView: View {
                         if composer.isSending {
                             ProgressView().tint(CmuxTheme.canvas).scaleEffect(0.7)
                         } else {
-                            Text("[ ENTER ]")
+                            Text(L10n.string("[ ENTER ]"))
                                 .cmuxDisplay(12)
                         }
                     }
@@ -372,7 +395,7 @@ struct WorkspaceView: View {
                 .buttonStyle(.plain)
                 .disabled(composer.isSending)
                 .accessibilityIdentifier("CommandSubmitButton")
-                .accessibilityLabel("Send terminal input")
+                .accessibilityLabel(L10n.string("Send terminal input"))
             }
 
             if let message = inputFeedbackMessage {
@@ -390,18 +413,28 @@ struct WorkspaceView: View {
                 .accessibilityIdentifier("InputStatusMessage")
             }
 
-            HStack(spacing: 4) {
-                KeyButton(label: "esc") { sendKey(.esc) }
-                KeyButton(label: "OK", accessibilityLabel: "send OK and enter") { sendOK() }
-                KeyButton(label: "/") { sendSymbol("/") }
-                KeyButton(label: "$") { sendSymbol("$") }
-                KeyButton(label: "tab") { sendKey(.tab) }
-                KeyButton(label: "←", accessibilityLabel: "send left arrow") { sendKey(.left) }
-                KeyButton(label: "↑", accessibilityLabel: "send up arrow") { sendKey(.up) }
-                KeyButton(label: "↓", accessibilityLabel: "send down arrow") { sendKey(.down) }
-                KeyButton(label: "→", accessibilityLabel: "send right arrow") { sendKey(.right) }
-                KeyButton(label: "/new", accessibilityLabel: "send slash new shortcut") { sendText("/new") }
-                KeyButton(label: "space", accessibilityLabel: "send space for omx selection") { sendText(" ") }
+            if showTerminalShortcutBar {
+                VStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        KeyButton(label: "esc") { sendKey(.esc) }
+                        KeyButton(label: "^C", accessibilityLabel: "send ctrl c") {
+                            sendKey(.named("c", modifiers: [.ctrl]))
+                        }
+                        KeyButton(label: "tab") { sendKey(.tab) }
+                        KeyButton(label: "←", accessibilityLabel: "send left arrow") { sendKey(.left) }
+                        KeyButton(label: "↑", accessibilityLabel: "send up arrow") { sendKey(.up) }
+                        KeyButton(label: "↓", accessibilityLabel: "send down arrow") { sendKey(.down) }
+                        KeyButton(label: "→", accessibilityLabel: "send right arrow") { sendKey(.right) }
+                    }
+
+                    HStack(spacing: 4) {
+                        KeyButton(label: "OK", accessibilityLabel: "send OK and enter") { sendOK() }
+                        KeyButton(label: "/") { sendSymbol("/") }
+                        KeyButton(label: "$") { sendSymbol("$") }
+                        KeyButton(label: "/new", accessibilityLabel: "send slash new shortcut") { sendText("/new") }
+                        KeyButton(label: "space", accessibilityLabel: "send space for omx selection") { sendText(" ") }
+                    }
+                }
             }
         }
         .padding(12)
@@ -445,14 +478,15 @@ struct WorkspaceView: View {
 
     private func submitCommand() {
         if composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            dismissKeyboard()
+            performTerminalHaptic()
+            if !keepKeyboardAfterSubmit { dismissKeyboard() }
             Task {
                 do {
                     let (workspaceId, surfaceId) = try activeSurface()
                     try await surfaceStore.sendKey(workspaceId: workspaceId, surfaceId: surfaceId, key: .enter)
                     await MainActor.run {
                         composer.clearError()
-                        dismissKeyboard()
+                        if !keepKeyboardAfterSubmit { dismissKeyboard() }
                     }
                 } catch {
                     await MainActor.run { composer.failSubmit(error) }
@@ -461,14 +495,15 @@ struct WorkspaceView: View {
             return
         }
         guard let command = composer.beginSubmit() else { return }
-        dismissKeyboard()
+        performTerminalHaptic()
+        if !keepKeyboardAfterSubmit { dismissKeyboard() }
         Task {
             do {
                 let (workspaceId, surfaceId) = try activeSurface()
                 try await surfaceStore.submitCommand(workspaceId: workspaceId, surfaceId: surfaceId, command: command)
                 await MainActor.run {
                     composer.completeSubmit(command)
-                    dismissKeyboard()
+                    if !keepKeyboardAfterSubmit { dismissKeyboard() }
                 }
             } catch {
                 await MainActor.run { composer.failSubmit(error) }
@@ -499,6 +534,7 @@ struct WorkspaceView: View {
     }
 
     private func sendKey(_ key: Key) {
+        performTerminalHaptic()
         Task {
             do {
                 let (workspaceId, surfaceId) = try activeSurface()
@@ -539,6 +575,7 @@ struct WorkspaceView: View {
     }
 
     private func sendOK() {
+        performTerminalHaptic()
         Task {
             do {
                 let (workspaceId, surfaceId) = try activeSurface()
@@ -549,6 +586,11 @@ struct WorkspaceView: View {
                 await MainActor.run { composer.failSubmit(error) }
             }
         }
+    }
+
+    private func performTerminalHaptic() {
+        guard terminalHaptics else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func attachPhoto(_ item: PhotosPickerItem) async {
@@ -770,7 +812,7 @@ private enum TerminalInputError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .noActiveSurface: return "Select a workspace surface before sending input."
+        case .noActiveSurface: return L10n.string("Select a workspace surface before sending input.")
         }
     }
 }
@@ -806,7 +848,7 @@ private struct SurfaceChip: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isBusy)
-                .accessibilityLabel("Close surface \(title)")
+                .accessibilityLabel(L10n.format("Close surface %@", title))
             }
         }
         .background(isSelected ? CmuxTheme.surfaceRaised : CmuxTheme.surfaceSunken)
@@ -834,7 +876,7 @@ private struct NewSurfaceChip: View {
                     Image(systemName: "plus")
                         .font(.system(size: 10, weight: .bold))
                 }
-                Text("new")
+                Text(L10n.string("new"))
                     .cmuxDisplay(10)
             }
             .foregroundStyle(CmuxTheme.accentGreen)
@@ -850,11 +892,12 @@ private struct NewSurfaceChip: View {
         .buttonStyle(.plain)
         .disabled(isBusy)
         .accessibilityIdentifier("NewSurfaceButton")
-        .accessibilityLabel("New surface")
+        .accessibilityLabel(L10n.string("New surface"))
     }
 }
 private struct HeaderSquare: View {
     let systemName: String
+    var identifier: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -871,6 +914,7 @@ private struct HeaderSquare: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier ?? "")
     }
 }
 
@@ -932,7 +976,7 @@ private struct IconKey: View {
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel ?? systemName)
+        .accessibilityLabel(accessibilityLabel.map(L10n.string) ?? systemName)
         .accessibilityIdentifier(identifier ?? "")
     }
 }
@@ -965,7 +1009,7 @@ private struct PhotoAttachButton: View {
         .buttonStyle(.plain)
         .disabled(isBusy)
         .accessibilityIdentifier("CommandPhotoAttachButton")
-        .accessibilityLabel("Attach photo from iPhone")
+        .accessibilityLabel(L10n.string("Attach photo from iPhone"))
     }
 }
 
@@ -977,7 +1021,7 @@ private struct KeyButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(label)
+            Text(L10n.string(label))
                 .cmuxDisplay(12)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(isActive ? CmuxTheme.accentGreen : CmuxTheme.ink)
@@ -990,7 +1034,10 @@ private struct KeyButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel ?? label.replacingOccurrences(of: "\n", with: " "))
+        .accessibilityLabel(
+            accessibilityLabel.map(L10n.string)
+                ?? L10n.string(label.replacingOccurrences(of: "\n", with: " "))
+        )
     }
 }
 
@@ -1015,8 +1062,8 @@ private enum TerminalInputMode: Equatable {
 
     var label: String {
         switch self {
-        case .command: return "CMD"
-        case .live: return "LIVE"
+        case .command: return L10n.string("CMD")
+        case .live: return L10n.string("LIVE")
         }
     }
 }
@@ -1045,14 +1092,14 @@ private struct LiveTerminalInputView: UIViewRepresentable {
         view.textContainer.lineFragmentPadding = 0
         view.isScrollEnabled = false
         view.accessibilityIdentifier = "LiveInputField"
-        view.accessibilityLabel = "Live terminal input"
+        view.accessibilityLabel = L10n.string("Live terminal input")
         return view
     }
 
     func updateUIView(_ uiView: LiveTerminalTextView, context: Context) {
         context.coordinator.parent = self
         uiView.accessibilityIdentifier = "LiveInputField"
-        uiView.accessibilityLabel = "Live terminal input"
+        uiView.accessibilityLabel = L10n.string("Live terminal input")
         let currentText = uiView.text ?? ""
         let hasLocalHangulInput = LiveTerminalInputTranslator.containsHangul(currentText)
         uiView.accessibilityValue = hasLocalHangulInput ? currentText : displayText

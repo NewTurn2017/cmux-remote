@@ -72,7 +72,7 @@ final class RoutesTests: XCTestCase {
         // No deviceId on the request → 401 even though body is well-formed.
         let resp = await makeRoutes(try DeviceStore.empty())
             .handle(method: .POST, path: "/v1/devices/me/apns",
-                    body: Data(#"{"apns_token":"t","env":"prod"}"#.utf8),
+                    body: Data(#"{"apns_token":"abcdef1234","env":"prod"}"#.utf8),
                     deviceId: nil, remoteAddr: "100.64.0.5:1")
         XCTAssertEqual(resp.status, .unauthorized)
     }
@@ -83,11 +83,35 @@ final class RoutesTests: XCTestCase {
                                hostname: "h", apnsToken: nil)
         let resp = await makeRoutes(store)
             .handle(method: .POST, path: "/v1/devices/me/apns",
-                    body: Data(#"{"apns_token":"t","env":"prod"}"#.utf8),
+                    body: Data(#"{"apns_token":"abcdef1234","env":"prod"}"#.utf8),
                     deviceId: "d", remoteAddr: "100.64.0.5:1")
         XCTAssertEqual(resp.status, .noContent)
-        XCTAssertEqual(store.lookup(deviceId: "d")?.apnsToken, "t")
+        XCTAssertEqual(store.lookup(deviceId: "d")?.apnsToken, "abcdef1234")
         XCTAssertEqual(store.lookup(deviceId: "d")?.apnsEnv, "prod")
+    }
+
+    func testApnsRejectsMalformedToken() async throws {
+        let store = try DeviceStore.empty()
+        _ = try store.register(deviceId: "d", loginName: "a",
+                               hostname: "h", apnsToken: nil)
+        let resp = await makeRoutes(store)
+            .handle(method: .POST, path: "/v1/devices/me/apns",
+                    body: Data(#"{"apns_token":"not-a-hex-token","env":"prod"}"#.utf8),
+                    deviceId: "d", remoteAddr: "100.64.0.5:1")
+        XCTAssertEqual(resp.status, .badRequest)
+        XCTAssertNil(store.lookup(deviceId: "d")?.apnsToken)
+    }
+
+    func testApnsRejectsOddLengthHexToken() async throws {
+        let store = try DeviceStore.empty()
+        _ = try store.register(deviceId: "d", loginName: "a",
+                               hostname: "h", apnsToken: nil)
+        let resp = await makeRoutes(store)
+            .handle(method: .POST, path: "/v1/devices/me/apns",
+                    body: Data(#"{"apns_token":"abc","env":"prod"}"#.utf8),
+                    deviceId: "d", remoteAddr: "100.64.0.5:1")
+        XCTAssertEqual(resp.status, .badRequest)
+        XCTAssertNil(store.lookup(deviceId: "d")?.apnsToken)
     }
 
     func testApnsRejectsBadEnv() async throws {
@@ -96,7 +120,7 @@ final class RoutesTests: XCTestCase {
                                hostname: "h", apnsToken: nil)
         let resp = await makeRoutes(store)
             .handle(method: .POST, path: "/v1/devices/me/apns",
-                    body: Data(#"{"apns_token":"t","env":"bogus"}"#.utf8),
+                    body: Data(#"{"apns_token":"abcdef1234","env":"bogus"}"#.utf8),
                     deviceId: "d", remoteAddr: "100.64.0.5:1")
         XCTAssertEqual(resp.status, .badRequest)
     }

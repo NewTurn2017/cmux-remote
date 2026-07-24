@@ -112,7 +112,7 @@ public actor Routes {
         }
         guard let body,
               let p = try? JSONDecoder().decode(Payload.self, from: body),
-              !p.apnsToken.isEmpty else {
+              Self.isAPNsToken(p.apnsToken) else {
             return .init(.badRequest)
         }
         guard p.env == "prod" || p.env == "sandbox" else {
@@ -121,6 +121,14 @@ public actor Routes {
         try? deviceStore.setAPNsToken(deviceId: deviceId,
                                       token: p.apnsToken, env: p.env)
         return .init(.noContent)
+    }
+
+    private static func isAPNsToken(_ token: String) -> Bool {
+        !token.isEmpty && token.utf8.count.isMultiple(of: 2) && token.utf8.allSatisfy { byte in
+            (48...57).contains(byte)
+                || (65...70).contains(byte)
+                || (97...102).contains(byte)
+        }
     }
 
     // MARK: - POST /v1/devices/me/register

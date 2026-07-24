@@ -3,12 +3,16 @@
 # cmux Remote
 
 > Unofficial iPhone remote for [cmux](https://github.com/manaflow-ai/cmux)
-> on your Mac, over Tailscale.
+> on your Mac, over Tailscale or your own VPS.
 
 cmux Remote is a SwiftUI app + Swift daemon pair that lets you read and
-drive the terminals running inside cmux on your Mac, from anywhere on
-your Tailscale tailnet. No port is ever exposed to the public internet
-— every byte travels over your existing WireGuard mesh.
+drive the terminals running inside cmux on your Mac. Direct mode uses your
+Tailscale tailnet. The optional Server mode lets both the iPhone and Mac make
+outbound TLS connections through a Broker on a VPS you control.
+
+> **No Tailscale on the phone:** see the
+> [self-hosted Broker guide](broker/README.md). Server mode is TLS-protected,
+> but is not end-to-end encrypted; the Broker can inspect relayed frames.
 
 This is a community project and is **not** built or endorsed by
 Manaflow. cmux Remote is an independent network client that talks to
@@ -16,15 +20,41 @@ cmux exclusively over a documented JSON-RPC protocol.
 
 ---
 
+## What's new — v1.0.6
+
+<p align="center">
+  <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote brandmark" width="320">
+</p>
+
+New or changed since v1.0.5:
+
+- 🔔 **Native push notifications (APNs)** — the relay delivers cmux events and Claude/Codex-style `needs input` prompts over APNs. Configure an `apns` block on the relay and banners arrive even when the app is backgrounded or killed; leave it unset and it falls back to the existing local notifications.
+- ⌨️ **Ctrl-C shortcut** — a dedicated Ctrl-C key on the terminal keyboard bar to interrupt a running command.
+- 🖼️ **All five App Store screenshots refreshed** — latest workspace, terminal, keyboard, Inbox, and settings screens.
+
+<table>
+  <tr>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/01-workspaces-remote-control.png" alt="Workspace remote control" width="180"><br><sub>Workspace / surface chip bar</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/02-terminal-live-control.png" alt="Terminal live control" width="180"><br><sub>Live terminal mirror</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/03-keyboard-shortcuts.png" alt="Key accessory bar" width="180"><br><sub>Key accessory bar · Ctrl-C</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/04-inbox-notifications.png" alt="Inbox notifications" width="180"><br><sub>Notification Inbox · push</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/05-settings-connection-guide.png" alt="Settings · pairing" width="180"><br><sub>Settings · pairing guide</sub></td>
+  </tr>
+</table>
+
+> For changes in v1.0.5 and earlier, see the **Changelog** below.
+
+---
+
 ## Status
 
-**Early preview (v1.0.5).** It can:
+**Early preview (v1.0.6).** It can:
 
 - list, open, create, rename, and close cmux workspaces and surfaces
 - mirror any terminal surface in near real-time (15 Hz diff polling, 120-line bounded history)
-- send keystrokes, key combinations, raw text, command lines, and live per-character input
-- surface cmux notifications as iOS local notifications (while the app
-  is alive)
+- send keystrokes, key combinations, raw text, command lines, and live per-character input, with a dedicated Ctrl-C shortcut
+- surface cmux notifications in the Inbox as iOS local notifications, or
+  as APNs push when the relay has an `apns` block configured
 - paste iPhone clipboard text into the command composer
 - attach iPhone photos by saving them to the Mac under
   `~/Downloads/cmux-remote/` and inserting the saved path
@@ -36,27 +66,29 @@ cmux exclusively over a documented JSON-RPC protocol.
 Smoke-tested against macOS 14 + iOS 17 on both LAN and across a Tailnet
 (Tailscale 1.84+), on simulator and a physical iPhone.
 
-> **Notification caveat** — current notifications are *local*: iOS
-> banners only fire while the app is foregrounded, or while it's still
-> alive in the background with an open WebSocket. True APNs push (so
-> banners arrive when the app is killed or has been backgrounded for a
-> long time) is on the v1.1 roadmap.
+> **Notification delivery** — as of 1.0.6, configuring an `apns` block on
+> the relay delivers banners over APNs even when the app is killed or
+> long-backgrounded. Without APNs configured, notifications behave as
+> before: local banners that only fire while the app is foregrounded, or
+> while it's still alive in the background with an open WebSocket. (See the
+> `apns` block under **Configuration**.)
 
-## Screenshots
+---
 
-<p align="center">
-  <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote brandmark" width="320">
-</p>
+## Changelog
 
-<table>
-  <tr>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/01-workspaces-remote-control.png" alt="Workspace remote control" width="180"><br><sub>Workspace / surface chip bar</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/02-terminal-live-control.png" alt="Terminal live control" width="180"><br><sub>Live terminal mirror</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/03-keyboard-shortcuts.png" alt="Key accessory bar" width="180"><br><sub>Key accessory bar</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/04-inbox-notifications.png" alt="Inbox notifications" width="180"><br><sub>Notification Inbox</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/05-settings-connection-guide.png" alt="Settings · pairing" width="180"><br><sub>Settings · pairing guide</sub></td>
-  </tr>
-</table>
+> Recent changes, newest first. Format: `date · version/scope · summary`.
+> Scopes — `app` (iOS app) · `relay` (Mac daemon) · `setup` (install/docs).
+> Per-version App Store notes live in
+> [`docs/launch-assets/release-notes/`](docs/launch-assets/release-notes/).
+
+- **2026-06-23 · v1.0.6 (app + relay)** — Native APNs push notifications (banners reach a killed app when an `apns` block is configured on the relay; local-notification fallback otherwise), a dedicated Ctrl-C shortcut on the terminal keyboard bar, and all five App Store 6.9" screenshots refreshed.
+- **2026-06-06 · relay** — Track cmux's relocated socket after cmux 1.0.5 moved its Unix socket from `~/Library/Application Support/cmux` to `~/.local/state/cmux`. `cmuxSocketPath()` now follows the markers newest-convention-first (`/tmp/cmux-last-socket-path` → `~/.local/state/cmux/last-socket-path` → legacy Application Support), falling back to `~/.local/state/cmux/cmux.sock`. **No iOS app change → no App Store resubmission.**
+- **2026-06-05 · v1.0.5 (app)** — LIVE per-character input mode, Korean/Hangul IME protection (no jamo splitting), bottom-flush input panel, five extra terminal scroll rows, improved `needs input` Inbox coverage.
+- **2026-06-05 · setup** — Foolproof relay install script + connection guide (`docs/connection-guide.md`).
+- **2026-05-29 · v1.0.4 (app)** — Cached parsed rows/style runs for faster terminal rendering, 120-line bounded history, 256-color/true-color ANSI, better checksum reconciliation.
+- **2026-05-28 · v1.0.3 (relay)** — Fix repeated "Connection refused" when cmux rotates its socket, default dynamic socket discovery on reinstall, socket-path regression tests.
+- **2026-05-24 · v1.0.2 (app)** — Mobile keyboard behavior, workspace create/rename/close, image attachments, connected-computer battery status, Inbox improvements.
 
 ---
 
@@ -87,10 +119,12 @@ iPhone (iOS 17+)         Tailscale            Mac
                                                             ▼
                                               ┌────────────────────────────────┐
                                               │ cmux.app                       │
-                                              │ ~/Library/Application Support/ │
-                                              │   cmux/cmux.sock               │
+                                              │ ~/.local/state/cmux/cmux.sock  │
                                               └────────────────────────────────┘
 ```
+
+Server mode uses `iPhone -- HTTPS/WSS --> VPS Broker <-- WSS -- Mac relay`.
+The Mac opens no inbound port, and Direct mode remains the default.
 
 Two pieces to install:
 
@@ -161,8 +195,11 @@ client that talks to cmux over a documented JSON-RPC schema.
   only fires one banner
 - Inbox view holds the most recent 200 entries (newest first)
 - Claude/Codex-style `needs input`, `needs attention`, and approval events are promoted into the same Inbox stream
-- Deep link `cmux://surface/<id>` (will be joined by APNs payload
-  routing in M6)
+- With an `apns` block configured, cmux events / `needs input` are
+  delivered as APNs push (reaching a killed app); without it, the Inbox
+  falls back to local notifications
+- Deep link `cmux://surface/<id>` (payload-driven deep-link auto-open is
+  planned for v1.1)
 - `SEND TEST NOTIFICATION` button in Settings: a local inject for
   immediate Inbox/banner confirmation, plus a separate status line for
   the relay→cmux→events.stream round-trip
@@ -183,6 +220,8 @@ client that talks to cmux over a documented JSON-RPC schema.
 - iPhone photo uploads saved only under `~/Downloads/cmux-remote/` via `file.upload`
 - Dedicated cmux UDS channel for the events stream (the subscribed
   channel becomes push-only and won't accept further RPC responses)
+- APNs push fanout (`APNsProvider`) — per-device-token delivery, disabled
+  when no `apns` block is configured
 
 ### Security
 
@@ -202,22 +241,22 @@ client that talks to cmux over a documented JSON-RPC schema.
 - macOS 13 Ventura or newer
 - A working [cmux](https://github.com/manaflow-ai/cmux) installation
   with its Unix socket exposed (default
-  `~/Library/Application Support/cmux/cmux.sock`)
+  `~/.local/state/cmux/cmux.sock`)
 - Swift 5.10 toolchain (Xcode 15.3+) to build from source
-- Tailscale installed and signed in
-- A free TCP port for the relay (default `4399`)
+- Tailscale installed and signed in for Direct mode, or a self-hosted Broker
+- A free TCP port (`4399`) for Direct mode; none is needed for Broker-only mode
 
 ### iPhone
 
 - iOS 17 or newer
-- Same Tailnet as your Mac (Tailscale app signed in)
+- Same Tailnet as your Mac in Direct mode; no phone VPN is needed in Server mode
 - Apple Developer account for sideloading (the free 7-day personal
   cert works; App Store distribution needs a paid account)
 
 ### Network
 
-- Tailscale 1.84+ on both ends
-- No Funnel, no public hostname required
+- Direct: Tailscale 1.84+ on both ends; no Funnel or public hostname
+- Server: a VPS plus a DNS name with trusted HTTPS; see `broker/README.md`
 
 ---
 
@@ -294,10 +333,14 @@ Open cmux Remote on the iPhone:
 
 1. Tap **Add Mac**
 2. Enter the Tailscale IP or MagicDNS name from above, port `4399`
-3. Approve the pairing request from the Mac's menu bar
+3. **Add** — the relay resolves your Tailscale identity and pairs
 
-Pairing exchanges a per-device token. Revoke any device anytime from
-the menu bar.
+The relay auto-authorises its own Mac's tailnet login, so an iPhone on the
+same Tailscale account usually pairs with no extra setup. Only for a
+different account, or when the relay runs on a tagged node, add your login
+to `allow_login` under **Configuration** below (any other login gets
+`403 Forbidden`). Pairing exchanges a per-device token; revoke any device
+anytime with `~/.cmuxremote/bin/cmux-relay devices revoke <id>`.
 
 ### 4. Use it
 
@@ -330,15 +373,58 @@ never overwritten):
 at the application layer regardless. To allow localhost in dev, run
 the installer with `CMUX_DEV_ALLOW_LOCALHOST=1`.
 
-By default, the relay follows cmux's
-`~/Library/Application Support/cmux/last-socket-path` marker for the Unix
-socket. This keeps the relay from being pinned to a stale `cmux.sock` when
-cmux restarts with a socket name such as `cmux-501.sock`. Only set
-`CMUX_SOCKET_PATH=/path/to/socket` when you deliberately need a fixed socket.
+Omitted keys fall back to the defaults above, so the three-line config
+boots the relay fine. Pairing only accepts devices whose tailnet login is
+listed in `allow_login` (everyone else gets `403 Forbidden`), but the relay
+**auto-adds its own Mac's login**, so an iPhone on the same Tailscale
+account usually pairs with `allow_login` left empty. Disable that by running
+the installer with `CMUX_NO_SELF_LOGIN=1`.
 
-> **APNs key fields (`apns_team_id`, `apns_key_id`, `apns_key_path`)
-> are coming in v1.1.** Until then, cmux notifications are presented
-> as iOS local notifications only — they do not reach a killed app.
+Only for a different account, or a tagged-node relay, add the login by hand.
+Find yours in the Tailscale admin console, or via the `User[…].LoginName`
+that `Self.UserID` points to in `tailscale status --json`
+(e.g. `you@example.com`). Add it and restart the relay:
+
+```json
+{
+  "listen":      "0.0.0.0:4399",
+  "allow_login": ["you@example.com"],
+  "default_fps": 15,
+  "idle_fps":    5
+}
+```
+
+```bash
+launchctl kickstart -k "gui/$(id -u)/com.genie.cmuxremote"
+```
+
+By default, the relay follows cmux's `last-socket-path` markers, newest
+convention first: the fixed `/tmp/cmux-last-socket-path`, then
+`~/.local/state/cmux/last-socket-path`, then the legacy
+`~/Library/Application Support/cmux/last-socket-path`; if none resolve it falls
+back to `~/.local/state/cmux/cmux.sock`. This keeps the relay from being pinned
+to a stale socket when cmux rotates its socket name (e.g. `cmux-501.sock`) or an
+update moves it from `~/Library/Application Support/cmux` to
+`~/.local/state/cmux`. Only set `CMUX_SOCKET_PATH=/path/to/socket` when you
+deliberately need a fixed socket.
+
+> **APNs push (`apns` block).** Add an `apns` block to `relay.json` and
+> cmux notifications are delivered over APNs, reaching the app even when
+> it's killed. Without the block, notifications are local-only.
+>
+> ```json
+> {
+>   "apns": {
+>     "key_path": "~/.cmuxremote/AuthKey_XXXXXXXXXX.p8",
+>     "key_id":   "XXXXXXXXXX",
+>     "team_id":  "XXXXXXXXXX",
+>     "topic":    "com.genie.CmuxRemote",
+>     "env":      "prod"
+>   }
+> }
+> ```
+>
+> Set `env` to `"sandbox"` for dev/sideload builds, `"prod"` for App Store / release builds.
 
 ---
 
@@ -396,9 +482,11 @@ Per-log fixes:
 
 - `cmux event stream unavailable: socketMissing` — **cmux is not
   running.** Launch the cmux app, then `launchctl kickstart -k "$SERVICE"`.
-- Repeated `Connection refused` — cmux restarted and **the socket name
-  rotated.** Check that `~/Library/Application Support/cmux/last-socket-path`
-  points at the current socket, then re-run `./scripts/install-launchd.sh`.
+- Repeated `Connection refused` — **the socket path changed** (cmux rotated
+  its socket name, or an update moved it to `~/.local/state/cmux`). A current
+  relay tracks the markers automatically, so re-running
+  `./scripts/install-launchd.sh` fixes it. In a pinch, pin the path from
+  `cat /tmp/cmux-last-socket-path` via `CMUX_SOCKET_PATH`.
 - Health check OK but only the app can't attach — **network/address
   issue.** Confirm the iPhone and Mac share a Tailnet, the app's
   address/port (`4399`) is correct, and the device token wasn't revoked
@@ -421,8 +509,8 @@ the fastest way to re-attach after a socket rotation is
 - [x] v1.0.3 — real-device relay socket rotation / reconnection reliability
 - [x] v1.0.4 — terminal rendering performance, 120-line history, ANSI 256-color / true-color groundwork, physical iPhone live-relay smoke validation
 - [x] v1.0.5 — LIVE input mode, Hangul IME guard, bottom-flush input panel, five-row terminal scroll padding, Claude/Codex Inbox regression coverage
-- [ ] **v1.1 — APNs push** (alerts that arrive while the app is killed
-      or long-backgrounded), payload-driven deep-link to surface
+- [x] v1.0.6 — native APNs push (reaches a killed app), Ctrl-C shortcut, all five App Store screenshots refreshed
+- [ ] **v1.1 — push follow-ups** — payload-driven deep-link auto-open to the surface, delivery reliability / retries
 - [ ] v1.2 — iPad layout, external keyboard polish
 - [ ] v1.3 — file preview for cmux's "open in pane" intents
 - [ ] v2.0 — byte-stream RPC for high-rate TUIs (vim, htop, k9s)

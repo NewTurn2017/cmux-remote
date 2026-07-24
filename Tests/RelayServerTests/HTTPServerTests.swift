@@ -57,7 +57,7 @@ final class HTTPServerTests: XCTestCase {
 
     func testApnsWithoutBearerReturns401() async throws {
         try await withFixture { fx in
-            let body = #"{"apns_token":"t","env":"prod"}"#
+            let body = #"{"apns_token":"abcdef1234","env":"prod"}"#
             let resp = try await fx.rawRequest(
                 "POST /v1/devices/me/apns HTTP/1.1\r\nHost: \(fx.host)\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
             )
@@ -71,20 +71,20 @@ final class HTTPServerTests: XCTestCase {
                                                     loginName: "a@b",
                                                     hostname: "iPhone",
                                                     apnsToken: nil)
-            let body = #"{"apns_token":"abc-token","env":"prod"}"#
+            let body = #"{"apns_token":"abcdef1234","env":"prod"}"#
             let resp = try await fx.rawRequest(
                 "POST /v1/devices/me/apns HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer \(token)\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
             )
             XCTAssertEqual(resp.statusCode, 204, "body=\(resp.bodyString)")
             XCTAssertEqual(fx.deviceStore.lookup(deviceId: "d-apns")?.apnsToken,
-                           "abc-token")
+                           "abcdef1234")
             XCTAssertEqual(fx.deviceStore.lookup(deviceId: "d-apns")?.apnsEnv, "prod")
         }
     }
 
     func testApnsWithUnknownBearerReturns401() async throws {
         try await withFixture { fx in
-            let body = #"{"apns_token":"t","env":"prod"}"#
+            let body = #"{"apns_token":"abcdef1234","env":"prod"}"#
             let resp = try await fx.rawRequest(
                 "POST /v1/devices/me/apns HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer not-a-real-token\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
             )

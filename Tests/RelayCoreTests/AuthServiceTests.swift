@@ -109,6 +109,38 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertEqual(p.nodeKey, "nodekey:fallback")
     }
 
+    func testTailscaleExecutablePrefersCLIFromPath() throws {
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let cli = temp.appendingPathComponent("tailscale", isDirectory: false)
+        XCTAssertTrue(FileManager.default.createFile(atPath: cli.path, contents: Data()))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cli.path)
+
+        let resolved = TailscaledLocalAuth.resolveTailscaleExecutable(
+            environment: ["PATH": temp.path],
+            guiExecutablePath: "/no/such/Tailscale"
+        )
+
+        XCTAssertEqual(resolved?.path, cli.path)
+    }
+
+    func testTailscaleExecutableFallsBackToGuiApp() throws {
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let gui = temp.appendingPathComponent("Tailscale", isDirectory: false)
+        XCTAssertTrue(FileManager.default.createFile(atPath: gui.path, contents: Data()))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: gui.path)
+
+        let resolved = TailscaledLocalAuth.resolveTailscaleExecutable(
+            environment: ["PATH": ""],
+            guiExecutablePath: gui.path
+        )
+
+        XCTAssertEqual(resolved?.path, gui.path)
+    }
+
 }
 
 private final class LockedString: @unchecked Sendable {

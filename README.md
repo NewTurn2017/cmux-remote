@@ -2,29 +2,59 @@
 
 # cmux Remote
 
-> Tailscale 네트워크 너머에서 [cmux](https://github.com/manaflow-ai/cmux)
+> Tailscale 또는 직접 운영하는 VPS를 통해 [cmux](https://github.com/manaflow-ai/cmux)
 > 터미널을 iPhone으로 조작하는 비공식 원격 클라이언트.
 
 cmux Remote는 Mac에서 돌아가는 cmux의 작업공간과 터미널을 iPhone에서
-읽고 조작할 수 있게 해주는 SwiftUI 앱 + Swift 데몬 묶음입니다. 모든
-트래픽은 사용자의 Tailscale tailnet 안에서만 흐르며, 공용 인터넷으로
-노출되는 포트는 없습니다.
+읽고 조작할 수 있게 해주는 SwiftUI 앱 + Swift 데몬 묶음입니다. Direct
+모드는 Tailscale을 사용하고, 선택형 Server 모드는 iPhone과 Mac이 사용자가
+운영하는 VPS Broker에 TLS로 각각 outbound 연결합니다.
+
+> **iPhone에 Tailscale을 설치하지 않는 방법:**
+> [자체 호스팅 Broker 가이드](broker/README.md)를 참고하세요. Server 모드는
+> TLS를 사용하지만 E2E 암호화는 아니므로 Broker가 중계 프레임을 볼 수 있습니다.
 
 이 프로젝트는 **Manaflow가 만들거나 공식 지원하는 결과물이 아닙니다.**
 cmux와 문서화된 JSON-RPC 프로토콜로만 통신하는 독립 네트워크 클라이언트.
 
 ---
 
+## 이번 업데이트 — v1.0.6
+
+<p align="center">
+  <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote 브랜드마크" width="320">
+</p>
+
+v1.0.5 이후 새로 추가되거나 바뀐 점:
+
+- 🔔 **네이티브 푸시 알림 (APNs)** — cmux 이벤트와 Claude/Codex 계열 `needs input` 프롬프트를 relay가 APNs로 직접 보냅니다. relay에 `apns` 블록을 설정하면 앱이 백그라운드·종료 상태여도 배너가 도착하고, 설정하지 않으면 기존 로컬 알림으로 자동 폴백합니다.
+- ⌨️ **Ctrl-C 단축키** — 실행 중인 명령을 끊을 수 있도록 터미널 키보드 바에 전용 Ctrl-C 키를 추가했습니다.
+- 🖼️ **App Store 스크린샷 5장 전체 교체** — 최신 워크스페이스 · 터미널 · 키보드 · Inbox · 설정 화면을 반영했습니다.
+
+<table>
+  <tr>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/01-workspaces-remote-control.png" alt="작업공간 원격 제어" width="180"><br><sub>작업공간 / surface 칩바</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/02-terminal-live-control.png" alt="터미널 실시간 제어" width="180"><br><sub>터미널 실시간 미러링</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/03-keyboard-shortcuts.png" alt="키 액세서리 바" width="180"><br><sub>키 액세서리 바 · Ctrl-C</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/04-inbox-notifications.png" alt="알림 Inbox" width="180"><br><sub>알림 Inbox · 푸시</sub></td>
+    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/05-settings-connection-guide.png" alt="설정 / 연결" width="180"><br><sub>설정 · 페어링 가이드</sub></td>
+  </tr>
+</table>
+
+> 1.0.5 이하 변경 내역은 아래 **변경 이력** 참고.
+
+---
+
 ## 상태
 
-**얼리 프리뷰 (v1.0.5).** 다음이 됩니다:
+**얼리 프리뷰 (v1.0.6).** 다음이 됩니다:
 
 - cmux 작업공간 / surface 목록 보기, 생성, 이름 변경, 닫기
 - 임의의 터미널 surface를 실시간 미러링 (15Hz diff 폴링, 120줄 bounded history)
-- 키 입력 / 키 조합 / 텍스트 / 커맨드 라인 / LIVE 즉시 입력 전송
+- 키 입력 / 키 조합 / 텍스트 / 커맨드 라인 / LIVE 즉시 입력 전송 · Ctrl-C 단축키
 - iPhone 클립보드 붙여넣기 + 사진 첨부 경로 삽입
 - 연결된 MacBook 배터리 상태 표시
-- cmux 알림과 Claude/Codex 계열 `needs input` 이벤트를 iOS Inbox/로컬 알림으로 표시
+- cmux 알림과 Claude/Codex 계열 `needs input` 이벤트를 iOS Inbox + 로컬 알림 또는 APNs 푸시로 표시
 - 입력 패널을 화면 하단에 붙이고, 가려진 터미널 줄을 끌어올릴 수 있도록 하단 스크롤 여유 추가
 - 마우스 모드 TUI 탭 입력 (Textual / Bubble Tea / fzf / omx 등)
 - pane 포커스 자동 고정 + 이전 pane 토글
@@ -32,25 +62,27 @@ cmux와 문서화된 JSON-RPC 프로토콜로만 통신하는 독립 네트워�
 macOS 14 + iOS 17 실기기 + 시뮬레이터에서 같은 Wi-Fi와 Tailnet
 환경에서 스모크 테스트했습니다 (Tailscale 1.84+).
 
-> **알림 한계** — 현재 알림은 *로컬* 알림입니다. 앱이 foreground이거나
-> 백그라운드에서 WebSocket이 살아있는 동안만 iOS 배너가 뜹니다. 진짜
-> APNs 푸시(앱이 종료/장시간 백그라운드일 때도 도달)는 v1.1 로드맵.
+> **알림 전달** — 1.0.6부터 relay에 `apns` 블록을 설정하면 앱이 종료/장시간
+> 백그라운드 상태여도 APNs 푸시로 배너가 도착합니다. APNs를 설정하지 않으면
+> 기존처럼 앱이 foreground이거나 백그라운드에서 WebSocket이 살아있는 동안만
+> 뜨는 로컬 알림으로 동작합니다. (아래 **설정**의 `apns` 블록 참고.)
 
-## 스크린샷
+---
 
-<p align="center">
-  <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote 브랜드마크" width="320">
-</p>
+## 변경 이력
 
-<table>
-  <tr>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/01-workspaces-remote-control.png" alt="작업공간 원격 제어" width="180"><br><sub>작업공간 / surface 칩바</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/02-terminal-live-control.png" alt="터미널 실시간 제어" width="180"><br><sub>터미널 실시간 미러링</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/03-keyboard-shortcuts.png" alt="키 액세서리 바" width="180"><br><sub>키 액세서리 바</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/04-inbox-notifications.png" alt="알림 Inbox" width="180"><br><sub>알림 Inbox</sub></td>
-    <td align="center" width="20%"><img src="docs/launch-assets/screenshots/app-store-6.9/05-settings-connection-guide.png" alt="설정 / 연결" width="180"><br><sub>설정 · 페어링 가이드</sub></td>
-  </tr>
-</table>
+> 최근 변경을 최신순으로 요약합니다. 형식: `날짜 · 버전/범위 · 요약`.
+> 범위 — `app`(iOS 앱) · `relay`(Mac 데몬) · `setup`(설치/문서).
+> 버전별 App Store 상세 노트는
+> [`docs/launch-assets/release-notes/`](docs/launch-assets/release-notes/)에 있습니다.
+
+- **2026-06-23 · v1.0.6 (app + relay)** — 네이티브 APNs 푸시 알림(relay `apns` 블록 설정 시 앱 종료 상태에도 배너 도착, 미설정 시 로컬 알림 폴백), 터미널 키보드 바 Ctrl-C 단축키, App Store 6.9" 스크린샷 5장 전체 교체.
+- **2026-06-06 · relay** — cmux 1.0.5가 Unix 소켓을 `~/Library/Application Support/cmux`에서 `~/.local/state/cmux`로 이전한 것에 대응. `cmuxSocketPath()`가 마커를 최신순(`/tmp/cmux-last-socket-path` → `~/.local/state/cmux/last-socket-path` → 레거시 Application Support)으로 추적하고, 없으면 `~/.local/state/cmux/cmux.sock`로 폴백. **iOS 앱 무변경 → App Store 재제출 불필요.**
+- **2026-06-05 · v1.0.5 (app)** — LIVE 즉시 입력 모드(문자 단위 즉시 전송), 한글 IME 보호(조합 중 자모 분리 방지), 입력 패널 하단 flush, 터미널 하단 스크롤 여유 5줄, `needs input` Inbox 커버리지 개선.
+- **2026-06-05 · setup** — relay 설치 스크립트 foolproof화 + 연결 가이드(`docs/connection-guide.md`) 추가.
+- **2026-05-29 · v1.0.4 (app)** — 파싱 row/style run 캐싱으로 터미널 렌더링 가속, 120줄 bounded history, 256색/트루컬러 ANSI, checksum 정합 개선.
+- **2026-05-28 · v1.0.3 (relay)** — cmux가 소켓을 rotation할 때 stale 소켓을 붙잡아 "Connection refused"가 반복되던 문제 수정, 재설치 시 기본 동적 소켓 탐색, 소켓 경로 회귀 테스트 추가.
+- **2026-05-24 · v1.0.2 (app)** — 모바일 키보드 동작 개선, 작업공간 생성/이름변경/닫기, 이미지 첨부, 연결 컴퓨터 배터리 상태, Inbox 개선.
 
 ---
 
@@ -81,10 +113,12 @@ iPhone (iOS 17+)         Tailscale            Mac
                                                             ▼
                                               ┌────────────────────────────────┐
                                               │ cmux.app                       │
-                                              │ ~/Library/Application Support/ │
-                                              │   cmux/cmux.sock               │
+                                              │ ~/.local/state/cmux/cmux.sock  │
                                               └────────────────────────────────┘
 ```
+
+Server 모드는 `iPhone -- HTTPS/WSS --> VPS Broker <-- WSS -- Mac relay`
+구조입니다. Mac에는 inbound 포트를 열지 않으며 Direct 모드는 계속 기본값입니다.
 
 설치는 두 파트:
 
@@ -144,7 +178,8 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 - 중복 ID 가드 — 재연결로 같은 알림이 두 번 와도 한 번만 배너
 - Inbox 화면 — 최근 200건 보관, 가장 최근 먼저
 - Claude/Codex 계열 `needs input`, `needs attention`, 승인 요청 이벤트를 일반 cmux 알림과 같은 Inbox 항목으로 승격
-- 딥링크 `cmux://surface/<id>` 처리 (M6 APNs 합류 예정)
+- relay에 `apns` 블록을 설정하면 cmux 이벤트와 `needs input`을 APNs 푸시로 전달 — 앱이 종료된 상태에도 도달, 미설정 시 로컬 알림 폴백
+- 딥링크 `cmux://surface/<id>` 처리 (푸시 페이로드 딥링크 자동 오픈은 v1.1 예정)
 - Settings의 `SEND TEST NOTIFICATION` 버튼 — 로컬 inject 즉시 확인 +
   relay→cmux→events.stream 라운드트립 별도 상태 라인
 
@@ -160,6 +195,7 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 - MacBook 배터리 상태 조회 (`host.battery`) 및 iPhone 헤더 배지 표시
 - iPhone 사진 업로드를 Mac의 `~/Downloads/cmux-remote/` 안에만 저장 (`file.upload`)
 - events.stream 전용 cmux UDS 채널 분리 (구독 채널은 push-only lock)
+- APNs 푸시 fanout (`APNsProvider`) — 디바이스 토큰별 알림 전송, relay에 `apns` 미설정 시 비활성
 
 ### 보안
 
@@ -178,21 +214,21 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 
 - macOS 13 Ventura 이상
 - [cmux](https://github.com/manaflow-ai/cmux) 설치 + 소켓 노출
-  (기본 `~/Library/Application Support/cmux/cmux.sock`)
+  (기본 `~/.local/state/cmux/cmux.sock`)
 - Swift 5.10 툴체인 (Xcode 15.3+) — 소스에서 빌드용
-- Tailscale 로그인 상태
-- 비어있는 TCP 포트 (기본 `4399`)
+- Direct 모드는 Tailscale 로그인, Server 모드는 자체 호스팅 Broker 필요
+- Direct 모드는 빈 TCP 포트(기본 `4399`), Broker 전용 모드는 포트 불필요
 
 ### iPhone
 
 - iOS 17 이상
-- Mac과 같은 Tailnet (Tailscale 앱 로그인)
+- Direct 모드는 Mac과 같은 Tailnet, Server 모드는 iPhone VPN 불필요
 - 사이드로딩용 Apple Developer 계정 (개인 무료 7일 인증서로도 가능)
 
 ### 네트워크
 
-- Tailscale 1.84+ 양쪽
-- Funnel 불필요, 외부 hostname 불필요
+- Direct: 양쪽 Tailscale 1.84+, Funnel/공개 도메인 불필요
+- Server: VPS와 신뢰할 수 있는 HTTPS 인증서가 연결된 DNS 이름 필요
 
 ---
 
@@ -266,9 +302,14 @@ iPhone에서 cmux Remote 열기:
 
 1. **Add Mac** 탭
 2. 위에서 확인한 Tailscale IP 또는 MagicDNS 이름 입력, 포트는 `4399`
-3. Mac 메뉴바에서 페어링 승인
+3. **Add** — relay가 Tailscale 신원을 확인하고 페어링합니다
 
-페어링 시 디바이스별 토큰이 발급됩니다. 메뉴바에서 언제든 개별 revoke.
+relay는 자기 Mac의 tailnet 로그인을 자동으로 허용하므로, iPhone이 같은
+Tailscale 계정이면 보통 추가 설정 없이 바로 붙습니다. 다른 계정이거나
+relay가 태그 노드로 도는 경우에만 아래 **설정**의 `allow_login`에 본인
+로그인을 직접 추가하세요(그 외 로그인은 `403 Forbidden`). 페어링 시
+디바이스별 토큰이 발급되며
+`~/.cmuxremote/bin/cmux-relay devices revoke <id>`로 언제든 해지할 수 있습니다.
 
 ### 4. 사용
 
@@ -300,16 +341,59 @@ Relay는 `~/.cmuxremote/relay.json`을 읽습니다. 파일이 없으면
 레이어에서 차단됩니다. 개발 중 localhost를 허용하려면
 `CMUX_DEV_ALLOW_LOCALHOST=1` 환경 변수로 install 스크립트를 돌리세요.
 
-cmux Unix socket은 기본적으로 cmux가 쓰는
-`~/Library/Application Support/cmux/last-socket-path`를 따라갑니다.
-cmux 재시작 후 `cmux-501.sock`처럼 socket 이름이 바뀌어도 relay가
-stale `cmux.sock`에 묶이지 않도록 하기 위함입니다. 고정 경로가 꼭
+생략한 키는 위 기본값으로 채워지므로 위 3줄짜리 설정만으로도 relay는
+정상 부팅합니다. 페어링은 `allow_login`에 등록된 tailnet 로그인의 기기만
+허용하지만(나머지는 `403 Forbidden`), relay가 **자기 Mac의 로그인을 자동으로
+추가**하므로 같은 Tailscale 계정의 iPhone은 보통 비워둬도 붙습니다. 자동
+허용을 끄려면 `CMUX_NO_SELF_LOGIN=1`로 install 스크립트를 돌리세요.
+
+다른 계정의 기기를 붙이거나 relay가 태그 노드로 도는 경우에만 로그인을 직접
+추가합니다. 본인 로그인 값은 Tailscale 관리 콘솔, 또는
+`tailscale status --json`의 `Self.UserID`가 가리키는 `User[…].LoginName`
+에서 확인할 수 있습니다 (예: `you@example.com`). 이 값을 넣고 relay를
+재시작하세요:
+
+```json
+{
+  "listen":      "0.0.0.0:4399",
+  "allow_login": ["you@example.com"],
+  "default_fps": 15,
+  "idle_fps":    5
+}
+```
+
+```bash
+launchctl kickstart -k "gui/$(id -u)/com.genie.cmuxremote"
+```
+
+cmux Unix socket은 기본적으로 cmux가 쓰는 last-socket-path 마커를
+최신 규칙부터 따라갑니다: 고정 경로 `/tmp/cmux-last-socket-path` →
+`~/.local/state/cmux/last-socket-path` → 레거시
+`~/Library/Application Support/cmux/last-socket-path`. 어느 것도 없으면
+`~/.local/state/cmux/cmux.sock`로 폴백합니다. cmux 재시작으로
+`cmux-501.sock`처럼 socket 이름이 바뀌거나, cmux 업데이트가 소켓을
+`~/Library/Application Support/cmux`에서 `~/.local/state/cmux`로 옮겨도
+relay가 stale socket에 묶이지 않도록 하기 위함입니다. 고정 경로가 꼭
 필요한 운영 환경에서만 `CMUX_SOCKET_PATH=/path/to/socket`으로
 install 스크립트를 실행하세요.
 
-> **APNs 키 필드 (`apns_team_id`, `apns_key_id`, `apns_key_path`)는
-> v1.1에서 도입 예정.** 현재는 cmux 알림이 로컬 알림으로만 표시되며,
-> 앱이 종료된 상태에서는 도달하지 않습니다.
+> **APNs 푸시 (`apns` 블록).** relay.json에 `apns` 블록을 넣으면 cmux
+> 알림이 APNs 푸시로 전달돼 앱이 종료된 상태에서도 도착합니다. 블록이
+> 없으면 알림은 로컬 알림으로만 표시됩니다.
+>
+> ```json
+> {
+>   "apns": {
+>     "key_path": "~/.cmuxremote/AuthKey_XXXXXXXXXX.p8",
+>     "key_id":   "XXXXXXXXXX",
+>     "team_id":  "XXXXXXXXXX",
+>     "topic":    "com.genie.CmuxRemote",
+>     "env":      "prod"
+>   }
+> }
+> ```
+>
+> `env`는 개발/사이드로드 빌드면 `"sandbox"`, App Store/배포 빌드면 `"prod"`.
 
 ---
 
@@ -345,9 +429,12 @@ bootstrap + kickstart를 한 번에 처리하는 설치 스크립트를 다시 �
 정상 기동 시 `stderr.log`에 `starting cmux-relay on 0.0.0.0:4399` →
 `listening …` → `cmux event stream attached` 순으로 찍힙니다.
 `cmux event stream unavailable: socketMissing`가 보이면 cmux 앱부터
-켜고 relay를 kickstart 하세요. `Connection refused`가 반복되면
-`~/Library/Application Support/cmux/last-socket-path`가 현재 cmux
-socket을 가리키는지 확인한 뒤 install 스크립트를 다시 실행하세요.
+켜고 relay를 kickstart 하세요. `Connection refused`가 반복되면 relay가
+stale socket에 묶인 것 — install 스크립트를 다시 실행해 최신 바이너리로
+재설치하면 새 마커 경로(`/tmp/cmux-last-socket-path` →
+`~/.local/state/cmux`)를 자동으로 따라갑니다. 급하면
+`cat /tmp/cmux-last-socket-path`로 라이브 소켓을 확인해 `CMUX_SOCKET_PATH`로
+핀하세요.
 
 ---
 
@@ -373,9 +460,10 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
 
 - `cmux event stream unavailable: socketMissing` — **cmux가 꺼져 있음.**
   cmux 앱을 켜고 `launchctl kickstart -k "$SERVICE"`.
-- `Connection refused` 반복 — cmux 재시작으로 **소켓 이름이 바뀜.**
-  `~/Library/Application Support/cmux/last-socket-path`가 현재 소켓을
-  가리키는지 확인 후 `./scripts/install-launchd.sh` 재실행.
+- `Connection refused` 반복 — **소켓 경로가 바뀜**(cmux 재시작으로 이름이
+  바뀌었거나, 업데이트가 소켓을 `~/.local/state/cmux`로 옮김). 최신 relay는
+  마커를 자동 추적하니 `./scripts/install-launchd.sh`로 재설치하면 해결.
+  급하면 `cat /tmp/cmux-last-socket-path`의 경로를 `CMUX_SOCKET_PATH`로 핀.
 - 헬스 체크는 OK인데 앱만 못 붙음 — **네트워크/주소 문제.** iPhone과
   Mac이 같은 Tailnet인지, 앱 주소·포트(`4399`)가 맞는지, 디바이스 토큰이
   revoke되지 않았는지(`.build/release/cmux-relay devices list`) 확인.
@@ -394,8 +482,8 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
 - [x] v1.0.3 — 실기기 relay socket 회전/재연결 안정화
 - [x] v1.0.4 — 터미널 렌더링 성능 최적화, 120줄 history, ANSI 256색/truecolor 렌더링 기반, 실기기 live relay 스모크 검증
 - [x] v1.0.5 — LIVE 입력 모드, 한글 IME 보호, 하단 고정 입력 패널, 터미널 5행 하단 스크롤 여유, Claude/Codex Inbox 회귀 테스트
-- [ ] **v1.1 — APNs 푸시** (백그라운드/종료 상태 알림), 푸시 페이로드
-      → 딥링크 surface 자동 오픈
+- [x] v1.0.6 — 네이티브 APNs 푸시 알림(앱 종료 상태 도달), Ctrl-C 단축키, App Store 스크린샷 5장 교체
+- [ ] **v1.1 — 푸시 후속** — 푸시 페이로드 → 딥링크로 surface 자동 오픈, 전달 신뢰성/재시도 강화
 - [ ] v1.2 — iPad 레이아웃, 외장 키보드 폴리시
 - [ ] v1.3 — cmux "open in pane" 인텐트용 파일 프리뷰
 - [ ] v2.0 — 고빈도 TUI(vim, htop, k9s) 대상 바이트스트림 RPC

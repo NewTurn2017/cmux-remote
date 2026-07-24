@@ -47,6 +47,33 @@ final class StoresTests: XCTestCase {
         XCTAssertFalse(EndpointPolicy.isAllowedRelayHost("192.168.1.5"))
     }
 
+    func testEndpointPolicyRequiresTLSForPublicBroker() {
+        XCTAssertTrue(EndpointPolicy.isAllowedBrokerURL("https://relay.example.com"))
+        XCTAssertTrue(EndpointPolicy.isAllowedBrokerURL("wss://relay.example.com/cmux"))
+        XCTAssertTrue(EndpointPolicy.isAllowedBrokerURL("http://localhost:4398"))
+        XCTAssertFalse(EndpointPolicy.isAllowedBrokerURL("http://relay.example.com"))
+        XCTAssertFalse(EndpointPolicy.isAllowedBrokerURL("relay.example.com"))
+    }
+
+    func testBrokerEndpointBuildsHTTPAndWebSocketRoutes() throws {
+        let endpoint = RelayEndpoint.broker(
+            baseURL: "https://relay.example.com/cmux/",
+            relayId: "home mac"
+        )
+        XCTAssertEqual(
+            try endpoint.registrationURL().absoluteString,
+            "https://relay.example.com/cmux/v1/devices/me/register"
+        )
+        XCTAssertEqual(
+            try endpoint.webSocketURL().absoluteString,
+            "wss://relay.example.com/cmux/v1/ws?relay_id=home%20mac"
+        )
+        XCTAssertEqual(
+            try endpoint.apnsURL().absoluteString,
+            "https://relay.example.com/cmux/v1/devices/me/apns?relay_id=home%20mac"
+        )
+    }
+
 
     func testWorkspaceStoreCreatesSurfaceAndSelectsReturnedSurface() async throws {
         let rpc = StubRPCDispatch()
@@ -209,6 +236,59 @@ final class StoresTests: XCTestCase {
         })
     }
 
+    func testChangingTerminalHistoryRefreshesTheActiveSubscription() async {
+        let key = "cmux.terminalHistoryLines"
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: key)
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        defaults.set(240, forKey: key)
+
+        let rpc = StubRPCDispatch()
+        let surfaceStore = SurfaceStore(rpc: rpc)
+        await surfaceStore.subscribe(workspaceId: "w1", surfaceId: "s1")
+        await surfaceStore.refreshSubscriptionPreferences()
+
+        let calls = await rpc.calls
+        XCTAssertEqual(calls.filter { $0.method == "surface.unsubscribe" }.count, 1)
+        XCTAssertEqual(calls.filter { $0.method == "surface.subscribe" }.count, 2)
+        XCTAssertTrue(calls.filter { $0.method == "surface.subscribe" }.allSatisfy { call in
+            guard case .object(let params) = call.params,
+                  case .int(let lines)? = params["lines"]
+            else { return false }
+            return lines == 240
+        })
+        XCTAssertEqual(surfaceStore.subscribedWorkspaceId, "w1")
+        XCTAssertEqual(surfaceStore.subscribed, "s1")
+    }
+
+    func testCursorHistoryPrependsOlderRowsAndCanResumeLiveOutput() async {
+        let rpc = StubRPCDispatch()
+        let surfaceStore = SurfaceStore(rpc: rpc)
+        await surfaceStore.subscribe(workspaceId: "w1", surfaceId: "s1")
+
+        await surfaceStore.loadOlderHistory()
+        XCTAssertEqual(surfaceStore.historyRows, ["older-2"])
+        XCTAssertEqual(surfaceStore.historyAnchorRows, ["fresh"])
+        XCTAssertNotNil(surfaceStore.historyNextCursor)
+        let originalTopPageID = surfaceStore.historyPages.first?.id
+        XCTAssertEqual(surfaceStore.historyRestoreAnchorID, SurfaceStore.liveHistoryAnchorID)
+
+        await surfaceStore.loadOlderHistory()
+        XCTAssertEqual(surfaceStore.historyRows, ["older-1", "older-2"])
+        XCTAssertNil(surfaceStore.historyNextCursor)
+        XCTAssertEqual(surfaceStore.historyRestoreAnchorID, originalTopPageID)
+
+        surfaceStore.resumeLiveHistory()
+        XCTAssertTrue(surfaceStore.historyRows.isEmpty)
+        XCTAssertNil(surfaceStore.historyAnchorRows)
+    }
+
     func testSurfaceStoreSendsTextAndKeys() async throws {
         let rpc = StubRPCDispatch()
         let surfaceStore = SurfaceStore(rpc: rpc)
@@ -237,7 +317,7 @@ final class StoresTests: XCTestCase {
         XCTAssertTrue(calls.contains { call in
             guard call.method == "surface.send_key",
                   case .object(let params) = call.params,
-                  case .string("ctrl+c")? = params["key"]
+                  case .string("ctrl-c")? = params["key"]
             else { return false }
             return true
         })
@@ -536,6 +616,20 @@ final class StoresTests: XCTestCase {
         XCTAssertEqual(store.items.count, 200)
         XCTAssertEqual(store.items.first?.id, "n204")
         XCTAssertEqual(store.items.last?.id, "n5")
+    }
+
+    func testNotificationStoreUnreadCountDropsWhenWorkspaceSeen() {
+        let store = NotificationStore()
+        store.append(NotificationRecord(id: "n1", workspaceId: "w1", surfaceId: nil, title: "t1", subtitle: nil, body: "b1", ts: 1, threadId: "th1"))
+        store.append(NotificationRecord(id: "n2", workspaceId: "w2", surfaceId: nil, title: "t2", subtitle: nil, body: "b2", ts: 2, threadId: "th2"))
+
+        XCTAssertEqual(store.unreadCount, 2)
+
+        store.markWorkspaceSeen("w1")
+
+        XCTAssertEqual(store.unreadCount, 1)
+        XCTAssertNil(store.unreadByWorkspace["w1"])
+        XCTAssertEqual(store.unreadByWorkspace["w2"], 1)
     }
 }
 

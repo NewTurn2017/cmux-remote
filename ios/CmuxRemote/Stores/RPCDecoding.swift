@@ -216,6 +216,12 @@ struct ReadTextPayload: Decodable {
     }
 }
 
+struct SurfaceHistoryPagePayload: Decodable {
+    let rows: [String]
+    let anchorRows: [String]?
+    let nextCursor: String?
+}
+
 public struct UploadedFilePayload: Decodable {
     let filename: String
     let path: String

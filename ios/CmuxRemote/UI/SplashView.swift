@@ -94,29 +94,29 @@ private struct SplashLine {
         switch style {
         case .banner:
             HStack(spacing: 0) {
-                Text(prefix).foregroundStyle(CmuxTheme.muted)
-                Text(body).foregroundStyle(CmuxTheme.accentGreen)
-                Text(suffix).foregroundStyle(CmuxTheme.muted)
+                Text(L10n.string(prefix)).foregroundStyle(CmuxTheme.muted)
+                Text(L10n.string(body)).foregroundStyle(CmuxTheme.accentGreen)
+                Text(L10n.string(suffix)).foregroundStyle(CmuxTheme.muted)
             }
             .cmuxDisplay(14)
         case .meta:
-            Text(body)
+            Text(L10n.string(body))
                 .cmuxMono(11)
                 .foregroundStyle(CmuxTheme.muted)
         case .divider:
-            Text(body)
+            Text(L10n.string(body))
                 .cmuxDisplay(12)
                 .foregroundStyle(CmuxTheme.divider)
         case .stepOk:
             HStack(spacing: 0) {
-                Text(prefix).foregroundStyle(CmuxTheme.muted)
-                Text(body.uppercased()).foregroundStyle(CmuxTheme.accentGreen)
-                Text(suffix).foregroundStyle(CmuxTheme.ink)
+                Text(L10n.string(prefix)).foregroundStyle(CmuxTheme.muted)
+                Text(L10n.string(body).uppercased()).foregroundStyle(CmuxTheme.accentGreen)
+                Text(L10n.string(suffix)).foregroundStyle(CmuxTheme.ink)
             }
             .cmuxDisplay(12)
         case .ready:
             HStack(spacing: 4) {
-                Text(prefix + body + suffix)
+                Text(L10n.string(prefix + body + suffix))
                     .foregroundStyle(CmuxTheme.canvas)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)

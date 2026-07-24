@@ -39,7 +39,11 @@ final class SmokeUITests: XCTestCase {
 
         app.buttons["esc"].tap()
         XCTAssertTrue(inputStatus.waitForExistence(timeout: 5))
-        XCTAssertTrue(inputStatus.label.contains("Sent esc"), inputStatus.label)
+        XCTAssertTrue(inputStatus.label.contains("Sent escape"), inputStatus.label)
+
+        app.buttons["send ctrl c"].tap()
+        XCTAssertTrue(inputStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(inputStatus.label.contains("Sent ctrl-c"), inputStatus.label)
 
         app.buttons["send up arrow"].tap()
         XCTAssertTrue(inputStatus.waitForExistence(timeout: 5))
@@ -140,6 +144,7 @@ final class SmokeUITests: XCTestCase {
         assertAboveKeyboard(app.buttons["CommandSubmitButton"], keyboardTop: keyboardTop, name: "send")
         let escShortcut = app.buttons["esc"]
         assertVisibleAboveKeyboard(escShortcut, keyboardTop: keyboardTop, name: "esc shortcut")
+        assertVisibleAboveKeyboard(app.buttons["send ctrl c"], keyboardTop: keyboardTop, name: "ctrl+c shortcut")
         assertVisibleAboveKeyboard(app.buttons["send slash new shortcut"], keyboardTop: keyboardTop, name: "/new shortcut")
         assertVisibleAboveKeyboard(app.buttons["send space for omx selection"], keyboardTop: keyboardTop, name: "space shortcut")
         let scrollButton = app.buttons["TerminalScrollToBottomButton"]
@@ -163,6 +168,24 @@ final class SmokeUITests: XCTestCase {
         let title = app.staticTexts["Claude Code needs input"]
         XCTAssertTrue(title.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Claude is waiting for your input"].exists)
+    }
+
+    func testInboxUnreadBadgeClearsAfterOpeningInboxMessage() throws {
+        let app = launchFakeRelayApp()
+
+        let inboxBadge = app.staticTexts["InboxUnreadBadge"]
+        XCTAssertTrue(inboxBadge.waitForExistence(timeout: 5), app.debugDescription)
+        let initialCount = try unreadBadgeCount(in: app)
+
+        app.buttons["Inbox"].tap()
+        app.staticTexts["Claude Code needs input"].tap()
+
+        let backButton = app.buttons["WorkspaceBackButton"]
+        XCTAssertTrue(backButton.waitForExistence(timeout: 5), app.debugDescription)
+        backButton.tap()
+
+        let finalCount = try unreadBadgeCount(in: app)
+        XCTAssertLessThan(finalCount, initialCount)
     }
 
     func testLiveInputModeSendsCharactersWithoutSubmit() throws {
@@ -189,6 +212,41 @@ final class SmokeUITests: XCTestCase {
         let inputStatus = app.staticTexts["InputStatusMessage"]
         XCTAssertTrue(inputStatus.waitForExistence(timeout: 5))
         XCTAssertTrue(inputStatus.label.contains("Sent a"), inputStatus.label)
+    }
+
+    func testServerSettingsFieldsAreVisibleAndDoNotOverlap() throws {
+        let app = launchFakeRelayApp()
+
+        let settingsTab = app.buttons["Settings"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 5))
+        settingsTab.tap()
+
+        let connectionItem = app.buttons["SettingsConnectionItem"]
+        XCTAssertTrue(connectionItem.waitForExistence(timeout: 5), app.debugDescription)
+        connectionItem.tap()
+
+        let modePicker = app.segmentedControls["ConnectionModePicker"]
+        XCTAssertTrue(modePicker.waitForExistence(timeout: 5), app.debugDescription)
+        scrollToHittable(modePicker, in: app)
+
+        let serverSegment = modePicker.buttons["SERVER"]
+        XCTAssertTrue(serverSegment.waitForExistence(timeout: 5))
+        serverSegment.tap()
+
+        let brokerURL = app.textFields["BrokerURLField"]
+        let relayID = app.textFields["RelayIDField"]
+        let pairingCode = app.secureTextFields["PairingCodeField"]
+        let fields = [brokerURL, relayID, pairingCode]
+
+        for field in fields {
+            XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+            scrollToHittable(field, in: app)
+            XCTAssertTrue(field.isHittable)
+            XCTAssertGreaterThan(field.frame.width, app.frame.width * 0.7)
+        }
+
+        XCTAssertLessThan(brokerURL.frame.maxY, relayID.frame.minY)
+        XCTAssertLessThan(relayID.frame.maxY, pairingCode.frame.minY)
     }
 
     private func launchFakeRelayApp() -> XCUIApplication {
@@ -221,6 +279,21 @@ final class SmokeUITests: XCTestCase {
     private func assertVisibleAboveKeyboard(_ element: XCUIElement, keyboardTop: CGFloat, name: String) {
         XCTAssertTrue(element.exists, "\(name) should exist")
         XCTAssertLessThanOrEqual(element.frame.maxY, keyboardTop - 1, "\(name) should not overlap the software keyboard")
+    }
+
+    private func unreadBadgeCount(in app: XCUIApplication) throws -> Int {
+        let badge = app.staticTexts["InboxUnreadBadge"]
+        XCTAssertTrue(badge.waitForExistence(timeout: 5), app.debugDescription)
+        let prefix = badge.label.split(separator: " ").first
+        return try XCTUnwrap(prefix.flatMap { Int(String($0)) })
+    }
+
+    private func scrollToHittable(_ element: XCUIElement, in app: XCUIApplication) {
+        var attempts = 0
+        while !element.isHittable && attempts < 6 {
+            app.swipeUp()
+            attempts += 1
+        }
     }
 }
 

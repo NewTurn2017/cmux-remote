@@ -6,6 +6,12 @@ final class ConfigLoaderTests: XCTestCase {
         let json = #"""
         {
           "listen": "0.0.0.0:4399",
+          "transport": "both",
+          "broker": {
+            "url": "wss://relay.example.com",
+            "relay_id": "studio-mac",
+            "relay_token": "relay-secret"
+          },
           "allow_login": ["alice@example.com"],
           "apns": { "key_path": "/k.p8", "key_id": "K", "team_id": "T",
                     "topic": "com.example", "env": "prod" },
@@ -16,15 +22,93 @@ final class ConfigLoaderTests: XCTestCase {
         """#
         let cfg = try RelayConfig.decode(jsonString: json)
         XCTAssertEqual(cfg.listen, "0.0.0.0:4399")
+        XCTAssertEqual(cfg.transport, .both)
+        XCTAssertEqual(cfg.broker?.url, "wss://relay.example.com")
+        XCTAssertEqual(cfg.broker?.relayId, "studio-mac")
+        XCTAssertEqual(cfg.broker?.relayToken, "relay-secret")
         XCTAssertEqual(cfg.allowLogin, ["alice@example.com"])
         XCTAssertEqual(cfg.apns.keyId, "K")
         XCTAssertEqual(cfg.snippets.first?.label, "ll")
         XCTAssertEqual(cfg.defaultFps, 15)
     }
 
-    func testRejectsMissingApns() {
-        let json = #"{"listen":"x","allow_login":[],"snippets":[],"default_fps":15,"idle_fps":5}"#
+    /// Regression for #3. The installer (and the documented default) writes a
+    /// minimal relay.json carrying only `listen`/`default_fps`/`idle_fps`. The
+    /// relay must boot from it, filling the omitted optional fields with safe
+    /// defaults, instead of crash-looping with `keyNotFound: allow_login`.
+    func testParsesMinimalInstallerConfig() throws {
+        let json = #"""
+        {
+          "listen":      "0.0.0.0:4399",
+          "default_fps": 15,
+          "idle_fps":    5
+        }
+        """#
+        let cfg = try RelayConfig.decode(jsonString: json)
+        XCTAssertEqual(cfg.listen, "0.0.0.0:4399")
+        XCTAssertEqual(cfg.transport, .direct)
+        XCTAssertNil(cfg.broker)
+        XCTAssertEqual(cfg.allowLogin, [])
+        XCTAssertEqual(cfg.snippets, [])
+        XCTAssertEqual(cfg.apns.env, "sandbox")
+        XCTAssertEqual(cfg.apns.keyId, "")
+        XCTAssertEqual(cfg.defaultFps, 15)
+        XCTAssertEqual(cfg.idleFps, 5)
+    }
+
+    /// Any omitted key falls back to the baseline default, so even an empty
+    /// document yields a usable config rather than throwing.
+    func testEmptyObjectUsesDefaults() throws {
+        let cfg = try RelayConfig.decode(jsonString: "{}")
+        XCTAssertEqual(cfg, RelayConfig.defaults)
+    }
+
+    /// A present-but-malformed value (wrong type) still fails loudly — only
+    /// *omitted* keys are defaulted, never bad ones.
+    func testRejectsMalformedValue() {
+        let json = #"{"allow_login": "not-an-array"}"#
         XCTAssertThrowsError(try RelayConfig.decode(jsonString: json))
+    }
+
+    func testParsesBrokerOnlyConfig() throws {
+        let json = #"""
+        {
+          "transport": "broker",
+          "broker": {
+            "url": "https://relay.example.com",
+            "relay_id": "home-mac",
+            "relay_token": "secret"
+          }
+        }
+        """#
+        let cfg = try RelayConfig.decode(jsonString: json)
+        XCTAssertEqual(cfg.transport, .broker)
+        XCTAssertFalse(cfg.transport.enablesDirect)
+        XCTAssertTrue(cfg.transport.enablesBroker)
+        XCTAssertEqual(cfg.broker?.relayId, "home-mac")
+    }
+
+    func testRejectsUnknownTransport() {
+        XCTAssertThrowsError(try RelayConfig.decode(jsonString: #"{"transport":"vpn"}"#))
+    }
+
+    /// `authorizing(login:)` folds the relay host's own tailnet login into
+    /// allow_login so the owner's phone pairs without hand-editing the config.
+    func testAuthorizingAddsSelfLogin() {
+        XCTAssertEqual(RelayConfig.defaults.authorizing(login: "me@example.com").allowLogin,
+                       ["me@example.com"])
+    }
+
+    /// It must be idempotent and ignore nil/empty so it never duplicates an
+    /// operator-listed login or reacts to a tagged node's missing identity.
+    func testAuthorizingIsIdempotentAndNilSafe() {
+        var cfg = RelayConfig.defaults
+        cfg.allowLogin = ["me@example.com"]
+        XCTAssertEqual(cfg.authorizing(login: "me@example.com").allowLogin, ["me@example.com"])
+        XCTAssertEqual(cfg.authorizing(login: nil).allowLogin, ["me@example.com"])
+        XCTAssertEqual(cfg.authorizing(login: "").allowLogin, ["me@example.com"])
+        XCTAssertEqual(cfg.authorizing(login: "you@example.com").allowLogin,
+                       ["me@example.com", "you@example.com"])
     }
 
     func testReloadFromDisk() throws {

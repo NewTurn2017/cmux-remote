@@ -185,46 +185,51 @@ def nav_dark(d, x, y, w, title="cmux-iphone", chip="omx", path=".../dev/side/cmu
     d.text((x + 248, y + 260), path, font=F["body"], fill=(168, 174, 184))
 
 
+def key_row(d, keys, x, y, w, h=54):
+    gap = 10
+    key_w = (w - gap * (len(keys) - 1)) // len(keys)
+    cx = x
+    for label in keys:
+        rr(d, (cx, y, cx + key_w, y + h), 15, (20, 23, 30), outline=(61, 68, 80), width=2)
+        tw = d.textlength(label, font=F["tiny"])
+        d.text((cx + (key_w - tw) / 2, y + 15), label, font=F["tiny"], fill=(207, 214, 224))
+        cx += key_w + gap
+
+
 def composer(d, x, y, w, bottom):
-    panel_h = 315
-    rr(d, (x + 52, bottom - panel_h, x + w - 52, bottom - 46), 56, (28, 31, 38))
-    rr(d, (x + 104, bottom - panel_h + 60, x + w - 270, bottom - panel_h + 136), 38, (36, 39, 47))
-    d.text((x + 152, bottom - panel_h + 83), "터미널에 입력", font=F["body"], fill=(83, 89, 101))
+    panel_h = 420
+    panel_top = bottom - panel_h
+    rr(d, (x + 52, panel_top, x + w - 52, bottom - 46), 56, (28, 31, 38))
+    rr(d, (x + 104, panel_top + 58, x + w - 104, panel_top + 134), 38, (36, 39, 47))
+    d.text((x + 152, panel_top + 81), "터미널에 입력", font=F["body"], fill=(83, 89, 101))
     for i in range(2):
         cx = x + 118 + i * 130
-        rr(d, (cx - 42, bottom - panel_h + 172, cx + 42, bottom - panel_h + 256), 42, (43, 47, 56))
+        rr(d, (cx - 42, panel_top + 154, cx + 42, panel_top + 218), 32, (43, 47, 56))
         if i == 0:
-            rr(d, (cx - 23, bottom - panel_h + 202, cx + 23, bottom - panel_h + 226), 5, None, outline=(185, 193, 205), width=3)
+            rr(d, (cx - 23, panel_top + 176, cx + 23, panel_top + 200), 5, None, outline=(185, 193, 205), width=3)
             for gx in range(cx - 14, cx + 18, 10):
-                d.line((gx, bottom - panel_h + 209, gx + 2, bottom - panel_h + 209), fill=(185, 193, 205), width=2)
-            d.line((cx - 10, bottom - panel_h + 219, cx + 10, bottom - panel_h + 219), fill=(185, 193, 205), width=2)
+                d.line((gx, panel_top + 183, gx + 2, panel_top + 183), fill=(185, 193, 205), width=2)
+            d.line((cx - 10, panel_top + 193, cx + 10, panel_top + 193), fill=(185, 193, 205), width=2)
         else:
             d.polygon(
                 [
-                    (cx - 28, bottom - panel_h + 214),
-                    (cx - 12, bottom - panel_h + 198),
-                    (cx + 28, bottom - panel_h + 198),
-                    (cx + 28, bottom - panel_h + 230),
-                    (cx - 12, bottom - panel_h + 230),
+                    (cx - 28, panel_top + 188),
+                    (cx - 12, panel_top + 172),
+                    (cx + 28, panel_top + 172),
+                    (cx + 28, panel_top + 204),
+                    (cx - 12, panel_top + 204),
                 ],
                 outline=(185, 193, 205),
                 fill=None,
             )
-            d.line((cx - 2, bottom - panel_h + 206, cx + 12, bottom - panel_h + 220), fill=(185, 193, 205), width=3)
-            d.line((cx + 12, bottom - panel_h + 206, cx - 2, bottom - panel_h + 220), fill=(185, 193, 205), width=3)
-    rr(d, (x + w - 330, bottom - panel_h + 172, x + w - 112, bottom - panel_h + 256), 42, (45, 49, 58))
-    d.text((x + w - 286, bottom - panel_h + 194), "➤  전송", font=F["body"], fill=(207, 213, 222))
-    sy = bottom - 78
-    for sx, lab in [
-        (x + 102, "esc"),
-        (x + 226, "줄바꿈"),
-        (x + 405, "/"),
-        (x + 535, "$"),
-        (x + 655, "enter"),
-        (x + 790, "↑"),
-        (x + 850, "↓"),
-    ]:
-        d.text((sx, sy), lab, font=F["small"], fill=(183, 190, 201))
+            d.line((cx - 2, panel_top + 180, cx + 12, panel_top + 194), fill=(185, 193, 205), width=3)
+            d.line((cx + 12, panel_top + 180, cx - 2, panel_top + 194), fill=(185, 193, 205), width=3)
+    rr(d, (x + w - 330, panel_top + 154, x + w - 112, panel_top + 218), 32, (45, 49, 58))
+    d.text((x + w - 286, panel_top + 169), "➤  전송", font=F["body"], fill=(207, 213, 222))
+    key_x = x + 104
+    key_w = w - 208
+    key_row(d, ["esc", "^C", "tab", "←", "↑", "↓", "→"], key_x, panel_top + 238, key_w)
+    key_row(d, ["OK", "/", "$", "/new", "space"], key_x, panel_top + 302, key_w)
 
 
 def workspace_ui(base: Image.Image, x, y, w, h, selected=True):
@@ -320,16 +325,16 @@ def screenshot_shortcuts(mark_path: Path):
     d = ImageDraw.Draw(img)
     d.text((88, 96), "입력은 길게,", font=F["title"], fill=(245, 248, 250))
     d.text((88, 184), "조작은 즉시", font=F["title"], fill=(245, 248, 250))
-    d.text((92, 294), "esc · 줄바꿈 · enter · ↑↓ 같은 터미널 키를 한 탭으로", font=F["subtitle"], fill=(166, 179, 188))
+    d.text((92, 294), "esc · ^C · tab · 방향키를 한 탭으로", font=F["subtitle"], fill=(166, 179, 188))
     phone_shell(img, y=500, fill=TERMINAL)
     x, y, w, h = 90, 500, 1140, 2180
     nav_dark(d, x, y, w, title="cmux-iphone", chip="omx", path=".../dev/side/cmux-iphone")
     rr(d, (x + 70, y + 370, x + w - 70, y + 995), 42, (16, 18, 24), outline=(65, 255, 123), width=10)
     d.text((x + 105, y + 410), "키보드가 올라와도\n터미널과 입력창이 함께 보입니다.", font=F["h1"], fill=(218, 231, 229), spacing=18)
-    d.text((x + 105, y + 610), "명령은 작성하고, 방향키/enter는 즉시 전송합니다.", font=F["body"], fill=(138, 156, 166), spacing=10)
-    composer(d, x, y, w, y + h - 330)
+    d.text((x + 105, y + 610), "긴 명령은 작성하고, 취소와 이동 키는 즉시 전송합니다.", font=F["body"], fill=(138, 156, 166), spacing=10)
     # Draw simplified keyboard.
     kb_y = y + h - 600
+    composer(d, x, y, w, kb_y - 18)
     rr(d, (x + 24, kb_y, x + w - 24, y + h - 28), 42, (184, 188, 194))
     rows = ["ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔ", "ㅁㄴㅇㄹㅎㅗㅓㅏㅣ", "⇧ㅋㅌㅊㅍㅠㅜㅡ⌫"]
     ry = kb_y + 86

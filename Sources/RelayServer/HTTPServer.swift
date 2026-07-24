@@ -34,6 +34,7 @@ public final class HTTPServer: @unchecked Sendable {
     public let deviceStore: DeviceStore
     public let sessionManager: SessionManager
     public let cmux: CMUXFacade
+    public let history: SurfaceHistoryService
     public let logger = Logger(label: "HTTPServer")
 
     public init(group: MultiThreadedEventLoopGroup,
@@ -41,7 +42,8 @@ public final class HTTPServer: @unchecked Sendable {
                 auth: AuthService,
                 deviceStore: DeviceStore,
                 sessionManager: SessionManager,
-                cmux: CMUXFacade)
+                cmux: CMUXFacade,
+                history: SurfaceHistoryService? = nil)
     {
         self.group = group
         self.routes = routes
@@ -49,6 +51,7 @@ public final class HTTPServer: @unchecked Sendable {
         self.deviceStore = deviceStore
         self.sessionManager = sessionManager
         self.cmux = cmux
+        self.history = history ?? SurfaceHistoryService(cmux: cmux)
     }
 
     /// Bind the server and return the listening channel. The caller is
@@ -60,6 +63,7 @@ public final class HTTPServer: @unchecked Sendable {
         let store = self.deviceStore
         let manager = self.sessionManager
         let cmux = self.cmux
+        let history = self.history
 
         let bs = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
@@ -96,7 +100,8 @@ public final class HTTPServer: @unchecked Sendable {
                         let handler = WebSocketHandler(deviceId: did,
                                                        deviceStore: store,
                                                        sessionManager: manager,
-                                                       cmuxClient: cmux)
+                                                       cmuxClient: cmux,
+                                                       history: history)
                         return ch.pipeline.addHandler(handler)
                     }
                 )

@@ -2,6 +2,31 @@ import Foundation
 
 /// `relay.json` schema. Spec section 7.3.
 public struct RelayConfig: Codable, Equatable, Sendable {
+    public enum Transport: String, Codable, Equatable, Sendable {
+        case direct
+        case broker
+        case both
+
+        public var enablesDirect: Bool { self == .direct || self == .both }
+        public var enablesBroker: Bool { self == .broker || self == .both }
+    }
+
+    public struct Broker: Codable, Equatable, Sendable {
+        public var url: String
+        public var relayId: String
+        public var relayToken: String
+
+        enum CodingKeys: String, CodingKey {
+            case url, relayId = "relay_id", relayToken = "relay_token"
+        }
+
+        public init(url: String, relayId: String, relayToken: String) {
+            self.url = url
+            self.relayId = relayId
+            self.relayToken = relayToken
+        }
+    }
+
     public struct APNs: Codable, Equatable, Sendable {
         public var keyPath: String
         public var keyId: String
@@ -24,6 +49,8 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     }
 
     public var listen: String
+    public var transport: Transport
+    public var broker: Broker?
     public var allowLogin: [String]
     public var apns: APNs
     public var snippets: [Snippet]
@@ -31,19 +58,65 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     public var idleFps: Int
 
     enum CodingKeys: String, CodingKey {
-        case listen, allowLogin = "allow_login", apns, snippets,
+        case listen, transport, broker, allowLogin = "allow_login", apns, snippets,
              defaultFps = "default_fps", idleFps = "idle_fps"
     }
 
-    public init(listen: String, allowLogin: [String], apns: APNs,
+    public init(listen: String, transport: Transport = .direct, broker: Broker? = nil,
+                allowLogin: [String], apns: APNs,
                 snippets: [Snippet], defaultFps: Int, idleFps: Int)
     {
-        self.listen = listen; self.allowLogin = allowLogin; self.apns = apns
+        self.listen = listen; self.transport = transport; self.broker = broker
+        self.allowLogin = allowLogin; self.apns = apns
         self.snippets = snippets; self.defaultFps = defaultFps; self.idleFps = idleFps
+    }
+
+    /// Baseline config used to fill any key omitted from `relay.json`. The
+    /// installer (and the documented happy path) writes only a handful of
+    /// keys, so decoding must tolerate the rest being absent rather than
+    /// throwing `keyNotFound` — which crash-loops the daemon at startup and
+    /// reads to users as "can't connect" (issue #3). Push stays disabled until
+    /// a real `apns` block is supplied; an empty `allow_login` authorises
+    /// nobody until the operator lists their tailnet login.
+    public static let defaults = RelayConfig(
+        listen: "0.0.0.0:4399",
+        transport: .direct,
+        broker: nil,
+        allowLogin: [],
+        apns: .init(keyPath: "", keyId: "", teamId: "", topic: "", env: "sandbox"),
+        snippets: [],
+        defaultFps: 15,
+        idleFps: 5
+    )
+
+    /// Tolerant decoder: present keys are decoded normally (a malformed value
+    /// still throws), but any *omitted* key falls back to ``defaults``. This is
+    /// what lets the minimal default `relay.json` boot the relay.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = RelayConfig.defaults
+        self.listen     = try c.decodeIfPresent(String.self,    forKey: .listen)     ?? d.listen
+        self.transport  = try c.decodeIfPresent(Transport.self, forKey: .transport)  ?? d.transport
+        self.broker     = try c.decodeIfPresent(Broker.self,    forKey: .broker)     ?? d.broker
+        self.allowLogin = try c.decodeIfPresent([String].self,  forKey: .allowLogin) ?? d.allowLogin
+        self.apns       = try c.decodeIfPresent(APNs.self,      forKey: .apns)       ?? d.apns
+        self.snippets   = try c.decodeIfPresent([Snippet].self, forKey: .snippets)   ?? d.snippets
+        self.defaultFps = try c.decodeIfPresent(Int.self,       forKey: .defaultFps) ?? d.defaultFps
+        self.idleFps    = try c.decodeIfPresent(Int.self,       forKey: .idleFps)    ?? d.idleFps
     }
 
     public static func decode(jsonString: String) throws -> RelayConfig {
         try JSONDecoder().decode(RelayConfig.self, from: Data(jsonString.utf8))
+    }
+
+    /// Returns a copy with `login` appended to `allowLogin`. Idempotent and
+    /// nil/empty-safe, so the relay can fold in its own tailnet login without
+    /// duplicating an already-listed operator or reacting to a missing one.
+    public func authorizing(login: String?) -> RelayConfig {
+        guard let login, !login.isEmpty, !allowLogin.contains(login) else { return self }
+        var copy = self
+        copy.allowLogin.append(login)
+        return copy
     }
 }
 
@@ -60,14 +133,7 @@ public final class ConfigStore: @unchecked Sendable {
 
     public init(url: URL) {
         self.url = url
-        self.current = RelayConfig(
-            listen: "0.0.0.0:4399",
-            allowLogin: [],
-            apns: .init(keyPath: "", keyId: "", teamId: "", topic: "", env: "sandbox"),
-            snippets: [],
-            defaultFps: 15,
-            idleFps: 5
-        )
+        self.current = .defaults
     }
 
     public func reload() throws {
