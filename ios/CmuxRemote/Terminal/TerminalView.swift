@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum TerminalLayoutPolicy {
+    static func defaultFontSize(isPad: Bool) -> CGFloat {
+        isPad ? 11 : 8
+    }
+}
+
 struct TerminalView: View {
     static let bottomScrollPaddingRows: CGFloat = 5
 
@@ -7,7 +13,11 @@ struct TerminalView: View {
     var topContentInset: CGFloat = 0
     var bottomContentInset: CGFloat = 0
     var scrollToBottomRequest: Int = 0
-    @State private var fontMetrics = TerminalFontMetrics(fontSize: 8)
+    @State private var fontMetrics = TerminalFontMetrics(
+        fontSize: TerminalLayoutPolicy.defaultFontSize(
+            isPad: UIDevice.current.userInterfaceIdiom == .pad
+        )
+    )
     @State private var pinchAnchorFontSize: CGFloat?
 
     private static let fontSizeRange: ClosedRange<CGFloat> = 8...32

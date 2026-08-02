@@ -3,6 +3,44 @@ import SharedKit
 @testable import CmuxRemote
 
 final class CommandComposerTests: XCTestCase {
+    func testWorkspaceAccessoryLayoutUsesCompactDeckOnlyOnLandscapeIPad() {
+        XCTAssertEqual(
+            WorkspaceAccessoryLayout.resolve(
+                containerSize: CGSize(width: 1194, height: 834),
+                isPad: true
+            ),
+            .padLandscape
+        )
+        XCTAssertEqual(
+            WorkspaceAccessoryLayout.resolve(
+                containerSize: CGSize(width: 834, height: 1194),
+                isPad: true
+            ),
+            .stacked
+        )
+        XCTAssertEqual(
+            WorkspaceAccessoryLayout.resolve(
+                containerSize: CGSize(width: 852, height: 393),
+                isPad: false
+            ),
+            .stacked
+        )
+        XCTAssertEqual(
+            WorkspaceAccessoryLayout.resolve(
+                containerSize: CGSize(width: 699, height: 600),
+                isPad: true
+            ),
+            .stacked
+        )
+        XCTAssertEqual(
+            WorkspaceAccessoryLayout.resolve(
+                containerSize: CGSize(width: 700, height: 699),
+                isPad: true
+            ),
+            .padLandscape
+        )
+    }
+
     func testSubmitSendsNewlineAndRecordsHistory() async {
         var composer = CommandComposer()
         composer.draft = "ls -alh"

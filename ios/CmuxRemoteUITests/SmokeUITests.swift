@@ -1,6 +1,74 @@
 import XCTest
+import UIKit
 
 final class SmokeUITests: XCTestCase {
+    func testIPadLandscapeUsesCompactAccessoryPanel() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("iPad-only layout assertion")
+        }
+        addTeardownBlock {
+            XCUIDevice.shared.orientation = .portrait
+        }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launchFakeRelayApp()
+
+        let workspace = primaryWorkspaceButton(in: app)
+        XCTAssertTrue(workspace.waitForExistence(timeout: 5))
+        workspace.tap()
+
+        let accessory = app.otherElements["TerminalAccessoryPanel"]
+        XCTAssertTrue(accessory.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(
+            accessory.frame.height,
+            app.frame.height * 0.15 + 2,
+            "The iPad command deck should leave at least 85% of landscape height to the terminal shell"
+        )
+        XCTAssertGreaterThan(
+            app.scrollViews["TerminalViewport"].frame.width,
+            app.frame.width * 0.9,
+            "The terminal should use the native iPad window width"
+        )
+        let commandField = app.textFields["CommandComposerField"]
+        XCTAssertTrue(commandField.exists)
+        XCTAssertTrue(commandField.isHittable, "CommandComposerField should remain hittable")
+        XCTAssertGreaterThanOrEqual(commandField.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(commandField.frame.width, 44)
+
+        for identifier in [
+            "InputModeToggleButton",
+            "CommandKeyboardDismissButton",
+            "CommandBackspaceButton",
+            "CommandPasteButton",
+            "CommandPhotoAttachButton",
+            "CommandSubmitButton",
+            "esc",
+            "send ctrl c",
+            "send slash new shortcut",
+            "send space for omx selection",
+        ] {
+            let button = app.buttons[identifier]
+            XCTAssertTrue(button.isHittable, "\(identifier) should remain hittable")
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44, "\(identifier) should meet the iPad touch target")
+            XCTAssertGreaterThanOrEqual(button.frame.width, 44, "\(identifier) should meet the iPad touch target")
+        }
+
+        commandField.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        commandField.typeText("pwd\n")
+
+        let inputStatus = app.staticTexts["InputStatusMessage"]
+        XCTAssertTrue(inputStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(inputStatus.label.contains("Sent pwd"), inputStatus.label)
+        XCTAssertGreaterThanOrEqual(app.buttons["esc"].frame.width, 44)
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 3))
+
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "iPad compact terminal accessory"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testTabsExistAfterConnect() throws {
         let app = launchFakeRelayApp()
         XCTAssertTrue(app.buttons["Workspaces"].waitForExistence(timeout: 5))
@@ -220,6 +288,8 @@ final class SmokeUITests: XCTestCase {
         app.launchEnvironment["CMUX_SKIP_SPLASH"] = "1"
         app.launchArguments.append("--cmux-skip-splash")
         app.launchArguments.append("-cmux.demoMode")
+        app.launchArguments.append("NO")
+        app.launchArguments.append("-cmux.localNotificationsEnabled")
         app.launchArguments.append("NO")
         app.launch()
         return app

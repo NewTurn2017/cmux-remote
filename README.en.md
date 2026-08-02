@@ -2,11 +2,11 @@
 
 # cmux Remote
 
-> Unofficial iPhone remote for [cmux](https://github.com/manaflow-ai/cmux)
+> Unofficial iPhone and iPad remote for [cmux](https://github.com/manaflow-ai/cmux)
 > on your Mac, over Tailscale.
 
 cmux Remote is a SwiftUI app + Swift daemon pair that lets you read and
-drive the terminals running inside cmux on your Mac, from anywhere on
+drive the terminals running inside cmux on your Mac from iPhone or iPad, anywhere on
 your Tailscale tailnet. No port is ever exposed to the public internet
 — every byte travels over your existing WireGuard mesh.
 
@@ -55,8 +55,8 @@ New or changed since v1.0.5:
 - send keystrokes, key combinations, raw text, command lines, and live per-character input, with a dedicated Ctrl-C shortcut
 - surface cmux notifications in the Inbox as iOS local notifications, or
   as APNs push when the relay has an `apns` block configured
-- paste iPhone clipboard text into the command composer
-- attach iPhone photos by saving them to the Mac under
+- paste iOS device clipboard text into the command composer
+- attach iOS device photos by saving them to the Mac under
   `~/Downloads/cmux-remote/` and inserting the saved path
 - show the connected MacBook battery state in the workspace header
 - surface Claude/Codex-style `needs input` events in the Inbox
@@ -166,7 +166,7 @@ client that talks to cmux over a documented JSON-RPC schema.
 
 - Accessory bar: `esc` `OK` `/` `$` `tab` `← ↑ ↓ →` `/new` `space`
 - **LIVE input mode** for immediate per-character terminal input without pressing submit
-- Dedicated keyboard-dismiss, backspace, iPhone clipboard paste, and
+- Dedicated keyboard-dismiss, backspace, iOS device clipboard paste, and
   photo attach buttons
 - Command composer with text + enter as one shot; the software keyboard
   closes automatically after submit
@@ -510,7 +510,8 @@ the fastest way to re-attach after a socket rotation is
 - [x] v1.0.6 — native APNs push (reaches a killed app), Ctrl-C shortcut, all five App Store screenshots refreshed (never released — folded into 1.0.8)
 - [x] v1.0.8 — Korean/CJK overlap rendering fix, `--` smart-punctuation input protection, notification noise controls, cmux 0.64+ setup compatibility (relay)
 - [ ] **v1.1 — push follow-ups** — payload-driven deep-link auto-open to the surface, delivery reliability / retries
-- [ ] v1.2 — iPad layout, external keyboard polish
+- [x] Native iPad landscape layout
+- [ ] v1.2 — External keyboard polish
 - [ ] v1.3 — file preview for cmux's "open in pane" intents
 - [ ] v2.0 — byte-stream RPC for high-rate TUIs (vim, htop, k9s)
 - [ ] Maybe — Android client (PRs welcome, see `docs/specs/`)
@@ -618,7 +619,7 @@ open a discussion or drop a design doc under `docs/specs/` first.
 - The relay binds to the tailnet interface only — non-Tailscale source
   addresses are refused at the application layer (the only escape
   hatch is `CMUX_DEV_ALLOW_LOCALHOST=1` for dev).
-- Each iPhone is issued a per-device token at pairing time. Tokens can
+- Each iOS device is issued a per-device token at pairing time. Tokens can
   be revoked individually from the relay's menu bar.
 - Notification payloads never contain terminal contents — only a
   workspace/surface id and a short title.

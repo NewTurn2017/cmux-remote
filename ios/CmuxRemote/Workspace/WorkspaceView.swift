@@ -35,6 +35,10 @@ struct WorkspaceView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let accessoryLayout = WorkspaceAccessoryLayout.resolve(
+                containerSize: proxy.size,
+                isPad: UIDevice.current.userInterfaceIdiom == .pad
+            )
             let keyboardVisible = keyboardHeight > proxy.safeAreaInsets.bottom + 20
             let keyboardControlsActive = keyboardVisible || commandFieldFocused || liveInputFocused
             let keyboardAccessoryOffset: CGFloat = keyboardControlsActive ? -112 : 0
@@ -59,7 +63,7 @@ struct WorkspaceView: View {
                         .padding(.top, 12)
                         .readHeight($headerHeight)
                     Spacer()
-                    terminalAccessory()
+                    terminalAccessory(layout: accessoryLayout)
                         .padding(.horizontal, 16)
                         .padding(.bottom, accessoryBottomPadding)
                         .readHeight($accessoryHeight)
@@ -258,162 +262,10 @@ struct WorkspaceView: View {
         .accessibilityLabel("Scroll terminal to bottom")
     }
 
-    private func terminalAccessory() -> some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .top, spacing: 8) {
-                HStack(spacing: 8) {
-                    Button {
-                        toggleInputMode()
-                    } label: {
-                        Text(inputMode.label)
-                            .cmuxDisplay(10)
-                            .foregroundStyle(inputMode == .live ? CmuxTheme.canvas : CmuxTheme.accentGreen)
-                            .frame(width: 42, height: 26)
-                            .background(inputMode == .live ? CmuxTheme.accentGreen : CmuxTheme.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .strokeBorder(CmuxTheme.divider, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("InputModeToggleButton")
-                    .accessibilityLabel(inputMode == .live ? "Switch to command input mode" : "Switch to live input mode")
-
-                    Text("$")
-                        .cmuxDisplay(14)
-                        .foregroundStyle(CmuxTheme.accentGreen)
-
-                    if inputMode == .command {
-                        TextField("type a command…", text: $composer.draft, axis: .vertical)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($commandFieldFocused)
-                            .cmuxMono(14)
-                            .foregroundStyle(CmuxTheme.ink)
-                            .submitLabel(.send)
-                            .lineLimit(1...3)
-                            .disabled(composer.isSending)
-                            .onSubmit { submitCommand() }
-                            .onTapGesture { commandFieldFocused = true }
-                            .background(CommandInputTraitsConfigurator())
-                            .accessibilityIdentifier("CommandComposerField")
-                    } else {
-                        ZStack(alignment: .leading) {
-                            LiveTerminalInputView(
-                                displayText: liveInputEcho,
-                                isFocused: $liveInputFocused,
-                                onText: { text in
-                                    rememberLiveInputText(text)
-                                    sendText(text)
-                                },
-                                onKey: { key in
-                                    rememberLiveInputKey(key)
-                                    sendKey(key)
-                                }
-                            )
-                            .accessibilityIdentifier("LiveInputField")
-                            .accessibilityLabel("Live terminal input")
-
-                            if liveInputEcho.isEmpty {
-                                Text("입력하면 바로 전송됩니다…")
-                                    .cmuxMono(14)
-                                    .foregroundStyle(CmuxTheme.muted)
-                                    .lineLimit(1)
-                                    .allowsHitTesting(false)
-                                    .accessibilityIdentifier("LiveInputPlaceholder")
-                            }
-                        }
-                        .frame(minHeight: 26, maxHeight: 34)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(CmuxTheme.surfaceSunken)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(commandFieldFocused ? CmuxTheme.accentGreen : CmuxTheme.divider, lineWidth: 1)
-                )
-            }
-
-            HStack(spacing: 8) {
-                IconKey(systemName: "keyboard.chevron.compact.down",
-                        accessibilityLabel: "Dismiss keyboard",
-                        identifier: "CommandKeyboardDismissButton") { dismissKeyboard() }
-
-                IconKey(systemName: "delete.left",
-                        accessibilityLabel: "Send terminal backspace",
-                        identifier: "CommandBackspaceButton") { sendKey(.backspace) }
-
-                IconKey(systemName: "doc.on.clipboard",
-                        accessibilityLabel: "Paste clipboard into command field",
-                        identifier: "CommandPasteButton") { pasteClipboard() }
-
-                PhotoAttachButton(isBusy: attachmentInFlight, selection: $selectedPhotoItem)
-
-                Spacer(minLength: 4)
-
-                Button { submitCommand() } label: {
-                    HStack(spacing: 6) {
-                        if composer.isSending {
-                            ProgressView().tint(CmuxTheme.canvas).scaleEffect(0.7)
-                        } else {
-                            Text("[ ENTER ]")
-                                .cmuxDisplay(12)
-                        }
-                    }
-                    .foregroundStyle(CmuxTheme.canvas)
-                    .padding(.horizontal, 14)
-                    .frame(height: 36)
-                    .background(composer.isSending ? CmuxTheme.muted : CmuxTheme.accentGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(composer.isSending)
-                .accessibilityIdentifier("CommandSubmitButton")
-                .accessibilityLabel("Send terminal input")
-            }
-
-            if let message = inputFeedbackMessage {
-                HStack(spacing: 6) {
-                    Text(inputFeedbackIsError ? "!" : "›")
-                        .cmuxDisplay(11)
-                    Text(message)
-                        .cmuxMono(11)
-                        .lineLimit(2)
-                }
-                .foregroundStyle(inputFeedbackIsError ? CmuxTheme.accentRed : CmuxTheme.accentGreen)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(message)
-                .accessibilityIdentifier("InputStatusMessage")
-            }
-
-            VStack(spacing: 4) {
-                HStack(spacing: 4) {
-                    KeyButton(label: "esc") { sendKey(.esc) }
-                    KeyButton(label: "^C", accessibilityLabel: "send ctrl c") {
-                        sendKey(.named("c", modifiers: [.ctrl]))
-                    }
-                    KeyButton(label: "tab") { sendKey(.tab) }
-                    KeyButton(label: "←", accessibilityLabel: "send left arrow") { sendKey(.left) }
-                    KeyButton(label: "↑", accessibilityLabel: "send up arrow") { sendKey(.up) }
-                    KeyButton(label: "↓", accessibilityLabel: "send down arrow") { sendKey(.down) }
-                    KeyButton(label: "→", accessibilityLabel: "send right arrow") { sendKey(.right) }
-                }
-
-                HStack(spacing: 4) {
-                    KeyButton(label: "OK", accessibilityLabel: "send OK and enter") { sendOK() }
-                    KeyButton(label: "/") { sendSymbol("/") }
-                    KeyButton(label: "$") { sendSymbol("$") }
-                    KeyButton(label: "/new", accessibilityLabel: "send slash new shortcut") { sendText("/new") }
-                    KeyButton(label: "space", accessibilityLabel: "send space for omx selection") { sendText(" ") }
-                }
-            }
-        }
-        .padding(12)
+    private func terminalAccessory(layout: WorkspaceAccessoryLayout) -> some View {
+        accessoryContent(layout: layout)
+        .padding(.horizontal, layout == .padLandscape ? 8 : 12)
+        .padding(.vertical, layout == .padLandscape ? 0 : 12)
         .background(CmuxTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
@@ -423,6 +275,256 @@ struct WorkspaceView: View {
         .shadow(color: CmuxTheme.hardShadow, radius: 20, x: 0, y: 10)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("TerminalAccessoryPanel")
+    }
+
+    @ViewBuilder
+    private func accessoryContent(layout: WorkspaceAccessoryLayout) -> some View {
+        switch layout {
+        case .stacked:
+            VStack(spacing: 10) {
+                composerInput(layout: layout)
+                HStack(spacing: 8) {
+                    utilityActionButtons(layout: layout)
+                    Spacer(minLength: 4)
+                    submitButton(layout: layout)
+                }
+                inputFeedback(lineLimit: 2)
+                VStack(spacing: 4) {
+                    primaryShortcutRow
+                    secondaryShortcutRow
+                }
+            }
+        case .padLandscape:
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    composerInput(layout: layout)
+                    utilityActionButtons(layout: layout)
+                    submitButton(layout: layout)
+                }
+                HStack(spacing: 8) {
+                    allShortcutsRow
+                    inputFeedback(lineLimit: 1, maxWidth: 180)
+                }
+            }
+        }
+    }
+
+    private func composerInput(layout: WorkspaceAccessoryLayout) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                toggleInputMode()
+            } label: {
+                Text(inputMode.label)
+                    .cmuxDisplay(10)
+                    .foregroundStyle(inputMode == .live ? CmuxTheme.canvas : CmuxTheme.accentGreen)
+                    .frame(
+                        width: layout == .padLandscape ? 44 : 42,
+                        height: layout == .padLandscape ? 44 : 26
+                    )
+                    .background(inputMode == .live ? CmuxTheme.accentGreen : CmuxTheme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(CmuxTheme.divider, lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("InputModeToggleButton")
+            .accessibilityLabel(inputMode == .live ? "Switch to command input mode" : "Switch to live input mode")
+
+            Text("$")
+                .cmuxDisplay(14)
+                .foregroundStyle(CmuxTheme.accentGreen)
+
+            if inputMode == .command {
+                ZStack(alignment: .leading) {
+                    if composer.draft.isEmpty {
+                        Text("type a command…")
+                            .cmuxMono(14)
+                            .foregroundStyle(CmuxTheme.ink.opacity(0.65))
+                            .allowsHitTesting(false)
+                    }
+
+                    commandTextField(layout: layout)
+                }
+            } else {
+                ZStack(alignment: .leading) {
+                    LiveTerminalInputView(
+                        displayText: liveInputEcho,
+                        isFocused: $liveInputFocused,
+                        onText: { text in
+                            rememberLiveInputText(text)
+                            sendText(text)
+                        },
+                        onKey: { key in
+                            rememberLiveInputKey(key)
+                            sendKey(key)
+                        }
+                    )
+                    .accessibilityIdentifier("LiveInputField")
+                    .accessibilityLabel("Live terminal input")
+
+                    if liveInputEcho.isEmpty {
+                        Text("입력하면 바로 전송됩니다…")
+                            .cmuxMono(14)
+                            .foregroundStyle(CmuxTheme.muted)
+                            .lineLimit(1)
+                            .allowsHitTesting(false)
+                            .accessibilityIdentifier("LiveInputPlaceholder")
+                    }
+                }
+                .frame(minHeight: 26, maxHeight: 34)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, layout == .padLandscape ? 0 : 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .background(CmuxTheme.surfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(commandFieldFocused ? CmuxTheme.accentGreen : CmuxTheme.divider, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func commandTextField(layout: WorkspaceAccessoryLayout) -> some View {
+        if layout == .padLandscape {
+            CommandTextFieldView(
+                text: $composer.draft,
+                isFocused: commandFieldFocused,
+                isEnabled: !composer.isSending,
+                onFocusChange: { commandFieldFocused = $0 },
+                onSubmit: { submitCommand() }
+            )
+                .frame(height: 44)
+        } else {
+            TextField("", text: $composer.draft, axis: .vertical)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($commandFieldFocused)
+                .cmuxMono(14)
+                .foregroundStyle(CmuxTheme.ink)
+                .submitLabel(.send)
+                .lineLimit(1...3)
+                .disabled(composer.isSending)
+                .onSubmit { submitCommand() }
+                .onTapGesture { commandFieldFocused = true }
+                .background(CommandInputTraitsConfigurator())
+                .accessibilityIdentifier("CommandComposerField")
+                .accessibilityLabel("Command input")
+        }
+    }
+
+    private func utilityActionButtons(layout: WorkspaceAccessoryLayout) -> some View {
+        let controlSize: CGFloat = layout == .padLandscape ? 44 : 40
+        let controlHeight: CGFloat = layout == .padLandscape ? 44 : 36
+        return HStack(spacing: 8) {
+            IconKey(systemName: "keyboard.chevron.compact.down",
+                    accessibilityLabel: "Dismiss keyboard",
+                    identifier: "CommandKeyboardDismissButton",
+                    width: controlSize,
+                    height: controlHeight) { dismissKeyboard() }
+            IconKey(systemName: "delete.left",
+                    accessibilityLabel: "Send terminal backspace",
+                    identifier: "CommandBackspaceButton",
+                    width: controlSize,
+                    height: controlHeight) { sendKey(.backspace) }
+            IconKey(systemName: "doc.on.clipboard",
+                    accessibilityLabel: "Paste clipboard into command field",
+                    identifier: "CommandPasteButton",
+                    width: controlSize,
+                    height: controlHeight) { pasteClipboard() }
+            PhotoAttachButton(
+                isBusy: attachmentInFlight,
+                width: controlSize,
+                height: controlHeight,
+                selection: $selectedPhotoItem
+            )
+        }
+    }
+
+    private func submitButton(layout: WorkspaceAccessoryLayout) -> some View {
+        Button { submitCommand() } label: {
+            HStack(spacing: 6) {
+                if composer.isSending {
+                    ProgressView().tint(CmuxTheme.canvas).scaleEffect(0.7)
+                } else {
+                    Text("[ ENTER ]")
+                        .cmuxDisplay(12)
+                }
+            }
+            .foregroundStyle(CmuxTheme.canvas)
+            .padding(.horizontal, 14)
+            .frame(height: layout == .padLandscape ? 44 : 36)
+            .background(composer.isSending ? CmuxTheme.muted : CmuxTheme.accentGreen)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(composer.isSending)
+        .accessibilityIdentifier("CommandSubmitButton")
+        .accessibilityLabel("Send terminal input")
+    }
+
+    @ViewBuilder
+    private func inputFeedback(lineLimit: Int, maxWidth: CGFloat? = .infinity) -> some View {
+        if let message = inputFeedbackMessage {
+            HStack(spacing: 6) {
+                Text(inputFeedbackIsError ? "!" : "›")
+                    .cmuxDisplay(11)
+                Text(message)
+                    .cmuxMono(11)
+                    .lineLimit(lineLimit)
+            }
+            .foregroundStyle(inputFeedbackIsError ? CmuxTheme.accentRed : CmuxTheme.accentGreen)
+            .frame(maxWidth: maxWidth, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(message)
+            .accessibilityIdentifier("InputStatusMessage")
+        }
+    }
+
+    private var primaryShortcutRow: some View {
+        HStack(spacing: 4) {
+            KeyButton(label: "esc") { sendKey(.esc) }
+            KeyButton(label: "^C", accessibilityLabel: "send ctrl c") {
+                sendKey(.named("c", modifiers: [.ctrl]))
+            }
+            KeyButton(label: "tab") { sendKey(.tab) }
+            KeyButton(label: "←", accessibilityLabel: "send left arrow") { sendKey(.left) }
+            KeyButton(label: "↑", accessibilityLabel: "send up arrow") { sendKey(.up) }
+            KeyButton(label: "↓", accessibilityLabel: "send down arrow") { sendKey(.down) }
+            KeyButton(label: "→", accessibilityLabel: "send right arrow") { sendKey(.right) }
+        }
+    }
+
+    private var secondaryShortcutRow: some View {
+        HStack(spacing: 4) {
+            KeyButton(label: "OK", accessibilityLabel: "send OK and enter") { sendOK() }
+            KeyButton(label: "/") { sendSymbol("/") }
+            KeyButton(label: "$") { sendSymbol("$") }
+            KeyButton(label: "/new", accessibilityLabel: "send slash new shortcut") { sendText("/new") }
+            KeyButton(label: "space", accessibilityLabel: "send space for omx selection") { sendText(" ") }
+        }
+    }
+
+    private var allShortcutsRow: some View {
+        HStack(spacing: 4) {
+            KeyButton(label: "esc", minimumHeight: 44) { sendKey(.esc) }
+            KeyButton(label: "^C", accessibilityLabel: "send ctrl c", minimumHeight: 44) {
+                sendKey(.named("c", modifiers: [.ctrl]))
+            }
+            KeyButton(label: "tab", minimumHeight: 44) { sendKey(.tab) }
+            KeyButton(label: "←", accessibilityLabel: "send left arrow", minimumHeight: 44) { sendKey(.left) }
+            KeyButton(label: "↑", accessibilityLabel: "send up arrow", minimumHeight: 44) { sendKey(.up) }
+            KeyButton(label: "↓", accessibilityLabel: "send down arrow", minimumHeight: 44) { sendKey(.down) }
+            KeyButton(label: "→", accessibilityLabel: "send right arrow", minimumHeight: 44) { sendKey(.right) }
+            KeyButton(label: "OK", accessibilityLabel: "send OK and enter", minimumHeight: 44) { sendOK() }
+            KeyButton(label: "/", minimumHeight: 44) { sendSymbol("/") }
+            KeyButton(label: "$", minimumHeight: 44) { sendSymbol("$") }
+            KeyButton(label: "/new", accessibilityLabel: "send slash new shortcut", minimumHeight: 44) { sendText("/new") }
+            KeyButton(label: "space", accessibilityLabel: "send space for omx selection", minimumHeight: 44) { sendText(" ") }
+        }
     }
 
     private func dismissKeyboard() {
@@ -593,14 +695,14 @@ struct WorkspaceView: View {
                 guard let jpeg = preparedImage.jpegData(compressionQuality: quality) else { continue }
                 fallbackJPEG = jpeg
                 if jpeg.count <= Self.preferredAttachmentMaxBytes {
-                    return (jpeg, "iphone-image-\(timestamp).jpg", "image/jpeg")
+                    return (jpeg, "cmux-remote-image-\(timestamp).jpg", "image/jpeg")
                 }
             }
             if let fallbackJPEG {
-                return (fallbackJPEG, "iphone-image-\(timestamp).jpg", "image/jpeg")
+                return (fallbackJPEG, "cmux-remote-image-\(timestamp).jpg", "image/jpeg")
             }
         }
-        return (data, "iphone-image-\(timestamp).jpg", "image/jpeg")
+        return (data, "cmux-remote-image-\(timestamp).jpg", "image/jpeg")
     }
 
     private func appendPathToDraft(_ path: String) {
@@ -784,6 +886,18 @@ private enum TerminalInputError: Error, CustomStringConvertible {
     }
 }
 
+enum WorkspaceAccessoryLayout: Equatable {
+    case stacked
+    case padLandscape
+
+    static func resolve(containerSize: CGSize, isPad: Bool) -> Self {
+        guard isPad, containerSize.width >= 700, containerSize.width > containerSize.height else {
+            return .stacked
+        }
+        return .padLandscape
+    }
+}
+
 private struct SurfaceChip: View {
     let title: String
     let isSelected: Bool
@@ -927,6 +1041,8 @@ private struct IconKey: View {
     let systemName: String
     var accessibilityLabel: String? = nil
     var identifier: String? = nil
+    var width: CGFloat = 40
+    var height: CGFloat = 36
     let action: () -> Void
 
     var body: some View {
@@ -934,7 +1050,7 @@ private struct IconKey: View {
             Image(systemName: systemName)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(CmuxTheme.ink)
-                .frame(width: 40, height: 36)
+                .frame(width: width, height: height)
                 .background(CmuxTheme.surfaceRaised)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(
@@ -950,6 +1066,8 @@ private struct IconKey: View {
 
 private struct PhotoAttachButton: View {
     let isBusy: Bool
+    var width: CGFloat = 40
+    var height: CGFloat = 36
     @Binding var selection: PhotosPickerItem?
 
     var body: some View {
@@ -965,7 +1083,7 @@ private struct PhotoAttachButton: View {
                 }
             }
             .foregroundStyle(CmuxTheme.ink)
-            .frame(width: 40, height: 36)
+            .frame(width: width, height: height)
             .background(CmuxTheme.surfaceRaised)
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
@@ -976,7 +1094,7 @@ private struct PhotoAttachButton: View {
         .buttonStyle(.plain)
         .disabled(isBusy)
         .accessibilityIdentifier("CommandPhotoAttachButton")
-        .accessibilityLabel("Attach photo from iPhone")
+        .accessibilityLabel("Attach photo from device")
     }
 }
 
@@ -984,6 +1102,7 @@ private struct KeyButton: View {
     let label: String
     var accessibilityLabel: String?
     var isActive = false
+    var minimumHeight: CGFloat = 34
     let action: () -> Void
 
     var body: some View {
@@ -992,7 +1111,7 @@ private struct KeyButton: View {
                 .cmuxDisplay(12)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(isActive ? CmuxTheme.accentGreen : CmuxTheme.ink)
-                .frame(maxWidth: .infinity, minHeight: 34)
+                .frame(maxWidth: .infinity, minHeight: minimumHeight)
                 .background(isActive ? CmuxTheme.surfaceRaised : CmuxTheme.surfaceSunken)
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 .overlay(
@@ -1002,6 +1121,7 @@ private struct KeyButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel ?? label.replacingOccurrences(of: "\n", with: " "))
+        .accessibilityIdentifier(accessibilityLabel ?? label.replacingOccurrences(of: "\n", with: " "))
     }
 }
 
@@ -1041,6 +1161,84 @@ private struct CommandInputTraitsConfigurator: UIViewRepresentable {
 
     func updateUIView(_ uiView: CommandInputTraitsView, context: Context) {
         uiView.disableSmartPunctuation()
+    }
+}
+
+private struct CommandTextFieldView: UIViewRepresentable {
+    @Binding var text: String
+    var isFocused: Bool
+    var isEnabled: Bool
+    var onFocusChange: (Bool) -> Void
+    var onSubmit: () -> Void
+
+    func makeUIView(context: Context) -> UITextField {
+        let view = UITextField()
+        view.delegate = context.coordinator
+        view.backgroundColor = .clear
+        view.textColor = UIColor(CmuxTheme.ink)
+        view.tintColor = UIColor(CmuxTheme.accentGreen)
+        let baseFont = UIFont(name: "GeistMono-Regular", size: 14)
+            ?? UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        view.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: baseFont)
+        view.adjustsFontForContentSizeCategory = true
+        view.autocorrectionType = .no
+        view.autocapitalizationType = .none
+        view.smartDashesType = .no
+        view.smartQuotesType = .no
+        view.smartInsertDeleteType = .no
+        view.returnKeyType = .send
+        view.accessibilityIdentifier = "CommandComposerField"
+        view.accessibilityLabel = "Command input"
+        view.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
+        return view
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        context.coordinator.parent = self
+        if let pendingText = context.coordinator.pendingUIKitText,
+           uiView.text == pendingText {
+            if text == pendingText {
+                context.coordinator.pendingUIKitText = nil
+            }
+        } else if uiView.text != text {
+            uiView.text = text
+        }
+        uiView.isEnabled = isEnabled
+        if isFocused, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: CommandTextFieldView
+        var pendingUIKitText: String?
+
+        init(parent: CommandTextFieldView) {
+            self.parent = parent
+        }
+
+        @objc func textChanged(_ textField: UITextField) {
+            let updatedText = textField.text ?? ""
+            pendingUIKitText = updatedText
+            parent.text = updatedText
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.onFocusChange(true)
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            parent.onFocusChange(false)
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.onSubmit()
+            return false
+        }
     }
 }
 

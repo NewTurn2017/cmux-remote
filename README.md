@@ -3,9 +3,9 @@
 # cmux Remote
 
 > Tailscale 네트워크 너머에서 [cmux](https://github.com/manaflow-ai/cmux)
-> 터미널을 iPhone으로 조작하는 비공식 원격 클라이언트.
+> 터미널을 iPhone과 iPad로 조작하는 비공식 원격 클라이언트.
 
-cmux Remote는 Mac에서 돌아가는 cmux의 작업공간과 터미널을 iPhone에서
+cmux Remote는 Mac에서 돌아가는 cmux의 작업공간과 터미널을 iPhone과 iPad에서
 읽고 조작할 수 있게 해주는 SwiftUI 앱 + Swift 데몬 묶음입니다. 모든
 트래픽은 사용자의 Tailscale tailnet 안에서만 흐르며, 공용 인터넷으로
 노출되는 포트는 없습니다.
@@ -52,7 +52,7 @@ v1.0.5 이후 새로 추가되거나 바뀐 점:
 - cmux 작업공간 / surface 목록 보기, 생성, 이름 변경, 닫기
 - 임의의 터미널 surface를 실시간 미러링 (15Hz diff 폴링, 120줄 bounded history)
 - 키 입력 / 키 조합 / 텍스트 / 커맨드 라인 / LIVE 즉시 입력 전송 · Ctrl-C 단축키
-- iPhone 클립보드 붙여넣기 + 사진 첨부 경로 삽입
+- iOS 기기 클립보드 붙여넣기 + 사진 첨부 경로 삽입
 - 연결된 MacBook 배터리 상태 표시
 - cmux 알림과 Claude/Codex 계열 `needs input` 이벤트를 iOS Inbox + 로컬 알림 또는 APNs 푸시로 표시
 - 입력 패널을 화면 하단에 붙이고, 가려진 터미널 줄을 끌어올릴 수 있도록 하단 스크롤 여유 추가
@@ -156,10 +156,10 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 
 - 액세서리 바: `esc` `OK` `/` `$` `tab` `← ↑ ↓ →` `/new` `space`
 - **LIVE 입력 모드** — 제출 버튼 없이 글자 단위로 즉시 터미널 전송
-- 키보드 닫기 / 백스페이스 / iPhone 클립보드 붙여넣기 / 사진 첨부 버튼
+- 키보드 닫기 / 백스페이스 / iOS 기기 클립보드 붙여넣기 / 사진 첨부 버튼
 - 커맨드 컴포저 — 텍스트 입력 + 엔터 묶음 전송, 전송 후 키보드 자동 닫힘
 - 한글 IME 입력은 LIVE 즉시 전송에서 제외해 자모가 분리되지 않도록 로컬 조합 유지
-- 사진 첨부는 iPhone 이미지를 Mac의 `~/Downloads/cmux-remote/`로 저장하고
+- 사진 첨부는 iOS 기기 이미지를 Mac의 `~/Downloads/cmux-remote/`로 저장하고
   입력창에 저장 경로를 삽입
 - `surface.send_key`는 `NSEvent` synth — 화살표/Ctrl 조합 등 멀티바이트
   시퀀스가 atomic하게 전달. Ink 기반 TUI (Claude Code 등)의 ESC 파서
@@ -483,7 +483,8 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
 - [x] v1.0.6 — 네이티브 APNs 푸시 알림(앱 종료 상태 도달), Ctrl-C 단축키, App Store 스크린샷 5장 교체 (App Store 미공개, 1.0.8에 통합)
 - [x] v1.0.8 — 한글/CJK 겹침 렌더링 수정, `--` 스마트 구두점 입력 보호, 알림 소음 컨트롤, cmux 0.64+ 셋업 호환성(relay)
 - [ ] **v1.1 — 푸시 후속** — 푸시 페이로드 → 딥링크로 surface 자동 오픈, 전달 신뢰성/재시도 강화
-- [ ] v1.2 — iPad 레이아웃, 외장 키보드 폴리시
+- [x] iPad 네이티브 가로 레이아웃
+- [ ] v1.2 — 외장 키보드 폴리시
 - [ ] v1.3 — cmux "open in pane" 인텐트용 파일 프리뷰
 - [ ] v2.0 — 고빈도 TUI(vim, htop, k9s) 대상 바이트스트림 RPC
 - [ ] 혹시 — Android 클라이언트 (PR 환영, `docs/specs/` 참고)
@@ -590,7 +591,7 @@ discussion을 열거나 `docs/specs/`에 디자인 문서를 먼저 올려주세
 - Relay는 tailnet 인터페이스만 받아들입니다 — 비-Tailscale 소스 주소는
   애플리케이션 레이어에서 거부 (개발용 localhost 허용은
   `CMUX_DEV_ALLOW_LOCALHOST=1`로만).
-- iPhone마다 페어링 시 발급된 토큰을 가집니다. 메뉴바에서 개별 revoke.
+- iOS 기기마다 페어링 시 발급된 토큰을 가집니다. 메뉴바에서 개별 revoke.
 - 알림 페이로드에는 터미널 내용이 포함되지 않습니다 — workspace/surface
   id + 짧은 title만.
 - 텔레메트리 / 분석 / 서드파티 네트워크 호출 없음.
