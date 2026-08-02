@@ -1,8 +1,8 @@
 {
   "release_type": "1.x",
   "asc_ui_language": "ko",
-  "version": "1.0.8",
-  "build": "10",
+  "version": "1.0.9",
+  "build": "12",
   "preflight": {
     "pass": 15,
     "warn": 0,
@@ -21,6 +21,8 @@
       "notification noise controls (LOCAL iOS NOTIFICATIONS setting, user-input-only banners)",
       "Korean/CJK wide-glyph overlap rendering fix (#13)",
       "command composer smart punctuation fix (#4)",
+      "native iPad landscape layout and full-width terminal",
+      "compact iPad command deck with 44-point controls",
       "five refreshed App Store screenshots"
     ]
   },
@@ -36,12 +38,13 @@
     "verified": true
   },
   "build_upload": {
-    "status": "ipa_ready",
-    "archived_at": "2026-07-23T21:20:00+09:00",
-    "ipa": "ios/build/release/ipa/CmuxRemote.ipa",
+    "status": "testflight_internal_available",
+    "archived_at": "2026-08-02T17:52:38+09:00",
+    "ipa": "ios/build/release/ipa-1.0.9-12/CmuxRemote.ipa",
     "entitlements": "aps-environment=production, beta-reports-active=true, get-task-allow=false",
-    "delivery_tool": "Transporter",
-    "note": "1.0.7 train closed on ASC (validation 409) — version moved to 1.0.8, build stays 10"
+    "delivery_tool": "altool",
+    "delivery_uuid": "22e3de5b-31eb-480b-a159-32ff5bc7546d",
+    "note": "Build 12 is VALID and assigned to the Cmux Remote Internal TestFlight group"
   },
   "superseded_1_0_6": {
     "version": "1.0.6",
@@ -51,9 +54,9 @@
     "observed_via": "user screenshot 2026-07-05"
   },
   "previous_uploaded_build": {
-    "version": "1.0.5",
-    "build": "6",
-    "delivery_uuid": "8e42ff35-6b51-4803-9f9c-bea2dde9063b"
+    "version": "1.0.8",
+    "build": "10",
+    "delivery_uuid": "5410a08a-6efe-4cab-89bb-a87ebcd178da"
   },
   "asc_input": {
     "version_record_1_0_8_created": false,
@@ -64,6 +67,15 @@
     "submit_for_review": false
   },
   "submitted": false,
+  "testflight_internal": {
+    "group_id": "5a58096f-ccaa-42be-9f0c-4d0dca0d05e1",
+    "group_name": "Cmux Remote Internal",
+    "build_id": "22e3de5b-31eb-480b-a159-32ff5bc7546d",
+    "tester_id": "02772202-35fa-4b14-b1df-6cfa2bccfa93",
+    "tester_email": "hyuni2020@gmail.com",
+    "invitation_id": "40374e3e-8c72-4eb3-b138-2c7918b0a8d5",
+    "verified_at": "2026-08-02T17:57:00+09:00"
+  },
   "superseded_1_0_7": {
     "version": "1.0.7",
     "build": "9",
