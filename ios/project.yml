@@ -37,11 +37,21 @@ targets:
       path: CmuxRemote/Info.plist
       properties:
         CFBundleDisplayName: "cmux Remote"
-        CFBundleShortVersionString: "1.0.8"
-        CFBundleVersion: "11"
+        CFBundleShortVersionString: "1.0.9"
+        CFBundleVersion: "12"
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
         UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         CFBundleURLTypes:
           - CFBundleURLSchemes: [cmux]
         NSAppTransportSecurity:
@@ -65,8 +75,8 @@ targets:
     info:
       path: CmuxRemoteTests/Info.plist
       properties:
-        CFBundleShortVersionString: "1.0.8"
-        CFBundleVersion: "11"
+        CFBundleShortVersionString: "1.0.9"
+        CFBundleVersion: "12"
     dependencies:
       - target: CmuxRemote
   CmuxRemoteUITests:
@@ -76,8 +86,8 @@ targets:
     info:
       path: CmuxRemoteUITests/Info.plist
       properties:
-        CFBundleShortVersionString: "1.0.8"
-        CFBundleVersion: "11"
+        CFBundleShortVersionString: "1.0.9"
+        CFBundleVersion: "12"
     dependencies:
       - target: CmuxRemote
 schemes:

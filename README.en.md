@@ -48,7 +48,7 @@ New or changed since v1.0.5:
 
 ## Status
 
-**Early preview (v1.0.8).** It can:
+**Early preview (v1.0.9).** It can:
 
 - list, open, create, rename, and close cmux workspaces and surfaces
 - mirror any terminal surface in near real-time (15 Hz diff polling, 120-line bounded history)
