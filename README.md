@@ -372,8 +372,11 @@ cmux Unix socket은 기본적으로 cmux가 쓰는 last-socket-path 마커를
 `cmux-501.sock`처럼 socket 이름이 바뀌거나, cmux 업데이트가 소켓을
 `~/Library/Application Support/cmux`에서 `~/.local/state/cmux`로 옮겨도
 relay가 stale socket에 묶이지 않도록 하기 위함입니다. 고정 경로가 꼭
-필요한 운영 환경에서만 `CMUX_SOCKET_PATH=/path/to/socket`으로
-install 스크립트를 실행하세요.
+필요한 운영 환경에서만 `./scripts/install-launchd.sh --socket
+/path/to/socket`으로 실행하세요. install 스크립트는 환경에 있는
+`CMUX_SOCKET_PATH`를 무시합니다 — cmux가 자신이 띄우는 모든 프로세스에
+이 변수를 export 하므로, cmux 터미널에서 설치하면 그때 살아 있던 소켓이
+그대로 박혀버리기 때문입니다.
 
 > **APNs 푸시 (`apns` 블록).** relay.json에 `apns` 블록을 넣으면 cmux
 > 알림이 APNs 푸시로 전달돼 앱이 종료된 상태에서도 도착합니다. 블록이
@@ -431,8 +434,8 @@ bootstrap + kickstart를 한 번에 처리하는 설치 스크립트를 다시 �
 stale socket에 묶인 것 — install 스크립트를 다시 실행해 최신 바이너리로
 재설치하면 새 마커 경로(`/tmp/cmux-last-socket-path` →
 `~/.local/state/cmux`)를 자동으로 따라갑니다. 급하면
-`cat /tmp/cmux-last-socket-path`로 라이브 소켓을 확인해 `CMUX_SOCKET_PATH`로
-핀하세요.
+`cat /tmp/cmux-last-socket-path`로 라이브 소켓을 확인해
+`./scripts/install-launchd.sh --socket <경로>`로 핀하세요.
 
 ---
 
@@ -461,7 +464,8 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
 - `Connection refused` 반복 — **소켓 경로가 바뀜**(cmux 재시작으로 이름이
   바뀌었거나, 업데이트가 소켓을 `~/.local/state/cmux`로 옮김). 최신 relay는
   마커를 자동 추적하니 `./scripts/install-launchd.sh`로 재설치하면 해결.
-  급하면 `cat /tmp/cmux-last-socket-path`의 경로를 `CMUX_SOCKET_PATH`로 핀.
+  급하면 `cat /tmp/cmux-last-socket-path`의 경로를
+  `./scripts/install-launchd.sh --socket <경로>`로 핀.
 - 헬스 체크는 OK인데 앱만 못 붙음 — **네트워크/주소 문제.** iPhone과
   Mac이 같은 Tailnet인지, 앱 주소·포트(`4399`)가 맞는지, 디바이스 토큰이
   revoke되지 않았는지(`.build/release/cmux-relay devices list`) 확인.
