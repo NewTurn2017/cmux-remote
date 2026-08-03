@@ -141,40 +141,63 @@ Depending on the log:
 | `cmux event stream unavailable: socketMissing` | cmux is not running | Launch the cmux app, then `launchctl kickstart -k "$SERVICE"` |
 | Repeated `Connection refused` | cmux restarted and the socket name rotated | `launchctl kickstart -k "$SERVICE"`; if needed, re-run `./scripts/install-launchd.sh` |
 | Repeated `cmux event stream attached` then immediately `detached` | cmux socket access denied (cmux 0.64+) | See **③a** below |
+| `attached`, then `detached` after ~30 s, on repeat | password mode is on but no socket password is set | See **③a** below |
 | Three lines OK but only the app can't attach | network/address issue | Check ④ and ⑤ |
 
 ### ③a Socket access denied (cmux 0.64+)
 
 cmux 0.64 introduced a socket access control mode that defaults to
-`cmuxOnly` — only processes launched inside cmux can connect. The relay
-runs as a launchd agent outside cmux and is denied.
+`cmuxOnly`. It authorises by process ancestry — only processes launched
+inside cmux may connect. The relay runs as a launchd agent outside cmux,
+so cmux rejects it with:
 
-Fix: tell cmux to accept password-authenticated external connections by
-creating `~/.config/cmux/cmux.json` with:
-
-```bash
-mkdir -p ~/.config/cmux
-cat > ~/.config/cmux/cmux.json <<EOF
-{
-  "automation": {
-    "socketControlMode": "password",
-    "socketPassword": "$(openssl rand -hex 24)"
-  }
-}
-EOF
+```
+ERROR: Access denied — only processes started inside cmux can connect
 ```
 
-Or write the file manually with any strong password you choose, then
-reload from **inside a cmux terminal**:
+Fix: switch cmux to password mode, then set a socket password.
+
+**1. Set the mode.** cmux creates `~/.config/cmux/cmux.json` on launch,
+so edit the existing file rather than overwriting it (back it up first):
+
+```jsonc
+{
+  "automation": {
+    "socketControlMode": "password"
+  }
+}
+```
+
+You can also set the mode in cmux Settings → Automation.
+
+**2. Restart the cmux app.** `cmux reload-config` is not enough — as of
+cmux 0.64.19 the socket listener reads `socketControlMode` only at
+startup.
+
+> Restarting cmux terminates everything running inside it, including
+> agent sessions in cmux workspaces. Finish or hand off that work first.
+
+**3. Set the password in cmux Settings.** Press ⌘, in cmux →
+**Automation** → set the socket password there. It cannot be set from a
+file: as of cmux 0.64.19 cmux keeps the password in the Keychain, and on
+restart it drops any `automation.socketPassword` key from `cmux.json`
+along with the password file below.
+
+**4. Restart the relay** so it picks the password up:
 
 ```bash
-cmux reload-config
 launchctl kickstart -k "$SERVICE"
 ```
 
-The relay reads the password once when its process starts, from
-`~/.local/state/cmux/socket-control-password` (written by cmux on
-reload). Restarting it after the reload makes it pick up the new password.
+The relay reads the password once at process start, from
+`~/.local/state/cmux/socket-control-password` (cmux writes this file when
+the password is set). Restart the relay after any password change.
+
+**If the mode is on but the password is empty**, cmux accepts the
+connection and then drops it after a ~30 s grace period, so the log shows
+`attached` and `detached` on a 30 s cycle. cmux's own CLI also fails with
+`auth_required` in this state. Check that
+`~/.local/state/cmux/socket-control-password` exists and is non-empty.
 
 ### ④ Is Tailscale online on both ends?
 
