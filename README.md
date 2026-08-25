@@ -464,8 +464,8 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
 - `Connection refused` 반복 — **소켓 경로가 바뀜**(cmux 재시작으로 이름이
   바뀌었거나, 업데이트가 소켓을 `~/.local/state/cmux`로 옮김). 최신 relay는
   마커를 자동 추적하니 `./scripts/install-launchd.sh`로 재설치하면 해결.
-  급하면 `cat /tmp/cmux-last-socket-path`의 경로를
-  `./scripts/install-launchd.sh --socket <경로>`로 핀.
+  급하면 현재 마커의 경로를
+  `./scripts/install-launchd.sh --socket "$(cat /tmp/cmux-last-socket-path)"`로 핀.
 - 헬스 체크는 OK인데 앱만 못 붙음 — **네트워크/주소 문제.** iPhone과
   Mac이 같은 Tailnet인지, 앱 주소·포트(`4399`)가 맞는지, 디바이스 토큰이
   revoke되지 않았는지(`.build/release/cmux-relay devices list`) 확인.

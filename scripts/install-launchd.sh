@@ -23,6 +23,12 @@ Options:
 USAGE
 }
 
+socket_path_error() {
+  echo "--socket requires a path" >&2
+  usage >&2
+  exit 2
+}
+
 PIN_SOCKET=""
 PIN_SOCKET_SET=0
 
@@ -30,9 +36,17 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --socket)
-      [ "$#" -ge 2 ] || { echo "--socket requires a path" >&2; usage >&2; exit 2; }
+      [ "$#" -ge 2 ] || socket_path_error
+      case "$2" in
+        ""|-*) socket_path_error ;;
+      esac
       PIN_SOCKET="$2"; PIN_SOCKET_SET=1; shift ;;
-    --socket=*) PIN_SOCKET="${1#--socket=}"; PIN_SOCKET_SET=1 ;;
+    --socket=*)
+      PIN_SOCKET="${1#--socket=}"
+      case "$PIN_SOCKET" in
+        ""|-*) socket_path_error ;;
+      esac
+      PIN_SOCKET_SET=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac

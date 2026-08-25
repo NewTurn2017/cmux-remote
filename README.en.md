@@ -487,7 +487,8 @@ Per-log fixes:
   its socket name, or an update moved it to `~/.local/state/cmux`). A current
   relay tracks the markers automatically, so re-running
   `./scripts/install-launchd.sh` fixes it. In a pinch, pin the path from
-  `cat /tmp/cmux-last-socket-path` via `./scripts/install-launchd.sh --socket`.
+  the current marker with
+  `./scripts/install-launchd.sh --socket "$(cat /tmp/cmux-last-socket-path)"`.
 - Health check OK but only the app can't attach — **network/address
   issue.** Confirm the iPhone and Mac share a Tailnet, the app's
   address/port (`4399`) is correct, and the device token wasn't revoked

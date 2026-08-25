@@ -151,7 +151,7 @@ cmux 0.64 introduced a socket access control mode that defaults to
 inside cmux may connect. The relay runs as a launchd agent outside cmux,
 so cmux rejects it with:
 
-```
+```text
 ERROR: Access denied — only processes started inside cmux can connect
 ```
 
@@ -189,15 +189,22 @@ along with the password file below.
 launchctl kickstart -k "$SERVICE"
 ```
 
-The relay reads the password once at process start, from
-`~/.local/state/cmux/socket-control-password` (cmux writes this file when
-the password is set). Restart the relay after any password change.
+The relay reads the first non-empty password once at process start, in this
+order:
+
+1. `CMUX_SOCKET_PASSWORD`
+2. `$XDG_STATE_HOME/cmux/socket-control-password` when `XDG_STATE_HOME` is set
+3. `~/.local/state/cmux/socket-control-password`
+4. `~/Library/Application Support/cmux/socket-control-password`
+
+cmux writes the state-directory file when the password is set. Restart the
+relay after any password change.
 
 **If the mode is on but the password is empty**, cmux accepts the
 connection and then drops it after a ~30 s grace period, so the log shows
 `attached` and `detached` on a 30 s cycle. cmux's own CLI also fails with
-`auth_required` in this state. Check that
-`~/.local/state/cmux/socket-control-password` exists and is non-empty.
+`auth_required` in this state. Check that the applicable environment value or
+password file from the lookup order above exists and is non-empty.
 
 ### ④ Is Tailscale online on both ends?
 

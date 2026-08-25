@@ -150,7 +150,7 @@ cmux 0.64부터 소켓 접근 제어 모드의 기본값은 `cmuxOnly`입니다.
 **프로세스 계보**로 인가하므로 cmux 안에서 실행된 프로세스만 연결할 수
 있고, 외부 launchd agent인 relay는 이렇게 거부당합니다:
 
-```
+```text
 ERROR: Access denied — only processes started inside cmux can connect
 ```
 
@@ -187,16 +187,23 @@ cmux Settings → Automation에서 모드를 바꿔도 됩니다.
 launchctl kickstart -k "$SERVICE"
 ```
 
-relay는 프로세스 시작 시
-`~/.local/state/cmux/socket-control-password`에서 비밀번호를 한 번
-읽습니다(비밀번호를 설정하면 cmux가 이 파일을 기록합니다). 비밀번호를
-바꾼 뒤에는 항상 relay를 재시작하세요.
+relay는 프로세스 시작 시 아래 순서에서 처음 발견한 비어 있지 않은
+비밀번호를 한 번 읽습니다:
+
+1. `CMUX_SOCKET_PASSWORD`
+2. `XDG_STATE_HOME`이 설정된 경우
+   `$XDG_STATE_HOME/cmux/socket-control-password`
+3. `~/.local/state/cmux/socket-control-password`
+4. `~/Library/Application Support/cmux/socket-control-password`
+
+비밀번호를 설정하면 cmux가 state 디렉터리의 파일을 기록합니다.
+비밀번호를 바꾼 뒤에는 항상 relay를 재시작하세요.
 
 **모드만 켜지고 비밀번호가 비어 있으면** cmux가 연결을 받아들였다가 약
 30초의 유예 후 끊습니다. 그래서 로그에 `attached`와 `detached`가 30초
 주기로 반복됩니다. 이 상태에서는 cmux CLI 자체도 `auth_required`로
-실패합니다. `~/.local/state/cmux/socket-control-password`가 존재하고
-비어 있지 않은지 확인하세요.
+실패합니다. 위 탐색 순서에서 현재 환경에 해당하는 값이나 비밀번호
+파일이 존재하고 비어 있지 않은지 확인하세요.
 
 ### ④ Tailscale이 양쪽 다 온라인인가?
 
