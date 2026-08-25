@@ -44,6 +44,13 @@ struct CMUXRenderGrid: Decodable, Equatable, Sendable {
             throw CMUXRenderGridError.invalidDimensions(columns: columns, rows: rows)
         }
 
+        let decodedRenderEpoch = try container.decodeIfPresent(CMUXRenderEpoch.self, forKey: .renderEpoch)
+            ?? CMUXRenderEpoch(rawValue: "")
+        if !decodedRenderEpoch.rawValue.isEmpty,
+           UUID(uuidString: decodedRenderEpoch.rawValue) == nil {
+            throw CMUXRenderGridError.invalidRenderEpoch(decodedRenderEpoch.rawValue)
+        }
+
         let cursor = try container.decodeIfPresent(CMUXRenderGridCursor.self, forKey: .cursor)
         if let cursor {
             guard (0..<rows).contains(cursor.row), (0..<columns).contains(cursor.column) else {
@@ -61,7 +68,10 @@ struct CMUXRenderGrid: Decodable, Equatable, Sendable {
         let styles = decodedStyles.isEmpty ? [.default] : decodedStyles
         let styleIDs = Set(styles.map(\.id))
         let rowSpans = try container.decode([CMUXRenderGridSpan].self, forKey: .rowSpans)
-        let scrollbackRows = max(0, try container.decodeIfPresent(Int.self, forKey: .scrollbackRows) ?? 0)
+        let scrollbackRows = try container.decodeIfPresent(Int.self, forKey: .scrollbackRows) ?? 0
+        guard scrollbackRows >= 0 else {
+            throw CMUXRenderGridError.invalidScrollbackRows(scrollbackRows)
+        }
         let scrollbackSpans = try container.decodeIfPresent([CMUXRenderGridSpan].self, forKey: .scrollbackSpans) ?? []
         try Self.validate(
             spans: rowSpans,
@@ -79,8 +89,7 @@ struct CMUXRenderGrid: Decodable, Equatable, Sendable {
         self.format = format
         surfaceID = try container.decode(String.self, forKey: .surfaceID)
         stateSeq = try container.decode(UInt64.self, forKey: .stateSeq)
-        renderEpoch = try container.decodeIfPresent(CMUXRenderEpoch.self, forKey: .renderEpoch)
-            ?? CMUXRenderEpoch(rawValue: "")
+        renderEpoch = decodedRenderEpoch
         renderRevision = try container.decodeIfPresent(CMUXRenderRevision.self, forKey: .renderRevision)
             ?? CMUXRenderRevision(rawValue: 0)
         self.columns = columns

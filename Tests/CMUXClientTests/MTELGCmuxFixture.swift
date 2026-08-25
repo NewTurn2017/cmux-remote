@@ -13,6 +13,10 @@ import NIOPosix
 /// One thread is enough; the server bootstrap, the client bootstrap, and
 /// the actor-side hops all share it without contention in test scope.
 final class MTELGCmuxFixture: @unchecked Sendable {
+    enum ReadinessError: Error, Equatable {
+        case timeout
+    }
+
     let group: MultiThreadedEventLoopGroup
     let serverChannel: Channel
     let clientChannel: Channel
@@ -35,7 +39,12 @@ final class MTELGCmuxFixture: @unchecked Sendable {
         self.serverInbox = serverInbox
     }
 
-    static func make(requestTimeout: TimeAmount = .seconds(2)) async throws -> MTELGCmuxFixture {
+    static func make(
+        requestTimeout: TimeAmount = .seconds(2),
+        closeClientBeforeInboundInstallation: Bool = false,
+        awaitReadiness: Bool = true,
+        inboundInstallationGate: CMUXClient.InboundInstallationGate? = nil
+    ) async throws -> MTELGCmuxFixture {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let inbox = ServerInbox()
         let acceptedPromise: EventLoopPromise<Channel> = group.next().makePromise(of: Channel.self)
@@ -68,17 +77,56 @@ final class MTELGCmuxFixture: @unchecked Sendable {
             .get()
 
         let acceptedChannel = try await acceptedPromise.futureResult.get()
-        let client = CMUXClient(channel: clientChannel, requestTimeout: requestTimeout)
-        // Give the CMUXClient init's `Task { await self.installInboundHandler() }`
-        // a chance to land before the test starts pumping bytes.
-        try await Task.sleep(nanoseconds: 30_000_000)
+        if closeClientBeforeInboundInstallation {
+            try await clientChannel.close().get()
+        }
+        let client: CMUXClient
+        if let inboundInstallationGate {
+            client = CMUXClient(
+                channel: clientChannel,
+                requestTimeout: requestTimeout,
+                inboundInstallationGate: inboundInstallationGate
+            )
+        } else {
+            client = CMUXClient(channel: clientChannel, requestTimeout: requestTimeout)
+        }
+        let fixture = MTELGCmuxFixture(
+            group: group,
+            serverChannel: serverChannel,
+            clientChannel: clientChannel,
+            acceptedChannel: acceptedChannel,
+            client: client,
+            serverInbox: inbox
+        )
+        if awaitReadiness {
+            do {
+                try await Self.awaitReadiness {
+                    try await client.awaitReady()
+                }
+            } catch {
+                await fixture.shutdown()
+                throw error
+            }
+        }
+        return fixture
+    }
 
-        return .init(group: group,
-                     serverChannel: serverChannel,
-                     clientChannel: clientChannel,
-                     acceptedChannel: acceptedChannel,
-                     client: client,
-                     serverInbox: inbox)
+    /// Awaits exact client readiness with a bounded fail-safe deadline.
+    static func awaitReadiness(
+        timeout: Duration = .seconds(2),
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask(operation: operation)
+            group.addTask {
+                // A bounded fail-safe for a missing readiness event, never a settling delay.
+                try await ContinuousClock().sleep(for: timeout)
+                try Task.checkCancellation()
+                throw ReadinessError.timeout
+            }
+            defer { group.cancelAll() }
+            try await group.next()
+        }
     }
 
     /// Wait for the next outbound line from the client to arrive on the

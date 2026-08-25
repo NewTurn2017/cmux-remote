@@ -67,6 +67,9 @@ struct CMUXSurfaceRaw: Decodable {
 /// A validated render grid is authoritative when present. Legacy responses keep
 /// their original newline splitting, column derivation, and stub cursor behavior.
 struct CMUXReadTextRaw: Decodable {
+    /// Relay-local retention policy applied after decoding daemon replay depth.
+    static let retainedLineLimit = 120
+
     let text: String
     let renderGrid: CMUXRenderGrid?
 
@@ -78,11 +81,32 @@ struct CMUXReadTextRaw: Decodable {
 
     func toScreen(rev: Int) -> Screen {
         if let renderGrid {
+            let allRows = renderGrid.canonicalANSIRows()
+            let retainedRows = Array(allRows.suffix(Self.retainedLineLimit))
+            let droppedRows = allRows.count - retainedRows.count
+            let cursor: CursorPos
+            if let sourceCursor = renderGrid.cursor, sourceCursor.visible {
+                let retainedRow = renderGrid.scrollbackRows + sourceCursor.row - droppedRows
+                cursor = retainedRows.indices.contains(retainedRow)
+                    ? CursorPos(x: sourceCursor.column, y: retainedRow)
+                    : .hidden
+            } else {
+                cursor = .hidden
+            }
+
             return Screen(
                 rev: rev,
-                rows: renderGrid.canonicalANSIRows(),
+                rows: retainedRows,
                 cols: renderGrid.columns,
-                cursor: CursorPos(x: 0, y: 0)
+                cursor: cursor,
+                snapshotMetadata: ScreenSnapshotMetadata(
+                    renderEpoch: renderGrid.renderEpoch.rawValue,
+                    renderRevision: renderGrid.renderRevision.rawValue,
+                    viewportRows: renderGrid.rows,
+                    terminalForeground: renderGrid.resolvedTerminalForeground,
+                    terminalBackground: renderGrid.resolvedTerminalBackground,
+                    terminalThemeRevision: renderGrid.terminalThemeRevision
+                )
             )
         }
 

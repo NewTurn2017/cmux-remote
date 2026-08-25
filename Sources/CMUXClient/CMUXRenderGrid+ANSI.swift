@@ -55,31 +55,27 @@ extension CMUXRenderGrid {
         }
     }
 
-    private var resolvedTerminalForeground: String {
-        if let terminalForeground, terminalForeground.cmuxRGBComponents != nil {
+    var resolvedTerminalForeground: String {
+        if let terminalForeground = terminalForeground?.cmuxNormalizedRGB {
             return terminalForeground
         }
-        if let themeForeground = terminalTheme?.foreground,
-           themeForeground.cmuxRGBComponents != nil {
+        if let themeForeground = terminalTheme?.foreground?.cmuxNormalizedRGB {
             return themeForeground
         }
-        if let configForeground = terminalConfigTheme?.foreground,
-           configForeground.cmuxRGBComponents != nil {
+        if let configForeground = terminalConfigTheme?.foreground?.cmuxNormalizedRGB {
             return configForeground
         }
         return "#ffffff"
     }
 
-    private var resolvedTerminalBackground: String {
-        if let terminalBackground, terminalBackground.cmuxRGBComponents != nil {
+    var resolvedTerminalBackground: String {
+        if let terminalBackground = terminalBackground?.cmuxNormalizedRGB {
             return terminalBackground
         }
-        if let themeBackground = terminalTheme?.background,
-           themeBackground.cmuxRGBComponents != nil {
+        if let themeBackground = terminalTheme?.background?.cmuxNormalizedRGB {
             return themeBackground
         }
-        if let configBackground = terminalConfigTheme?.background,
-           configBackground.cmuxRGBComponents != nil {
+        if let configBackground = terminalConfigTheme?.background?.cmuxNormalizedRGB {
             return configBackground
         }
         return "#000000"

@@ -89,7 +89,7 @@ public final class CmuxConnection: @unchecked Sendable {
         // inside its initializer; without this gate the very first RPC
         // races the bridge install and its response is dropped before
         // being delivered.
-        await c.awaitReady()
+        try await c.awaitReady()
         if let socketPassword {
             try await c.authenticate(password: socketPassword)
         }

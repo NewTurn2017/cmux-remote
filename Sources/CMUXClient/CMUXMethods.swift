@@ -62,6 +62,9 @@ extension CMUXClient {
     public func surfaceReadText(workspaceId: String, surfaceId: String, lines: Int)
         async throws -> Screen
     {
+        guard lines >= 0 else {
+            throw CMUXClientError.decoding("surface.read_text lines must be nonnegative")
+        }
         let resp = try await call(method: "surface.read_text",
                                   params: .object([
                                       "workspace_id": .string(workspaceId),

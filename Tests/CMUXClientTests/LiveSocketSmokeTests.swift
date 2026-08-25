@@ -1,20 +1,29 @@
-import XCTest
+import Foundation
+import Testing
 import NIOCore
 import NIOPosix
-import SharedKit
 @testable import CMUXClient
 
-final class LiveSocketSmokeTests: XCTestCase {
-    func testWorkspaceListAgainstRealCmux() async throws {
-        try XCTSkipIf(ProcessInfo.processInfo.environment["CMUX_LIVE"] != "1",
-                      "set CMUX_LIVE=1 to run")
+@Suite("LiveSocketSmokeTests")
+struct LiveSocketSmokeTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CMUX_LIVE"] == "1"))
+    func workspaceListAgainstRealCmux() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
-        let chan = try await UnixSocketChannel(path: cmuxSocketPath(), group: group)
-            .connect { _ in group.next().makeSucceededFuture(()) }
-        let client = CMUXClient(channel: chan, requestTimeout: .seconds(5))
-        let workspaces = try await client.workspaceList()
-        print("live workspaces: \(workspaces.map(\.name))")
-        XCTAssertNotNil(workspaces)
+        var channel: Channel?
+        do {
+            let connectedChannel = try await UnixSocketChannel(path: cmuxSocketPath(), group: group)
+                .connect { _ in group.next().makeSucceededFuture(()) }
+            channel = connectedChannel
+            let client = CMUXClient(channel: connectedChannel, requestTimeout: .seconds(5))
+            try await client.awaitReady()
+            let workspaces = try await client.workspaceList()
+            print("live workspaces: \(workspaces.map(\.name))")
+            try await connectedChannel.close().get()
+            try await group.shutdownGracefully()
+        } catch {
+            try? await channel?.close().get()
+            try? await group.shutdownGracefully()
+            throw error
+        }
     }
 }

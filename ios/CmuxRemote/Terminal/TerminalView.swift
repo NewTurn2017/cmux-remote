@@ -42,6 +42,7 @@ struct TerminalView: View {
             let contentWidth = max(proxy.size.width, leftInset + CGFloat(contentColumns) * cellWidth + 24)
             let contentHeight = max(viewportHeight + 1, CGFloat(store.grid.renderRows.count) * lineHeight + 24)
             let visibleCols = contentColumns
+            let visibleRows = store.grid.renderRows.count
 
             ZStack(alignment: .top) {
                 CmuxTheme.terminal
@@ -99,7 +100,10 @@ struct TerminalView: View {
                                         }
                                     }
 
-                                    if store.grid.cursor.x < visibleCols {
+                                    if store.grid.cursor.isRenderable(
+                                        columns: visibleCols,
+                                        rows: visibleRows
+                                    ) {
                                         let cursorX = leftInset + CGFloat(store.grid.cursor.x) * cellWidth
                                         let cursorY = 8 + CGFloat(store.grid.cursor.y) * lineHeight
                                         context.fill(

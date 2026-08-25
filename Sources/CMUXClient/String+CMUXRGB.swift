@@ -7,4 +7,15 @@ extension String {
         guard hex.count == 6, let raw = Int(hex, radix: 16) else { return nil }
         return ((raw >> 16) & 0xFF, (raw >> 8) & 0xFF, raw & 0xFF)
     }
+
+    /// Returns one lowercase representation for semantically identical daemon RGB values.
+    var cmuxNormalizedRGB: String? {
+        guard let components = cmuxRGBComponents else { return nil }
+        return String(
+            format: "#%02x%02x%02x",
+            components.red,
+            components.green,
+            components.blue
+        )
+    }
 }

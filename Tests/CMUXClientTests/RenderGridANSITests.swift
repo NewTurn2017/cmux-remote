@@ -143,8 +143,9 @@ struct RenderGridANSITests {
         let second = try RenderGridTestSupport.decode(data).toScreen(rev: 1)
 
         #expect(first.rows.map { Data($0.utf8) } == second.rows.map { Data($0.utf8) })
+        #expect(first.cursor == CursorPos(x: 4, y: 4))
         #expect(ScreenHasher.hash(first) == ScreenHasher.hash(second))
-        #expect(ScreenHasher.hash(first) == "b8c93df0f4077dc7")
+        #expect(ScreenHasher.hash(first) == "6a08ba07df30dbc8")
     }
 
     private static func parsedTransitionRow(spans: String) throws -> (String, [ANSICell]) {

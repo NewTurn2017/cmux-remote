@@ -4,6 +4,8 @@ import Foundation
 enum CMUXRenderGridError: Error, Equatable, Sendable {
     case invalidFormat(String)
     case invalidDimensions(columns: Int, rows: Int)
+    case invalidScrollbackRows(Int)
+    case invalidRenderEpoch(String)
     case invalidRow(Int)
     case invalidColumn(Int)
     case invalidCursor(row: Int, column: Int)
