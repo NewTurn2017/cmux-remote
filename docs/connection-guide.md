@@ -141,41 +141,69 @@ cmux event stream attached
 | `cmux event stream unavailable: socketMissing` | cmux가 꺼져 있음 | cmux 앱을 켜고 `launchctl kickstart -k "$SERVICE"` |
 | `Connection refused` 반복 | cmux 재시작으로 소켓 이름이 바뀜 | `launchctl kickstart -k "$SERVICE"`, 그래도면 `./scripts/install-launchd.sh` 재실행 |
 | `cmux event stream attached` 직후 `detached` 반복 | cmux 소켓 접근 거부(cmux 0.64+) | 아래 **③a** 확인 |
+| `attached` 후 약 30초 뒤 `detached` 반복 | password 모드는 켜졌는데 소켓 비밀번호가 비어 있음 | 아래 **③a** 확인 |
 | 3줄 정상인데 앱만 못 붙음 | 네트워크/주소 문제 | ④⑤ 확인 |
 
 ### ③a 소켓 접근 거부(cmux 0.64+)
 
-cmux 0.64부터 소켓 접근 제어 모드의 기본값은 `cmuxOnly`입니다. cmux
-안에서 실행된 프로세스만 연결할 수 있으므로, 외부 launchd agent인 relay는
-접근을 거부당합니다.
+cmux 0.64부터 소켓 접근 제어 모드의 기본값은 `cmuxOnly`입니다. 이 모드는
+**프로세스 계보**로 인가하므로 cmux 안에서 실행된 프로세스만 연결할 수
+있고, 외부 launchd agent인 relay는 이렇게 거부당합니다:
 
-비밀번호로 인증한 외부 연결을 허용하도록 `~/.config/cmux/cmux.json`을
-만드세요:
-
-```bash
-mkdir -p ~/.config/cmux
-cat > ~/.config/cmux/cmux.json <<EOF
-{
-  "automation": {
-    "socketControlMode": "password",
-    "socketPassword": "$(openssl rand -hex 24)"
-  }
-}
-EOF
+```text
+ERROR: Access denied — only processes started inside cmux can connect
 ```
 
-직접 정한 강력한 비밀번호로 파일을 작성해도 됩니다. 그다음 **cmux
-터미널 안에서** 설정을 다시 읽히고 relay를 재시작하세요:
+해결하려면 cmux를 password 모드로 바꾸고 소켓 비밀번호를 설정하세요.
+
+**1. 모드 설정.** cmux가 실행될 때 `~/.config/cmux/cmux.json`을 만들어
+두므로, 덮어쓰지 말고 기존 파일을 편집하세요(먼저 백업 권장):
+
+```jsonc
+{
+  "automation": {
+    "socketControlMode": "password"
+  }
+}
+```
+
+cmux Settings → Automation에서 모드를 바꿔도 됩니다.
+
+**2. cmux 앱 재시작.** `cmux reload-config`로는 부족합니다 — cmux
+0.64.19 기준 소켓 리스너는 `socketControlMode`를 시작 시점에만 읽습니다.
+
+> cmux를 재시작하면 그 안에서 실행 중인 모든 것이 함께 종료됩니다.
+> cmux 워크스페이스에서 돌던 에이전트 세션도 포함되니 미리 정리하세요.
+
+**3. cmux Settings에서 비밀번호 설정.** cmux에서 ⌘, → **Automation**
+에서 소켓 비밀번호를 설정하세요. 파일로는 설정할 수 없습니다 — cmux
+0.64.19 기준 비밀번호는 Keychain에 저장되며, 재시작 시 cmux가
+`cmux.json`의 `automation.socketPassword` 키와 아래 비밀번호 파일을
+모두 제거합니다.
+
+**4. relay 재시작**으로 비밀번호를 읽히세요:
 
 ```bash
-cmux reload-config
 launchctl kickstart -k "$SERVICE"
 ```
 
-relay는 프로세스 시작 시
-`~/.local/state/cmux/socket-control-password`에서 비밀번호를 한 번
-읽습니다. cmux가 reload 때 파일을 기록하므로, 위 재시작을 해야 새
-비밀번호가 반영됩니다.
+relay는 프로세스 시작 시 아래 순서에서 처음 발견한 비어 있지 않은
+비밀번호를 한 번 읽습니다:
+
+1. `CMUX_SOCKET_PASSWORD`
+2. `XDG_STATE_HOME`이 설정된 경우
+   `$XDG_STATE_HOME/cmux/socket-control-password`
+3. `~/.local/state/cmux/socket-control-password`
+4. `~/Library/Application Support/cmux/socket-control-password`
+
+비밀번호를 설정하면 cmux가 state 디렉터리의 파일을 기록합니다.
+비밀번호를 바꾼 뒤에는 항상 relay를 재시작하세요.
+
+**모드만 켜지고 비밀번호가 비어 있으면** cmux가 연결을 받아들였다가 약
+30초의 유예 후 끊습니다. 그래서 로그에 `attached`와 `detached`가 30초
+주기로 반복됩니다. 이 상태에서는 cmux CLI 자체도 `auth_required`로
+실패합니다. 위 탐색 순서에서 현재 환경에 해당하는 값이나 비밀번호
+파일이 존재하고 비어 있지 않은지 확인하세요.
 
 ### ④ Tailscale이 양쪽 다 온라인인가?
 
