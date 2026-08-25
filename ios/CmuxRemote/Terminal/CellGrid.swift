@@ -56,16 +56,32 @@ public struct TerminalRenderRow: Equatable {
     public var runs: [TerminalRenderRun]
     public var columns: Int
     public var plainText: String
+    let selectionRow: TerminalSelectionRow
 
     public init(cells: [ANSICell]) {
         var runs: [TerminalRenderRun] = []
+        var spans: [TerminalColumnSpan] = []
         var plainText = ""
         var column = 0
 
         for cell in cells {
             let cellColumns = TerminalCellWidth.columns(for: cell.character)
+            let sourceText = String(cell.character)
             let displayText = TerminalGlyph.textStyleString(for: cell.character)
-            plainText.append(String(cell.character))
+            plainText.append(sourceText)
+
+            if cellColumns == 0, let last = spans.indices.last {
+                let previous = spans[last]
+                spans[last] = TerminalColumnSpan(
+                    columns: previous.columns,
+                    text: previous.text + sourceText
+                )
+            } else if cellColumns > 0 {
+                spans.append(TerminalColumnSpan(
+                    columns: column..<(column + cellColumns),
+                    text: sourceText
+                ))
+            }
 
             if cellColumns == 0, let last = runs.indices.last, runs[last].attr == cell.attr {
                 runs[last].text.append(displayText)
@@ -88,13 +104,17 @@ public struct TerminalRenderRow: Equatable {
             column += cellColumns
         }
 
-        self.init(runs: runs, columns: column, plainText: plainText)
+        self.runs = runs
+        self.columns = column
+        self.plainText = plainText
+        self.selectionRow = TerminalSelectionRow(spans: spans)
     }
 
     public init(runs: [TerminalRenderRun], columns: Int, plainText: String) {
         self.runs = runs
         self.columns = columns
         self.plainText = plainText
+        self.selectionRow = .empty
     }
 }
 
