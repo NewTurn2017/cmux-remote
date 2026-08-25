@@ -33,6 +33,7 @@ public actor WSProtocolMachine {
         case attachSession(deviceId: String)
         case subscribe(responseId: String, workspaceId: String, surfaceId: String, lines: Int)
         case unsubscribe(responseId: String, surfaceId: String)
+        case noteUserInput(surfaceId: String)
     }
 
     private let cmux: CMUXFacade
@@ -67,7 +68,14 @@ public actor WSProtocolMachine {
         do {
             let result = try await cmux.dispatch(method: req.method, params: req.params)
             let resp = RPCResponse(id: req.id, ok: true, result: result, error: nil)
-            return [.sendText(Self.encode(resp))]
+            var actions: [Action] = [.sendText(Self.encode(resp))]
+            if Self.isSuccessfulInput(req),
+               case .object(let params) = req.params,
+               case .string(let surfaceId)? = params["surface_id"]
+            {
+                actions.append(.noteUserInput(surfaceId: surfaceId))
+            }
+            return actions
         } catch {
             let err = RPCError(code: "internal_error",
                                message: String(describing: error))
@@ -122,6 +130,10 @@ public actor WSProtocolMachine {
         default:
             return nil
         }
+    }
+
+    private static func isSuccessfulInput(_ request: RPCRequest) -> Bool {
+        request.method == "surface.send_text" || request.method == "surface.send_key"
     }
 
     private static func okResponse(id: String) -> RPCResponse {
@@ -277,9 +289,30 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                     channel.execute { self.writeText(text, on: $0) }
                     continue
                 }
-                await session.subscribe(workspaceId: workspaceId, surfaceId: surfaceId, lines: lines)
-                let text = WSProtocolMachine.encodeForHandler(.init(id: responseId, ok: true, result: .object([:])))
-                channel.execute { self.writeText(text, on: $0) }
+                do {
+                    try await session.subscribe(
+                        workspaceId: workspaceId,
+                        surfaceId: surfaceId,
+                        lines: lines
+                    )
+                    let text = WSProtocolMachine.encodeForHandler(.init(
+                        id: responseId,
+                        ok: true,
+                        result: .object([:])
+                    ))
+                    channel.execute { self.writeText(text, on: $0) }
+                } catch {
+                    let text = WSProtocolMachine.encodeForHandler(.init(
+                        id: responseId,
+                        ok: false,
+                        result: nil,
+                        error: RPCError(
+                            code: "subscription_rejected",
+                            message: String(describing: error)
+                        )
+                    ))
+                    channel.execute { self.writeText(text, on: $0) }
+                }
             case .unsubscribe(let responseId, let surfaceId):
                 guard let session else {
                     let text = WSProtocolMachine.encodeForHandler(.init(
@@ -292,6 +325,8 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                 await session.unsubscribe(surfaceId: surfaceId)
                 let text = WSProtocolMachine.encodeForHandler(.init(id: responseId, ok: true, result: .object([:])))
                 channel.execute { self.writeText(text, on: $0) }
+            case .noteUserInput(let surfaceId):
+                await session?.noteUserInput(surfaceId: surfaceId)
             }
         }
     }
@@ -307,7 +342,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
             case .sendText(let text): writeText(text, on: context)
             case .close:              context.close(promise: nil)
             case .attachSession:      break
-            case .subscribe, .unsubscribe: break
+            case .subscribe, .unsubscribe, .noteUserInput: break
             }
         }
     }

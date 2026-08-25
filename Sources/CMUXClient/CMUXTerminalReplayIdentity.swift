@@ -8,7 +8,12 @@ public struct CMUXTerminalReplayIdentity: Equatable, Sendable {
     /// The monotonic revision within ``epoch``.
     public let revision: UInt64
 
-    init(epoch: String, revision: UInt64) {
+    /// Creates a producer identity for a decoded replay.
+    ///
+    /// - Parameters:
+    ///   - epoch: Producer lifetime identifier.
+    ///   - revision: Monotonic revision within the producer lifetime.
+    public init(epoch: String, revision: UInt64) {
         self.epoch = epoch
         self.revision = revision
     }

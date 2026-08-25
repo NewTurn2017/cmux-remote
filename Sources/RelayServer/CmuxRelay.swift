@@ -44,7 +44,7 @@ struct Serve: AsyncParsableCommand {
         let conn = CmuxConnection(group: group)
         let facade = CMUXFacadeImpl(connection: conn)
         let reader = CmuxSurfaceReader(connection: conn)
-        let manager = SessionManager(reader: reader,
+        let manager = SessionManager(terminalReader: reader,
                                      defaultFps: store.current.defaultFps,
                                      idleFps: store.current.idleFps)
         let deviceStore = try DeviceStore(url: URL(fileURLWithPath: devicesStorePath()))

@@ -12,7 +12,13 @@ public struct CMUXTerminalReadUpdate: Equatable, Sendable {
     /// The replay identity when ``sourceMode`` is ``CMUXTerminalSourceMode/renderGrid``.
     public let replayIdentity: CMUXTerminalReplayIdentity?
 
-    init(
+    /// Creates an updated source outcome for a capability-aware reader implementation.
+    ///
+    /// - Parameters:
+    ///   - screen: Authoritative decoded terminal snapshot.
+    ///   - sourceMode: Daemon API that produced the snapshot.
+    ///   - replayIdentity: Render-grid identity, or `nil` for legacy text.
+    public init(
         screen: Screen,
         sourceMode: CMUXTerminalSourceMode,
         replayIdentity: CMUXTerminalReplayIdentity?

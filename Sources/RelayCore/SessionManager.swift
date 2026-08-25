@@ -1,79 +1,134 @@
 import Foundation
 import SharedKit
 
-/// Owns the lifetime of all connected `Session`s, indexes them by device
-/// id for per-device fanout, and exposes broadcast helpers used by both
-/// the WS handler (per-device push) and the cmux event stream (global
-/// fanout). Actor-isolated because attach / detach / broadcast can race
-/// with the WS read paths and the cmux event subscriber.
+/// Owns connected sessions and the shared per-surface render-hub registry they lease.
 public actor SessionManager {
-    private let reader: SurfaceReader
-    private let defaultFps: Int
-    private let idleFps: Int
+    /// Number of attached WebSocket sessions.
+    public var activeSessionCount: Int { sessionsById.count }
+
+    /// Number of surface hubs currently shared by one or more sessions.
+    public var activeRenderHubCount: Int {
+        get async { await renderRegistry.activeHubCount }
+    }
+
+    private let renderRegistry: SurfaceRenderHubRegistry
     private var sessionsById: [ObjectIdentifier: Session] = [:]
     private var byDevice: [String: Set<ObjectIdentifier>] = [:]
 
-    public init(reader: SurfaceReader, defaultFps: Int, idleFps: Int) {
-        self.reader = reader
-        self.defaultFps = defaultFps
-        self.idleFps = idleFps
+    /// Creates a manager around the capability-aware production source seam.
+    ///
+    /// - Parameters:
+    ///   - terminalReader: Shared terminal source reader used by all surface actors.
+    ///   - defaultFps: Configured active target, normally 15 Hz.
+    ///   - idleFps: Configured idle target, normally 5 Hz.
+    ///   - clockFactory: Creates one independently injectable clock per surface.
+    public init(
+        terminalReader: any TerminalSourceReader,
+        defaultFps: Int,
+        idleFps: Int,
+        clockFactory: @escaping @Sendable () -> any SurfaceRenderClock = {
+            ContinuousSurfaceRenderClock()
+        }
+    ) {
+        self.renderRegistry = SurfaceRenderHubRegistry(
+            reader: terminalReader,
+            configuration: SurfaceRenderHubConfiguration(
+                activeFps: defaultFps,
+                idleFps: idleFps
+            ),
+            clockFactory: clockFactory
+        )
     }
 
-    public var activeSessionCount: Int { sessionsById.count }
+    /// Creates a manager for an existing plain-text ``SurfaceReader``.
+    ///
+    /// - Parameters:
+    ///   - reader: Legacy source adapted to capability-aware updated outcomes.
+    ///   - defaultFps: Configured active target.
+    ///   - idleFps: Configured idle target.
+    public init(reader: any SurfaceReader, defaultFps: Int, idleFps: Int) {
+        self.renderRegistry = SurfaceRenderHubRegistry(
+            reader: LegacyTerminalSourceReader(reader: reader),
+            configuration: SurfaceRenderHubConfiguration(
+                activeFps: defaultFps,
+                idleFps: idleFps
+            )
+        )
+    }
 
-    /// Build a Session, install its `sendFrame` closure, and index it by
-    /// (object identity) and device id. Returns the new Session so the
-    /// caller can drive subscribe / unsubscribe directly.
-    public func attach(deviceId: String,
-                       send: @escaping @Sendable (PushFrame) -> Void) async -> Session
-    {
-        let s = Session(deviceId: deviceId, reader: reader,
-                        defaultFps: defaultFps, idleFps: idleFps)
-        await s.update(sendFrame: send)
-        let key = ObjectIdentifier(s)
-        sessionsById[key] = s
+    /// Builds, wires, and indexes one session by object identity and device identifier.
+    ///
+    /// - Parameters:
+    ///   - deviceId: Authenticated device identifier.
+    ///   - send: Transport callback for established push frames.
+    /// - Returns: Attached session used by the WebSocket adapter.
+    public func attach(
+        deviceId: String,
+        send: @escaping @Sendable (PushFrame) -> Void
+    ) async -> Session {
+        let session = Session(deviceId: deviceId, renderRegistry: renderRegistry)
+        await session.update(sendFrame: send)
+        let key = ObjectIdentifier(session)
+        sessionsById[key] = session
         byDevice[deviceId, default: []].insert(key)
-        return s
+        return session
     }
 
-    /// Drop the session from both indices and close it (cancels all
-    /// polling tasks, drops engines).
+    /// Removes a session from every index and releases all of its surface leases.
+    ///
+    /// - Parameter session: Previously attached session.
     public func detach(session: Session) async {
         let key = ObjectIdentifier(session)
         sessionsById[key] = nil
-        for (dev, set) in byDevice {
-            var next = set
-            next.remove(key)
-            byDevice[dev] = next.isEmpty ? nil : next
+        for (deviceId, identifiers) in byDevice {
+            var remaining = identifiers
+            remaining.remove(key)
+            byDevice[deviceId] = remaining.isEmpty ? nil : remaining
         }
         await session.close()
     }
 
-    /// Push a frame to every session bound to `deviceId` (typically one,
-    /// but the WS protocol allows multiple concurrent connections per
-    /// device — e.g. iPhone + iPad).
+    /// Pushes a frame to every connection authenticated as one device.
+    ///
+    /// - Parameters:
+    ///   - deviceId: Recipient device identifier.
+    ///   - frame: Established wire frame to deliver.
     public func broadcastToDevice(deviceId: String, frame: PushFrame) async {
-        let keys = byDevice[deviceId] ?? []
-        let sessions = keys.compactMap { sessionsById[$0] }
-        for s in sessions {
-            await s.send(frame: frame)
+        let identifiers = byDevice[deviceId] ?? []
+        let sessions = identifiers.compactMap { sessionsById[$0] }
+        for session in sessions {
+            await session.send(frame: frame)
         }
     }
 
-    /// Push a frame to every connected session — used for cmux event
-    /// stream fanout (workspace.created etc.) and for boot_id reset
-    /// notifications.
+    /// Pushes a frame to every attached connection.
+    ///
+    /// - Parameter frame: Established wire frame to deliver.
     public func broadcastToAll(frame: PushFrame) async {
-        for s in sessionsById.values {
-            await s.send(frame: frame)
+        for session in sessionsById.values {
+            await session.send(frame: frame)
         }
     }
 
-    /// Notify every connected client that cmux restarted and local relay
-    /// surface state should be considered stale.
+    /// Notifies every client that cmux restarted and local screen state is stale.
     public func broadcastReset() async {
-        await broadcastToAll(frame: .event(EventFrame(category: .system,
-                                                     name: "cmux.reset",
-                                                     payload: .null)))
+        await broadcastToAll(frame: .event(EventFrame(
+            category: .system,
+            name: "cmux.reset",
+            payload: .null
+        )))
+    }
+
+    /// Returns a live hub's authoritative styled snapshot for reconciliation adapters.
+    ///
+    /// - Parameter surfaceId: Surface to inspect.
+    /// - Returns: Current snapshot, or `nil` when unavailable.
+    public func currentSnapshot(surfaceId: String) async -> Screen? {
+        await renderRegistry.currentSnapshot(surfaceId: surfaceId)
+    }
+
+    /// Returns the registry-owned hub for focused RelayCore tests.
+    func renderHub(surfaceId: String) async -> SurfaceRenderHub? {
+        await renderRegistry.hub(surfaceId: surfaceId)
     }
 }
