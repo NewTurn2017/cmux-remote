@@ -32,6 +32,18 @@ public actor CMUXClient {
     private var bridgeInstallationError: CMUXClientError?
     private var bridgeWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 
+    /// Cached per connection so a replacement client renegotiates after reconnecting.
+    var negotiatedTerminalSourceMode: CMUXTerminalSourceMode?
+
+    /// One shared negotiation task serves all currently registered typed waiters.
+    var terminalCapabilityNegotiationTask: Task<Void, Never>?
+    var terminalCapabilityNegotiationWaiters: [
+        UUID: CheckedContinuation<CMUXTerminalSourceMode, Error>
+    ] = [:]
+
+    /// Bounded replay identity state; screen payloads are never retained here.
+    var terminalContinuityState = CMUXTerminalContinuityState()
+
     nonisolated static let inboundBridgeHandlerName = "CMUXClient.InboundBridge"
 
     public init(channel: Channel, requestTimeout: TimeAmount = .seconds(5)) {

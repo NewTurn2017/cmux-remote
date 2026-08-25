@@ -73,6 +73,11 @@ struct CMUXReadTextRaw: Decodable {
     let text: String
     let renderGrid: CMUXRenderGrid?
 
+    init(text: String, renderGrid: CMUXRenderGrid?) {
+        self.text = text
+        self.renderGrid = renderGrid
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
