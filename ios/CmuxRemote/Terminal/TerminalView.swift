@@ -19,14 +19,42 @@ struct TerminalView: View {
         )
     )
     @State private var pinchAnchorFontSize: CGFloat?
+    @State private var selectionController: TerminalSelectionController
 
     private static let fontSizeRange: ClosedRange<CGFloat> = 8...32
+
+    @MainActor
+    init(
+        store: SurfaceStore,
+        topContentInset: CGFloat = 0,
+        bottomContentInset: CGFloat = 0,
+        scrollToBottomRequest: Int = 0,
+        selectionController: TerminalSelectionController? = nil
+    ) {
+        self.store = store
+        self.topContentInset = topContentInset
+        self.bottomContentInset = bottomContentInset
+        self.scrollToBottomRequest = scrollToBottomRequest
+        _selectionController = State(
+            initialValue: selectionController ?? TerminalSelectionController()
+        )
+    }
+
+    private var bottomSafeAreaInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.bottom ?? 0
+    }
 
     var body: some View {
         GeometryReader { proxy in
             let cellWidth = fontMetrics.cellWidth
             let lineHeight = fontMetrics.lineHeight
             let layout = TerminalGridLayout(cellWidth: cellWidth, lineHeight: lineHeight)
+            let geometry = TerminalGridGeometry(cellWidth: cellWidth, lineHeight: lineHeight)
+            let selectionSnapshot = TerminalSelectionSnapshot(renderRows: store.grid.renderRows)
             let bottomScrollPadding = Self.bottomScrollPadding(lineHeight: lineHeight)
             let leftInset: CGFloat = 16
             let topInset = max(0, topContentInset)
@@ -62,21 +90,35 @@ struct TerminalView: View {
                                                 startColumn: run.startColumn,
                                                 columns: run.columns,
                                                 row: y
-                                            )
-                                                .offsetBy(dx: leftInset, dy: 8)
+                                            ).offsetBy(dx: leftInset, dy: 8)
+                                            context.fill(Path(frame), with: .color(run.attr.bg.swiftUI))
+                                        }
+                                    }
+
+                                    if let selection = selectionController.selection {
+                                        for frame in TerminalSelectionOverlayGeometry.frames(
+                                            for: selection,
+                                            layout: layout
+                                        ) {
                                             context.fill(
                                                 Path(frame),
-                                                with: .color(run.attr.bg.swiftUI)
+                                                with: .color(CmuxTheme.terminalSelectionFill)
+                                            )
+                                            context.stroke(
+                                                Path(frame.insetBy(dx: 0.5, dy: 0.5)),
+                                                with: .color(CmuxTheme.terminalSelectionOutline),
+                                                lineWidth: 1
                                             )
                                         }
+                                    }
 
+                                    for (y, row) in store.grid.renderRows.enumerated() {
                                         for run in row.runs where run.startColumn < visibleCols {
                                             let frame = layout.frame(
                                                 startColumn: run.startColumn,
                                                 columns: run.columns,
                                                 row: y
-                                            )
-                                                .offsetBy(dx: leftInset, dy: 8)
+                                            ).offsetBy(dx: leftInset, dy: 8)
                                             var runContext = context
                                             runContext.clip(to: Path(frame))
                                             runContext.draw(
@@ -113,6 +155,16 @@ struct TerminalView: View {
                                     }
                                 }
                                 .frame(width: contentWidth, height: contentHeight)
+                                .contentShape(Rectangle())
+                                .simultaneousGesture(selectionGesture(
+                                    snapshot: selectionSnapshot,
+                                    geometry: geometry
+                                ))
+                                .onTapGesture {
+                                    if selectionController.phase == .selected {
+                                        selectionController.cancelSelection()
+                                    }
+                                }
                                 .cmuxScanlines()
 
                                 Color.clear
@@ -121,9 +173,25 @@ struct TerminalView: View {
                             }
                             .frame(width: contentWidth, height: viewportHeight)
                             .scrollClipDisabled(false)
+                            .scrollDisabled(!selectionController.allowsScrolling)
                             .accessibilityIdentifier("TerminalViewport")
-                            .accessibilityLabel("Terminal output")
-                            .accessibilityValue(accessibilitySnapshot)
+                            .accessibilityLabel(String(localized: "Terminal output"))
+                            .accessibilityValue(terminalAccessibilityValue)
+                            .accessibilityAction(named: Text("Select all terminal text")) {
+                                selectionController.performAccessibilityAction(
+                                    .selectAll,
+                                    snapshot: selectionSnapshot
+                                )
+                            }
+                            .accessibilityAction(named: Text("Copy terminal selection")) {
+                                selectionController.performAccessibilityAction(
+                                    .copy,
+                                    snapshot: selectionSnapshot
+                                )
+                            }
+                            .accessibilityAction(.escape) {
+                                selectionController.cancelSelection()
+                            }
                             .onChange(of: scrollToBottomRequest) { _, _ in
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
                                     verticalScroll.scrollTo(TerminalScrollTarget.bottom, anchor: .bottom)
@@ -133,14 +201,39 @@ struct TerminalView: View {
                     }
                     .frame(width: proxy.size.width, height: viewportHeight)
                     .scrollClipDisabled(false)
+                    .scrollDisabled(!selectionController.allowsScrolling)
 
                     Color.clear.frame(height: bottomInset)
                 }
+
+                if selectionController.showsActionControls {
+                    TerminalSelectionActionControls(
+                        copy: { selectionController.copySelection() },
+                        cancel: { selectionController.cancelSelection() }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, bottomInset + bottomSafeAreaInset + 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+
+            }
+            .onChange(of: store.grid.selectionEpochID) { _, _ in
+                selectionController.advanceGridEpoch(reason: store.grid.selectionEpochChangeReason)
+            }
+            .onChange(of: store.subscribed) { oldSurface, newSurface in
+                guard oldSurface != newSurface else { return }
+                selectionController.advanceGridEpoch(reason: .surfaceChanged)
+            }
+            .onChange(of: store.rev) { _, revision in
+                selectionController.ordinaryRevisionChanged(to: revision)
             }
             .simultaneousGesture(
                 MagnifyGesture(minimumScaleDelta: 0.005)
                     .onChanged { value in
-                        if pinchAnchorFontSize == nil { pinchAnchorFontSize = fontMetrics.fontSize }
+                        if pinchAnchorFontSize == nil {
+                            selectionController.pinchBegan()
+                            pinchAnchorFontSize = fontMetrics.fontSize
+                        }
                         let base = pinchAnchorFontSize ?? fontMetrics.fontSize
                         let size = Self.fontSizeRange.clamping(base * value.magnification)
                         if size != fontMetrics.fontSize {
@@ -162,6 +255,52 @@ struct TerminalView: View {
 
     static func bottomScrollPadding(lineHeight: CGFloat) -> CGFloat {
         lineHeight * bottomScrollPaddingRows
+    }
+
+    private func selectionGesture(
+        snapshot: TerminalSelectionSnapshot,
+        geometry: TerminalGridGeometry
+    ) -> some Gesture {
+        LongPressGesture(
+            minimumDuration: TerminalSelectionGesturePolicy.minimumPressDuration,
+            maximumDistance: TerminalSelectionGesturePolicy.maximumPressDistance
+        )
+        .sequenced(before: DragGesture(
+            minimumDistance: TerminalSelectionGesturePolicy.minimumDragDistance
+        ))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value else { return }
+                if selectionController.phase == .idle {
+                    selectionController.recognizePress(
+                        at: drag.startLocation,
+                        snapshot: snapshot,
+                        geometry: geometry
+                    )
+                }
+                selectionController.moveSelection(to: drag.location, geometry: geometry)
+            }
+            .onEnded { value in
+                if case .second(true, let drag?) = value {
+                    if selectionController.phase == .idle {
+                        selectionController.recognizePress(
+                            at: drag.startLocation,
+                            snapshot: snapshot,
+                            geometry: geometry
+                        )
+                    }
+                    selectionController.moveSelection(to: drag.location, geometry: geometry)
+                }
+                if selectionController.phase == .selecting {
+                    selectionController.endSelection()
+                }
+            }
+    }
+
+    private var terminalAccessibilityValue: String {
+        guard selectionController.selection != nil else { return accessibilitySnapshot }
+        return String(
+            localized: "\(selectionController.selectedCharacterCount) characters selected across \(selectionController.selectedLineCount) lines"
+        )
     }
 
     private var accessibilitySnapshot: String {

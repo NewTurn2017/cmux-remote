@@ -8,6 +8,8 @@ public struct CellGrid: Equatable {
     public var cols: Int
     public var maxRenderedColumns: Int
     public var cursor: CursorPos = CursorPos(x: 0, y: 0)
+    private(set) var selectionEpochID = UUID()
+    private(set) var selectionEpochChangeReason: TerminalGridEpochChangeReason = .fullSnapshot
 
     public init(cols: Int, rows: Int) {
         self.cols = cols
@@ -39,6 +41,8 @@ public struct CellGrid: Equatable {
         for index in rawRows.indices { rawRows[index] = "" }
         for index in renderRows.indices { renderRows[index] = .empty }
         maxRenderedColumns = 0
+        selectionEpochID = UUID()
+        selectionEpochChangeReason = .clear
     }
 
     private mutating func updateMaxRenderedColumns(oldColumns: Int, newColumns: Int) {
