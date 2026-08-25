@@ -62,17 +62,37 @@ struct CMUXSurfaceRaw: Decodable {
 
 // MARK: surface.read_text
 
-/// cmux returns terminal contents as a flat newline-joined `text` string plus
-/// a base64 mirror. We synthesize a `Screen` by splitting on `\n`. `cols` is
-/// derived from the longest line; `cursor` defaults to `(0,0)` — cmux v2 does
-/// not currently expose cursor coordinates over RPC, so the relay's DiffEngine
-/// emits a stub cursor until that's added upstream.
+/// Translates compatible plain-text and render-grid daemon responses to `Screen`.
+///
+/// A validated render grid is authoritative when present. Legacy responses keep
+/// their original newline splitting, column derivation, and stub cursor behavior.
 struct CMUXReadTextRaw: Decodable {
     let text: String
+    let renderGrid: CMUXRenderGrid?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        renderGrid = try container.decodeIfPresent(CMUXRenderGrid.self, forKey: .renderGrid)
+    }
 
     func toScreen(rev: Int) -> Screen {
+        if let renderGrid {
+            return Screen(
+                rev: rev,
+                rows: renderGrid.canonicalANSIRows(),
+                cols: renderGrid.columns,
+                cursor: CursorPos(x: 0, y: 0)
+            )
+        }
+
         let rows = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let cols = rows.map { $0.count }.max() ?? 0
         return Screen(rev: rev, rows: rows, cols: cols, cursor: CursorPos(x: 0, y: 0))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text
+        case renderGrid
     }
 }

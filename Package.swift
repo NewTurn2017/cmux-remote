@@ -59,14 +59,36 @@ let package = Package(
             ]
         ),
         .testTarget(name: "SharedKitTests",  dependencies: ["SharedKit"]),
+        .target(
+            name: "TerminalANSIParserTestSupport",
+            path: "ios/CmuxRemote/Terminal",
+            exclude: [
+                "CellGrid.swift",
+                "TerminalCellWidth.swift",
+                "TerminalColumnSpan.swift",
+                "TerminalFontMetrics.swift",
+                "TerminalGridLayout.swift",
+                "TerminalGridPosition.swift",
+                "TerminalSelection.swift",
+                "TerminalSelectionRow.swift",
+                "TerminalSelectionSnapshot.swift",
+                "TerminalTextRange.swift",
+                "TerminalView.swift",
+            ],
+            sources: ["ANSIParser.swift"]
+        ),
         .testTarget(name: "CMUXClientTests", dependencies: [
             "CMUXClient",
+            "TerminalANSIParserTestSupport",
             .product(name: "NIOCore", package: "swift-nio"),
             .product(name: "NIOPosix", package: "swift-nio"),
             .product(name: "NIOEmbedded", package: "swift-nio"),
+        ], resources: [
+            .copy("Fixtures"),
         ]),
         .testTarget(name: "DiffEngineTests", dependencies: [
             "RelayCore",
+            "CMUXClient",
             .product(name: "NIOEmbedded", package: "swift-nio"),
         ], resources: [
             .copy("Fixtures"),
