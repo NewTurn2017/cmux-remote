@@ -102,7 +102,7 @@ public actor SurfaceRenderHub {
         self.currentFps = configuration.activeFps
     }
 
-    /// Adds one bounded diff/checksum consumer and starts scheduling when necessary.
+    /// Adds one bounded compatibility diff/checksum consumer and starts scheduling.
     ///
     /// A late subscriber receives the current authoritative snapshot through the existing
     /// clear-and-row diff callback before future shared updates.
@@ -116,33 +116,48 @@ public actor SurfaceRenderHub {
         onDiff: @escaping @Sendable (Int, [DiffOp]) -> Void,
         onChecksum: @escaping @Sendable (String, Int) -> Void
     ) async throws -> SurfaceRenderSubscription {
-        guard !isStopped else {
-            throw SurfaceRenderHubError.stopped(surfaceId: surfaceId)
-        }
-        guard subscribers.count < configuration.maximumSubscribers else {
-            throw SurfaceRenderHubError.subscriberLimitReached(
-                surfaceId: surfaceId,
-                limit: configuration.maximumSubscribers
-            )
-        }
-
         let subscription = SurfaceRenderSubscription(
             surfaceId: surfaceId,
             generation: generation
         )
-        return try subscribe(
+        return try await subscribe(
             subscription: subscription,
-            onDiff: onDiff,
-            onChecksum: onChecksum
+            subscriber: SurfaceRenderSubscriber(
+                onDiff: onDiff,
+                onChecksum: onChecksum
+            )
+        )
+    }
+
+    /// Adds one authoritative snapshot/checksum consumer and starts scheduling.
+    ///
+    /// - Parameters:
+    ///   - onSnapshot: Receives each accepted styled snapshot, including the current snapshot.
+    ///   - onChecksum: Receives periodic hashes for the same authoritative snapshot stream.
+    /// - Returns: A lease that must be released through ``unsubscribe(_:)``.
+    /// - Throws: ``SurfaceRenderHubError`` when stopped or at subscriber capacity.
+    public func subscribe(
+        onSnapshot: @escaping @Sendable (Screen) async -> Void,
+        onChecksum: @escaping @Sendable (String, Int) async -> Void
+    ) async throws -> SurfaceRenderSubscription {
+        let subscription = SurfaceRenderSubscription(
+            surfaceId: surfaceId,
+            generation: generation
+        )
+        return try await subscribe(
+            subscription: subscription,
+            subscriber: SurfaceRenderSubscriber(
+                onSnapshot: onSnapshot,
+                onChecksum: onChecksum
+            )
         )
     }
 
     /// Registers a lease already reserved by ``SurfaceRenderHubRegistry``.
     func subscribe(
         subscription: SurfaceRenderSubscription,
-        onDiff: @escaping @Sendable (Int, [DiffOp]) -> Void,
-        onChecksum: @escaping @Sendable (String, Int) -> Void
-    ) throws -> SurfaceRenderSubscription {
+        subscriber: SurfaceRenderSubscriber
+    ) async throws -> SurfaceRenderSubscription {
         guard !isStopped else {
             throw SurfaceRenderHubError.stopped(surfaceId: surfaceId)
         }
@@ -158,14 +173,17 @@ public actor SurfaceRenderHub {
             )
         }
 
-        let subscriber = SurfaceRenderSubscriber(onDiff: onDiff, onChecksum: onChecksum)
         let wasEmpty = subscribers.isEmpty
         subscribers[subscription.id] = subscriber
 
         if let currentScreen {
             var initialState = RowState()
             let initialOperations = initialState.ingest(snapshot: currentScreen)
-            subscriber.onDiff(deliveryRevision, initialOperations)
+            await subscriber.deliver(
+                snapshot: currentScreen,
+                revision: deliveryRevision,
+                operations: initialOperations
+            )
             metrics.fanoutDeliveries += 1
         }
         if wasEmpty {
@@ -396,10 +414,18 @@ public actor SurfaceRenderHub {
 
                 let currentSubscribers = Array(subscribers.values)
                 if !operations.isEmpty {
-                    for subscriber in currentSubscribers {
-                        subscriber.onDiff(deliveryRevision, operations)
-                        metrics.fanoutDeliveries += 1
+                    await withTaskGroup(of: Void.self) { group in
+                        for subscriber in currentSubscribers {
+                            group.addTask {
+                                await subscriber.deliver(
+                                    snapshot: snapshot,
+                                    revision: snapshot.rev,
+                                    operations: operations
+                                )
+                            }
+                        }
                     }
+                    metrics.fanoutDeliveries += currentSubscribers.count
                 }
 
                 let checksumEligible = !operations.isEmpty || update.sourceMode == .legacyText
@@ -408,10 +434,14 @@ public actor SurfaceRenderHub {
                         if now - lastChecksumAt >= 5 {
                             self.lastChecksumAt = now
                             let checksum = ScreenHasher.hash(snapshot)
-                            for subscriber in currentSubscribers {
-                                subscriber.onChecksum(checksum, deliveryRevision)
-                                metrics.fanoutDeliveries += 1
+                            await withTaskGroup(of: Void.self) { group in
+                                for subscriber in currentSubscribers {
+                                    group.addTask {
+                                        await subscriber.onChecksum(checksum, snapshot.rev)
+                                    }
+                                }
                             }
+                            metrics.fanoutDeliveries += currentSubscribers.count
                         }
                     } else {
                         lastChecksumAt = now

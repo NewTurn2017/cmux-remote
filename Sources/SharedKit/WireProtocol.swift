@@ -24,6 +24,23 @@ public struct ScreenFull: Codable, Sendable, Equatable {
         self.surfaceId = surfaceId; self.rev = rev; self.rows = rows
         self.cols = cols; self.rowsCount = rowsCount; self.cursor = cursor
     }
+
+    /// Creates a full wire frame from an authoritative terminal snapshot.
+    ///
+    /// - Parameters:
+    ///   - surfaceId: Surface that owns the snapshot.
+    ///   - screen: Authoritative styled rows, geometry, cursor, and delivery revision.
+    public init(surfaceId: String, screen: Screen) {
+        self.init(
+            surfaceId: surfaceId,
+            rev: screen.rev,
+            rows: screen.rows,
+            cols: screen.cols,
+            rowsCount: screen.rows.count,
+            cursor: screen.cursor
+        )
+    }
+
     enum CodingKeys: String, CodingKey {
         case surfaceId = "surface_id", rev, rows, cols, rowsCount, cursor
     }

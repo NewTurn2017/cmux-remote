@@ -78,6 +78,51 @@ public actor SurfaceRenderHubRegistry {
         onDiff: @escaping @Sendable (Int, [DiffOp]) -> Void,
         onChecksum: @escaping @Sendable (String, Int) -> Void
     ) async throws -> SurfaceRenderSubscription {
+        try await subscribe(
+            workspaceId: workspaceId,
+            surfaceId: surfaceId,
+            lines: lines,
+            subscriber: SurfaceRenderSubscriber(
+                onDiff: onDiff,
+                onChecksum: onChecksum
+            )
+        )
+    }
+
+    /// Acquires one authoritative snapshot subscription from a surface's active generation.
+    ///
+    /// - Parameters:
+    ///   - workspaceId: Workspace containing the surface.
+    ///   - surfaceId: Surface whose actor should be shared.
+    ///   - lines: Legacy plain-text line retention used by a newly created hub.
+    ///   - onSnapshot: Styled authoritative snapshots accepted by the shared hub.
+    ///   - onChecksum: Periodic hashes for the same authoritative snapshot stream.
+    /// - Returns: A generation-bound lease.
+    /// - Throws: ``SurfaceRenderHubError`` for workspace or collection-bound violations.
+    public func subscribe(
+        workspaceId: String,
+        surfaceId: String,
+        lines: Int,
+        onSnapshot: @escaping @Sendable (Screen) async -> Void,
+        onChecksum: @escaping @Sendable (String, Int) async -> Void
+    ) async throws -> SurfaceRenderSubscription {
+        try await subscribe(
+            workspaceId: workspaceId,
+            surfaceId: surfaceId,
+            lines: lines,
+            subscriber: SurfaceRenderSubscriber(
+                onSnapshot: onSnapshot,
+                onChecksum: onChecksum
+            )
+        )
+    }
+
+    private func subscribe(
+        workspaceId: String,
+        surfaceId: String,
+        lines: Int,
+        subscriber: SurfaceRenderSubscriber
+    ) async throws -> SurfaceRenderSubscription {
         try Task.checkCancellation()
         await observer?.acquisitionDidStart(surfaceId: surfaceId)
         try Task.checkCancellation()
@@ -146,8 +191,7 @@ public actor SurfaceRenderHubRegistry {
                 try Task.checkCancellation()
                 let registered = try await entry.hub.subscribe(
                     subscription: subscription,
-                    onDiff: onDiff,
-                    onChecksum: onChecksum
+                    subscriber: subscriber
                 )
                 registeredWithHub = true
                 try Task.checkCancellation()

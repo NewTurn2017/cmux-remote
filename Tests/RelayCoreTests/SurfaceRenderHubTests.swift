@@ -11,10 +11,10 @@ struct SurfaceRenderHubTests {
         ])
         let clock = ManualSurfaceRenderClock()
         let sleepProbe = await BoundedAsyncStreamProbe.make(stream: clock.requests())
-        let firstDiff = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(4))
-        let secondDiff = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(4))
-        let firstDiffProbe = await BoundedAsyncStreamProbe.make(stream: firstDiff.stream)
-        let secondDiffProbe = await BoundedAsyncStreamProbe.make(stream: secondDiff.stream)
+        let firstFull = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(4))
+        let secondFull = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(4))
+        let firstFullProbe = await BoundedAsyncStreamProbe.make(stream: firstFull.stream)
+        let secondFullProbe = await BoundedAsyncStreamProbe.make(stream: secondFull.stream)
         let manager = SessionManager(
             terminalReader: source,
             defaultFps: 15,
@@ -22,13 +22,13 @@ struct SurfaceRenderHubTests {
             clockFactory: { clock }
         )
         let first = await manager.attach(deviceId: "first") { frame in
-            if case .screenDiff(let diff) = frame {
-                firstDiff.continuation.yield(diff.rev)
+            if case .screenFull(let full) = frame {
+                firstFull.continuation.yield(full.rev)
             }
         }
         let second = await manager.attach(deviceId: "second") { frame in
-            if case .screenDiff(let diff) = frame {
-                secondDiff.continuation.yield(diff.rev)
+            if case .screenFull(let full) = frame {
+                secondFull.continuation.yield(full.rev)
             }
         }
 
@@ -38,8 +38,8 @@ struct SurfaceRenderHubTests {
         #expect(Self.approximatelyEqual(request.seconds, 1.0 / 15.0))
 
         await clock.advance(by: request.seconds)
-        #expect(try await firstDiffProbe.next() == 1)
-        #expect(try await secondDiffProbe.next() == 1)
+        #expect(try await firstFullProbe.next() == 1)
+        #expect(try await secondFullProbe.next() == 1)
         #expect(await source.readCount(surfaceId: "surface") == 1)
         #expect(await manager.activeRenderHubCount == 1)
 

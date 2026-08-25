@@ -68,9 +68,40 @@ public actor SessionManager {
     ) async -> Session {
         let session = Session(deviceId: deviceId, renderRegistry: renderRegistry)
         await session.update(sendFrame: send)
-        let key = ObjectIdentifier(session)
-        sessionsById[key] = session
-        byDevice[deviceId, default: []].insert(key)
+        index(session: session)
+        return session
+    }
+
+    /// Builds and indexes a session for a transport that performs bounded coalescing.
+    ///
+    /// - Parameters:
+    ///   - deviceId: Authenticated device identifier.
+    ///   - sendOutput: Callback receiving push frames with terminal recovery metadata.
+    /// - Returns: Attached session used by the WebSocket adapter.
+    public func attachForBoundedOutput(
+        deviceId: String,
+        sendOutput: @escaping @Sendable (SessionOutboundFrame) -> Void
+    ) async -> Session {
+        let session = Session(deviceId: deviceId, renderRegistry: renderRegistry)
+        await session.update(sendOutput: sendOutput)
+        index(session: session)
+        return session
+    }
+
+    /// Builds and indexes a session with relay-internal stream lifecycle output.
+    ///
+    /// - Parameters:
+    ///   - deviceId: Authenticated device identifier.
+    ///   - sendOutputEvent: Callback receiving frames and non-wire retirement events.
+    /// - Returns: Attached session used by the relay server transport.
+    @_spi(RelayServer)
+    public func attachForBoundedOutputEvents(
+        deviceId: String,
+        sendOutputEvent: @escaping @Sendable (SessionOutboundEvent) -> Void
+    ) async -> Session {
+        let session = Session(deviceId: deviceId, renderRegistry: renderRegistry)
+        await session.update(sendOutputEvent: sendOutputEvent)
+        index(session: session)
         return session
     }
 
@@ -130,5 +161,11 @@ public actor SessionManager {
     /// Returns the registry-owned hub for focused RelayCore tests.
     func renderHub(surfaceId: String) async -> SurfaceRenderHub? {
         await renderRegistry.hub(surfaceId: surfaceId)
+    }
+
+    private func index(session: Session) {
+        let key = ObjectIdentifier(session)
+        sessionsById[key] = session
+        byDevice[session.deviceId, default: []].insert(key)
     }
 }

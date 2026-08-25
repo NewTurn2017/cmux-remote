@@ -56,12 +56,13 @@ final class HTTPServerFixture: @unchecked Sendable {
                                             hostname: "iPhone",
                                             os: "ios",
                                             nodeKey: "nk-fixture")
-                     ]) async throws -> HTTPServerFixture
+                     ],
+                     screens: [Screen] = []) async throws -> HTTPServerFixture
     {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let store = try DeviceStore.empty()
         let auth = MockAuthService(peers: peers)
-        let reader = FixtureSurfaceReader()
+        let reader = FixtureSurfaceReader(screens: screens)
         let manager = SessionManager(reader: reader, defaultFps: 15, idleFps: 5)
         let cmux = FixtureCMUXFacade()
         var cfg = RelayConfig.testValue
@@ -229,9 +230,24 @@ private final class ResponseCollector: ChannelInboundHandler, @unchecked Sendabl
 
 // MARK: - Test doubles
 
-final class FixtureSurfaceReader: SurfaceReader, @unchecked Sendable {
+actor FixtureSurfaceReader: SurfaceReader {
+    private var screens: [Screen]
+    private var readsBySurface: [String: Int] = [:]
+
+    init(screens: [Screen] = []) {
+        self.screens = screens
+    }
+
     func read(workspaceId: String, surfaceId: String, lines: Int) async throws -> Screen {
-        Screen(rev: 0, rows: [], cols: 0, cursor: .init(x: 0, y: 0))
+        readsBySurface[surfaceId, default: 0] += 1
+        if screens.count > 1 {
+            return screens.removeFirst()
+        }
+        return screens.first ?? Screen(rev: 0, rows: [], cols: 0, cursor: .hidden)
+    }
+
+    func readCount(surfaceId: String) -> Int {
+        readsBySurface[surfaceId, default: 0]
     }
 }
 
