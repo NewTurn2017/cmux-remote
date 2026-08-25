@@ -9,6 +9,10 @@ struct TerminalSelectionSnapshot: Equatable, Sendable {
         self.rows = renderRows.map(\.selectionRow)
     }
 
+    var isWellFormed: Bool {
+        rows.allSatisfy(\.isWellFormed)
+    }
+
     func contains(_ position: TerminalGridPosition) -> Bool {
         guard rows.indices.contains(position.row) else { return false }
         return rows[position.row].contains(column: position.column)
