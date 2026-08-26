@@ -165,19 +165,6 @@ public actor WSProtocolMachine {
 
 // MARK: - NIO channel handler
 
-private actor WSActionQueue {
-    private var tail: Task<Void, Never>?
-
-    func run(_ operation: @escaping @Sendable () async -> Void) {
-        let previous = tail
-        let next = Task {
-            await previous?.value
-            await operation()
-        }
-        tail = next
-    }
-}
-
 private final class WSChannelContext: @unchecked Sendable {
     private weak var context: ChannelHandlerContext?
     private let eventLoop: any EventLoop
@@ -227,19 +214,27 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
     /// Default per-connection bound for WebSocket frames waiting behind a write.
     public static let defaultMaximumQueuedOutputBytes = 2 * 1024 * 1024
 
+    /// Default hard cap on admitted but unfinished inbound actions per connection.
+    public static let defaultMaximumOutstandingInboundActions = 64
+
+    /// Default retained payload cap, sized for two maximum WebSocket frames.
+    public static let defaultMaximumOutstandingInboundBytes = 2 * HTTPServer.maxWebSocketFrameBytes
+
     public let deviceId: String
     private let deviceStore: DeviceStore
     private let sessionManager: any WebSocketSessionManaging
     private let machine: WSProtocolMachine
-    private let actionQueue = WSActionQueue()
     private let logger = Logger(label: "cmux-relay.ws")
 
     private var helloTimer: Scheduled<Void>?
     private var channelContext: WSChannelContext?
+    private var actionQueue: WSActionQueue?
     private var sessionLifecycle: WebSocketSessionLifecycle?
     private var channelGeneration: UInt64 = 0
     private var outputPump: WebSocketOutputPump?
     private let maximumQueuedOutputBytes: Int
+    private let maximumOutstandingInboundActions: Int
+    private let maximumOutstandingInboundBytes: Int
 
     /// Creates a WebSocket handler with a bounded, writability-aware output queue.
     ///
@@ -249,17 +244,23 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
     ///   - sessionManager: Session composition and render-hub owner.
     ///   - cmuxClient: Facade for non-relay-owned RPC methods.
     ///   - maximumQueuedOutputBytes: Hard queued-byte cap before terminal coalescing or close.
+    ///   - maximumOutstandingInboundActions: Hard count cap including the active inbound action.
+    ///   - maximumOutstandingInboundBytes: Hard retained-payload cap including the active action.
     public init(deviceId: String,
                 deviceStore: DeviceStore,
                 sessionManager: SessionManager,
                 cmuxClient: CMUXFacade,
-                maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes)
+                maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes,
+                maximumOutstandingInboundActions: Int = WebSocketHandler.defaultMaximumOutstandingInboundActions,
+                maximumOutstandingInboundBytes: Int = WebSocketHandler.defaultMaximumOutstandingInboundBytes)
     {
         self.deviceId = deviceId
         self.deviceStore = deviceStore
         self.sessionManager = sessionManager
         self.machine = WSProtocolMachine(cmux: cmuxClient)
         self.maximumQueuedOutputBytes = maximumQueuedOutputBytes
+        self.maximumOutstandingInboundActions = maximumOutstandingInboundActions
+        self.maximumOutstandingInboundBytes = maximumOutstandingInboundBytes
     }
 
     init(
@@ -267,13 +268,17 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         deviceStore: DeviceStore,
         sessionLifecycleManager: any WebSocketSessionManaging,
         cmuxClient: CMUXFacade,
-        maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes
+        maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes,
+        maximumOutstandingInboundActions: Int = WebSocketHandler.defaultMaximumOutstandingInboundActions,
+        maximumOutstandingInboundBytes: Int = WebSocketHandler.defaultMaximumOutstandingInboundBytes
     ) {
         self.deviceId = deviceId
         self.deviceStore = deviceStore
         self.sessionManager = sessionLifecycleManager
         self.machine = WSProtocolMachine(cmux: cmuxClient)
         self.maximumQueuedOutputBytes = maximumQueuedOutputBytes
+        self.maximumOutstandingInboundActions = maximumOutstandingInboundActions
+        self.maximumOutstandingInboundBytes = maximumOutstandingInboundBytes
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
@@ -282,6 +287,19 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
             eventLoop: context.eventLoop,
             manager: sessionManager
         )
+        let channel = channelContext
+        actionQueue = WSActionQueue(
+            eventLoop: context.eventLoop,
+            maximumOutstandingActions: maximumOutstandingInboundActions,
+            maximumOutstandingRetainedBytes: maximumOutstandingInboundBytes
+        ) { [weak self, weak channel] in
+            guard let self, let channel else { return }
+            channel.execute { context in
+                context.channel.setOption(ChannelOptions.autoRead, value: true).whenFailure {
+                    self.logger.warning("Failed to resume WebSocket inbound reads: \($0)")
+                }
+            }
+        }
         installOutputPump(context: context)
         if context.channel.isActive {
             activateChannel(context: context)
@@ -302,15 +320,25 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         let channel = channelContext ?? WSChannelContext(context)
         channelContext = channel
         let generation = channelGeneration
-        Task { [weak self] in
-            guard let self else { return }
-            await self.actionQueue.run {
-                let actions = await self.machine.processText(text)
-                await self.apply(
-                    actions: actions,
-                    generation: generation,
-                    on: channel
-                )
+        guard let actionQueue,
+              actionQueue.enqueue(retainedByteCount: text.utf8.count, { [weak self, weak channel] in
+                  guard let self, let channel else { return }
+                  let actions = await self.machine.processText(text)
+                  guard !Task.isCancelled else { return }
+                  await self.apply(
+                      actions: actions,
+                      generation: generation,
+                      on: channel
+                  )
+              })
+        else {
+            logger.warning("Closing WebSocket after inbound action queue overflow")
+            invalidateChannel(context: context, closeChannel: true)
+            return
+        }
+        if actionQueue.shouldApplyBackpressure {
+            context.channel.setOption(ChannelOptions.autoRead, value: false).whenFailure {
+                self.logger.warning("Failed to pause WebSocket inbound reads: \($0)")
             }
         }
     }
@@ -578,6 +606,8 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         context: ChannelHandlerContext,
         closeChannel: Bool
     ) {
+        actionQueue?.invalidate()
+        actionQueue = nil
         helloTimer?.cancel()
         helloTimer = nil
         if let session = sessionLifecycle?.invalidate() {
