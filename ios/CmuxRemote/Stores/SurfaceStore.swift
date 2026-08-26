@@ -147,17 +147,18 @@ public final class SurfaceStore {
 
     public func submitCommand(workspaceId: String, surfaceId: String, command: String) async throws {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        let singleLine = trimmed.map { $0.isNewline ? " " : String($0) }.joined()
+        guard !singleLine.isEmpty else {
             try await sendKey(workspaceId: workspaceId, surfaceId: surfaceId, key: .enter)
             return
         }
-        try await dispatchInput(successMessage: "Sent \(trimmed)") {
+        try await dispatchInput(successMessage: "Sent \(singleLine)") {
             _ = try await rpc.call(
                 method: "surface.send_text",
                 params: .object([
                     "workspace_id": .string(workspaceId),
                     "surface_id": .string(surfaceId),
-                    "text": .string(trimmed),
+                    "text": .string(singleLine),
                 ])
             ).requireOk()
             return try await rpc.call(
