@@ -6,6 +6,24 @@ import UIKit
 @Suite("TerminalViewTests")
 @MainActor
 struct TerminalViewTests {
+    @Test func viewportBackgroundIsOpaqueBlackRegardlessOfTerminalContent() {
+        var grid = CellGrid(cols: 80, rows: 1)
+        grid.replaceRow(0, raw: "\u{1B}[48;2;40;50;40mgreen-dominated terminal content\u{1B}[0m")
+        #expect(grid.renderRows[0].runs.allSatisfy { $0.attr.bg == .rgb(40, 50, 40) })
+
+        let background = UIColor(CmuxTheme.terminalViewportBackground)
+        var red: CGFloat = -1
+        var green: CGFloat = -1
+        var blue: CGFloat = -1
+        var alpha: CGFloat = -1
+
+        #expect(background.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        #expect(red == 0)
+        #expect(green == 0)
+        #expect(blue == 0)
+        #expect(alpha == 1)
+    }
+
     @Test func layoutPolicyPreservesTerminalDensityAndBottomPadding() {
         #expect(TerminalLayoutPolicy.defaultFontSize(isPad: true) == 11)
         #expect(TerminalLayoutPolicy.defaultFontSize(isPad: false) == 8)
