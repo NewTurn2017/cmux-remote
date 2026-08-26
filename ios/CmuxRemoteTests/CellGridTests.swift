@@ -45,6 +45,31 @@ final class CellGridTests: XCTestCase {
         XCTAssertEqual(grid.maxRenderedColumns, 2)
     }
 
+    func testInferredTerminalBackgroundUsesDominantExplicitColor() {
+        var grid = CellGrid(cols: 80, rows: 3)
+        grid.replaceRow(0, raw: "\u{1B}[48;2;0;0;0mten cells!\u{1B}[0m")
+        grid.replaceRow(1, raw: "\u{1B}[48;2;0;0;0meight!!!\u{1B}[0m")
+        grid.replaceRow(2, raw: "\u{1B}[48;2;40;50;40mgreen\u{1B}[0m")
+
+        XCTAssertEqual(grid.inferredTerminalBackground, .rgb(0, 0, 0))
+    }
+
+    func testInferredTerminalBackgroundKeepsCanvasWhenImplicitDefaultDominates() {
+        var grid = CellGrid(cols: 80, rows: 2)
+        grid.replaceRow(0, raw: "plain terminal content")
+        grid.replaceRow(1, raw: "\u{1B}[48;2;40;50;40mgreen sample\u{1B}[0m")
+
+        XCTAssertNil(grid.inferredTerminalBackground)
+    }
+
+    func testInferredTerminalBackgroundKeepsCanvasForEqualExplicitColors() {
+        var grid = CellGrid(cols: 80, rows: 2)
+        grid.replaceRow(0, raw: "\u{1B}[48;2;0;0;0mblack\u{1B}[0m")
+        grid.replaceRow(1, raw: "\u{1B}[48;2;40;50;40mgreen\u{1B}[0m")
+
+        XCTAssertNil(grid.inferredTerminalBackground)
+    }
+
     func testClearEmpties() {
         var grid = CellGrid(cols: 10, rows: 2)
         grid.replaceRow(0, raw: "hi")

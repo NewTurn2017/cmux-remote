@@ -50,6 +50,10 @@ struct TerminalView: View {
             .safeAreaInsets.bottom ?? 0
     }
 
+    private var terminalBackgroundColor: Color {
+        store.grid.inferredTerminalBackground?.swiftUI ?? CmuxTheme.canvas
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let cellWidth = fontMetrics.cellWidth
@@ -236,6 +240,7 @@ struct TerminalView: View {
                         }
                     }
                     .frame(width: proxy.size.width, height: viewportHeight)
+                    .background(terminalBackgroundColor)
                     .scrollClipDisabled(false)
                     .scrollDisabled(!selectionController.allowsScrolling)
 

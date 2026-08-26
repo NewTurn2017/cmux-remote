@@ -19,6 +19,28 @@ public struct CellGrid: Equatable {
         self.maxRenderedColumns = 0
     }
 
+    var inferredTerminalBackground: ANSIColor? {
+        var implicitColumns = 0
+        var explicitCounts: [(color: ANSIColor, columns: Int)] = []
+
+        for run in renderRows.flatMap(\.runs) where run.columns > 0 {
+            if run.attr.bg == .default {
+                implicitColumns += run.columns
+            } else if let index = explicitCounts.firstIndex(where: { $0.color == run.attr.bg }) {
+                explicitCounts[index].columns += run.columns
+            } else {
+                explicitCounts.append((run.attr.bg, run.columns))
+            }
+        }
+
+        guard let maximumColumns = explicitCounts.map(\.columns).max(),
+              maximumColumns > implicitColumns
+        else { return nil }
+        let dominantColors = explicitCounts.filter { $0.columns == maximumColumns }
+        guard dominantColors.count == 1 else { return nil }
+        return dominantColors[0].color
+    }
+
     public mutating func replaceRow(_ y: Int, raw: String) {
         guard y >= 0 else { return }
         if y >= rows.count {
