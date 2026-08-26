@@ -252,6 +252,11 @@ struct TerminalView: View {
                     .padding(.bottom, bottomInset + bottomSafeAreaInset + 12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
+#if DEBUG
+                TerminalScrollDecelerationAccessibilityObserver()
+                    .frame(width: 1, height: 1)
+                    .allowsHitTesting(false)
+#endif
             }
             .onChange(of: store.grid.selectionEpochID) { _, _ in
                 selectionController.advanceGridEpoch(reason: store.grid.selectionEpochChangeReason)
@@ -890,3 +895,143 @@ private extension ANSIColor {
         )
     }
 }
+
+#if DEBUG
+private struct TerminalScrollDecelerationAccessibilityObserver: UIViewRepresentable {
+    func makeUIView(context: Context) -> TerminalScrollDecelerationAccessibilityView {
+        TerminalScrollDecelerationAccessibilityView()
+    }
+
+    func updateUIView(
+        _ uiView: TerminalScrollDecelerationAccessibilityView,
+        context: Context
+    ) {}
+
+    static func dismantleUIView(
+        _ uiView: TerminalScrollDecelerationAccessibilityView,
+        coordinator: ()
+    ) {
+        uiView.stopObserving()
+    }
+}
+
+private final class TerminalScrollDecelerationAccessibilityView: UIView {
+    private var observedScrollViews: [UIScrollView] = []
+    private var delegateProxies: [TerminalScrollDecelerationDelegateProxy] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isAccessibilityElement = true
+        accessibilityIdentifier = "TerminalViewportDecelerationEnded"
+        accessibilityValue = "false"
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            stopObserving()
+        } else {
+            attachToViewportIfNeeded()
+            DispatchQueue.main.async { [weak self] in
+                self?.attachToViewportIfNeeded()
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        attachToViewportIfNeeded()
+    }
+
+    func stopObserving() {
+        for proxy in delegateProxies where proxy.scrollView?.delegate === proxy {
+            proxy.scrollView?.delegate = proxy.originalDelegate
+        }
+        delegateProxies.removeAll()
+        observedScrollViews.removeAll()
+    }
+
+    private func attachToViewportIfNeeded() {
+        guard let window,
+              observedScrollViews.isEmpty
+        else { return }
+
+        observedScrollViews = findViewports(in: window)
+        for scrollView in observedScrollViews {
+            let proxy = TerminalScrollDecelerationDelegateProxy(
+                scrollView: scrollView,
+                originalDelegate: scrollView.delegate,
+                onScrollBegan: { [weak self] in
+                    self?.accessibilityValue = "false"
+                },
+                onDecelerationEnded: { [weak self] in
+                    self?.accessibilityValue = "true"
+                }
+            )
+            scrollView.delegate = proxy
+            delegateProxies.append(proxy)
+        }
+    }
+
+    private func findViewports(in view: UIView) -> [UIScrollView] {
+        var viewports: [UIScrollView] = []
+        if let scrollView = view as? UIScrollView,
+           scrollView.accessibilityIdentifier == "TerminalViewport"
+        {
+            viewports.append(scrollView)
+        }
+        for subview in view.subviews {
+            viewports.append(contentsOf: findViewports(in: subview))
+        }
+        return viewports
+    }
+}
+
+private final class TerminalScrollDecelerationDelegateProxy: NSObject, UIScrollViewDelegate {
+    weak var scrollView: UIScrollView?
+    weak var originalDelegate: UIScrollViewDelegate?
+    private let onScrollBegan: () -> Void
+    private let onDecelerationEnded: () -> Void
+
+    init(
+        scrollView: UIScrollView,
+        originalDelegate: UIScrollViewDelegate?,
+        onScrollBegan: @escaping () -> Void,
+        onDecelerationEnded: @escaping () -> Void
+    ) {
+        self.scrollView = scrollView
+        self.originalDelegate = originalDelegate
+        self.onScrollBegan = onScrollBegan
+        self.onDecelerationEnded = onDecelerationEnded
+        super.init()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        onScrollBegan()
+        originalDelegate?.scrollViewWillBeginDragging?(scrollView)
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        onDecelerationEnded()
+        originalDelegate?.scrollViewDidEndDecelerating?(scrollView)
+    }
+
+    override func responds(to selector: Selector) -> Bool {
+        if selector == #selector(scrollViewWillBeginDragging(_:))
+            || selector == #selector(scrollViewDidEndDecelerating(_:)) {
+            return true
+        }
+        return originalDelegate?.responds(to: selector) ?? super.responds(to: selector)
+    }
+
+    override func forwardingTarget(for selector: Selector) -> Any? {
+        originalDelegate
+    }
+}
+#endif

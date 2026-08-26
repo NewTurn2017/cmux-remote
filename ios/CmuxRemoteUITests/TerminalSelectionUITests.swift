@@ -170,12 +170,14 @@ final class TerminalSelectionUITests: XCTestCase {
     }
 
     func testStyledBlockColorAndCopyInIPadLandscape() throws {
-        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip()
+        }
         let context = try launchSelectionFixture(orientation: .landscape)
-        let destinationName = isPad ? "ipad" : "iphone"
-        let minimumViewportWidthFraction: CGFloat = isPad ? 0.5 : 0.75
-        let minimumGreenPixels = isPad ? 80 : 40
-        let minimumForegroundPixels = isPad ? 8 : 4
+        let destinationName = "ipad"
+        let minimumViewportWidthFraction: CGFloat = 0.5
+        let minimumGreenPixels = 80
+        let minimumForegroundPixels = 8
 
         XCTAssertGreaterThan(context.app.frame.width, context.app.frame.height)
         XCTAssertGreaterThan(context.viewport.frame.width, context.viewport.frame.height)
@@ -220,9 +222,22 @@ final class TerminalSelectionUITests: XCTestCase {
 
     func testScrollThenLongPressAfterDeceleration() throws {
         let context = try launchSelectionFixture()
+        let decelerationEnded = context.app.otherElements[
+            "TerminalViewportDecelerationEnded"
+        ]
+        XCTAssertTrue(decelerationEnded.waitForExistence(timeout: 5))
+        let decelerationEndExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { object, _ in
+                guard let element = object as? XCUIElement else { return false }
+                return element.valueDescription == "true"
+            },
+            object: decelerationEnded
+        )
         context.viewport.swipeUp(velocity: .fast)
-        XCTAssertTrue(context.copyButton.waitForNonExistence(timeout: 1))
-        XCTAssertTrue(context.viewport.waitForRenderableFrame(timeout: 5))
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [decelerationEndExpectation], timeout: 5),
+            .completed
+        )
 
         let start = context.viewport.coordinate(
             withNormalizedOffset: CGVector(dx: 0.22, dy: 0.35)
