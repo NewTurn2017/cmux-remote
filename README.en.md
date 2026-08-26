@@ -183,6 +183,16 @@ client that talks to cmux over a documented JSON-RPC schema.
   re-pins `surface.focus` first. iPhone keys land on the surface you
   intended even after focus moved at the Mac.
 
+### Terminal rendering and copy
+
+- Live `cmux.render-grid.v1` replay preserves RGB foreground and background values in terminal cells.
+- Capabilities are negotiated on connection. Older cmux versions without the complete replay contract automatically use the plain `surface.read_text` path.
+- Long-press a terminal cell, then drag to select text.
+- After selection, drag either endpoint handle to adjust the selected range.
+- **Copy** writes plain text to the clipboard and preserves CJK characters, spaces, and empty lines.
+- For a non-empty command, leading and trailing whitespace is trimmed, line breaks become spaces, and internal repeated spaces are preserved; the normalized text is sent in one `surface.send_text` payload followed by one `Enter`. Whitespace-only input sends only `Enter`.
+- The terminal viewport uses an opaque-black base. Explicit ANSI backgrounds continue to paint their cells over that base.
+
 ### Notifications
 
 - Surfaces cmux `events.stream` notifications as iOS local

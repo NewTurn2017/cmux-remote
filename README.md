@@ -168,6 +168,16 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
   자동 호출. 책상에서 cmux 포커스를 옮긴 뒤에도 iPhone 키가 의도한
   surface로 도착.
 
+### 터미널 렌더링과 선택/복사
+
+- 라이브 `cmux.render-grid.v1` 리플레이는 RGB 전경색과 배경색 값을 터미널 셀에서 그대로 보존합니다.
+- 연결 시 capability를 협상합니다. 완전한 replay contract를 제공하지 않는 구버전 cmux는 자동으로 평문 `surface.read_text` 경로를 사용합니다.
+- 터미널 셀을 길게 누른 뒤 드래그하면 텍스트를 선택할 수 있습니다.
+- 선택이 끝나면 양 끝점 핸들(endpoint handle)을 드래그해 선택 범위를 조정할 수 있습니다.
+- **Copy**는 평문만 클립보드에 쓰며 CJK 문자, 공백, 빈 줄을 보존합니다.
+- 비어 있지 않은 명령은 앞뒤 공백을 제거하고 줄바꿈을 공백으로 바꾸며 내부 반복 공백을 보존합니다. 정규화된 텍스트를 한 번의 `surface.send_text` payload로 보낸 뒤 한 번의 `Enter`를 전송합니다. 공백만 입력하면 `Enter`만 전송합니다.
+- 터미널 viewport의 바탕은 불투명한 검정입니다. 셀에 명시된 ANSI 배경색은 그 바탕 위에 계속 표시됩니다.
+
 ### 알림
 
 - cmux events.stream의 notification을 iOS 로컬 알림으로 표시
