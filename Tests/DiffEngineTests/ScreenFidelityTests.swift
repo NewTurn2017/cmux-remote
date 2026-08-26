@@ -48,7 +48,7 @@ struct ScreenFidelityTests {
 
     @Test func columnResizeForcesFullResetAtDiffBoundary() throws {
         let before = try Self.screen(columns: 4)
-        let after = try Self.screen(columns: 5, revision: 3)
+        let after = try Self.screen(columns: 5, cursorColumn: 1, revision: 3)
         var state = RowState()
 
         _ = state.ingest(snapshot: before)

@@ -170,17 +170,47 @@ final class TerminalSelectionUITests: XCTestCase {
     }
 
     func testStyledBlockColorAndCopyInIPadLandscape() throws {
-        guard UIDevice.current.userInterfaceIdiom == .pad else {
-            throw XCTSkip("iPad-only fixture assertion")
-        }
-
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
         let context = try launchSelectionFixture(orientation: .landscape)
+        let destinationName = isPad ? "ipad" : "iphone"
+        let minimumViewportWidthFraction: CGFloat = isPad ? 0.5 : 0.75
+        let minimumGreenPixels = isPad ? 80 : 40
+        let minimumForegroundPixels = isPad ? 8 : 4
+
         XCTAssertGreaterThan(context.app.frame.width, context.app.frame.height)
         XCTAssertGreaterThan(context.viewport.frame.width, context.viewport.frame.height)
-        attachScreenshot(named: "fixture-ipad-landscape-before", to: context.viewport)
+        XCTAssertGreaterThanOrEqual(
+            context.viewport.frame.width,
+            context.app.frame.width * minimumViewportWidthFraction
+        )
+        attachScreenshot(
+            named: "fixture-\(destinationName)-landscape-before",
+            to: context.viewport
+        )
+
+        let image = context.viewport.screenshot().image
+        XCTAssertGreaterThan(
+            image.pixelCount(near: Fixture.greenBackground, tolerance: 4),
+            minimumGreenPixels
+        )
+        XCTAssertGreaterThan(
+            image.pixelCount(near: Fixture.cyanForeground, tolerance: 4),
+            minimumForegroundPixels
+        )
+        XCTAssertGreaterThan(
+            image.pixelCount(near: Fixture.orangeForeground, tolerance: 4),
+            minimumForegroundPixels
+        )
+        XCTAssertGreaterThan(
+            image.pixelCount(near: Fixture.tealForeground, tolerance: 4),
+            minimumForegroundPixels
+        )
 
         selectExactFixtureText(in: context)
-        attachScreenshot(named: "fixture-ipad-landscape-selected", to: context.viewport)
+        attachScreenshot(
+            named: "fixture-\(destinationName)-landscape-selected",
+            to: context.viewport
+        )
         try assertCopy(
             context,
             expected: Fixture.expectedCopyText,
@@ -298,10 +328,13 @@ final class TerminalSelectionUITests: XCTestCase {
         let viewport = app.scrollViews["TerminalViewport"]
         XCTAssertTrue(viewport.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(viewport.waitForRenderableFrame(timeout: 5), viewport.debugDescription)
-        XCTAssertTrue(viewport.waitForNonEmptyValue(timeout: 5), viewport.valueDescription)
+        XCTAssertTrue(
+            viewport.waitForValue(Fixture.expectedViewportValue, timeout: 5),
+            viewport.valueDescription
+        )
         let geometry = try XCTUnwrap(
-            app.waitForRenderedFixtureGeometry(in: viewport, timeout: 5),
-            "The initially visible truecolor target did not render"
+            app.renderedFixtureGeometry(in: viewport),
+            "The exact truecolor target was not visible after fixture readiness"
         )
 
         let copyButton = app.buttons["TerminalCopySelectionButton"]
@@ -432,6 +465,7 @@ private struct SelectionFixtureContext {
 private enum Fixture {
     static let copyEndColumn = 7
     static let expectedCopyText = "COPY A  \n한글界\nCOPY B  "
+    static let expectedViewportValue = "$ cmux palette --selection\nTruecolor, Unicode, and copy\nBOLD TRUECOLOR\nUNDERLINE OLIVE"
     static let expectedSelectAllText: String = {
         var rows = (0..<72).map { index in
             String(format: "render pass %02d · scroll lane", index)
@@ -454,19 +488,20 @@ private enum Fixture {
             rows[index] = String(format: "wide canvas %02d · %@", index, wideRule)
         }
 
-        rows[57] = " ┌ TRUECOLOR COPY FIXTURE ┐ "
-        rows[60] = "COPY A  "
-        rows[61] = "한글界"
-        rows[62] = "COPY B  "
+        rows[57] = "Palette inspection complete"
+        rows[60] = "e\u{301} · 한글界"
+        rows[61] = "                "
+        rows[62] = "left  middle  right   "
         rows[63] = ""
         rows[64] = "e\u{301} · 한글界"
         rows[65] = "                "
         rows[66] = "left  middle  right   "
         rows[67] = ""
-        rows[68] = "Palette inspection complete"
-        rows[69] = ""
-        rows[70] = "$ "
-        return rows[0...70].joined(separator: "\n")
+        rows[68] = " ┌ TRUECOLOR COPY FIXTURE ┐ "
+        rows[69] = "COPY A  "
+        rows[70] = "한글界"
+        rows[71] = "COPY B  "
+        return rows.joined(separator: "\n")
     }()
 
     static let greenBackground = RGB(red: 40, green: 50, blue: 40)
@@ -1280,28 +1315,17 @@ private extension XCUIApplication {
         )
     }
 
-    func waitForRenderedFixtureGeometry(
-        in viewport: XCUIElement,
-        timeout: TimeInterval
+    func renderedFixtureGeometry(
+        in viewport: XCUIElement
     ) -> RenderedFixtureGeometry? {
-        var renderedGeometry: RenderedFixtureGeometry?
-        let predicate = NSPredicate { object, _ in
-            guard let app = object as? XCUIApplication,
-                  let crop = app.visibleScreenshotCrop(for: viewport)
-            else { return false }
-            renderedGeometry = crop.image.renderedFixtureGeometry(
-                cropOriginInViewport: crop.originInViewport,
-                pixelsPerPointX: crop.pixelsPerPointX,
-                pixelsPerPointY: crop.pixelsPerPointY
-            )
-            return renderedGeometry != nil
-        }
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: self)
-        guard XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed else {
-            return nil
-        }
-        return renderedGeometry
+        guard let crop = visibleScreenshotCrop(for: viewport) else { return nil }
+        return crop.image.renderedFixtureGeometry(
+            cropOriginInViewport: crop.originInViewport,
+            pixelsPerPointX: crop.pixelsPerPointX,
+            pixelsPerPointY: crop.pixelsPerPointY
+        )
     }
+
 }
 
 private extension XCUIElement {
@@ -1316,6 +1340,15 @@ private extension XCUIElement {
         let predicate = NSPredicate { object, _ in
             guard let element = object as? XCUIElement else { return false }
             return !element.valueDescription.isEmpty
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: self)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    func waitForValue(_ expected: String, timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate { object, _ in
+            guard let element = object as? XCUIElement else { return false }
+            return element.valueDescription == expected
         }
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: self)
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed

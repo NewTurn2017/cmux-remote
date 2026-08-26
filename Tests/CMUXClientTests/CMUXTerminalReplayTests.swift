@@ -1,6 +1,5 @@
 import Foundation
 import NIOCore
-import NIOPosix
 import SharedKit
 import Testing
 @testable import CMUXClient
@@ -635,42 +634,68 @@ struct CMUXTerminalReplayTests {
         }
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["CMUX_LIVE"] == "1"))
-    func liveProductionClientNegotiatesSystemCapabilitiesAndViewportReplay() async throws {
-        let environment = ProcessInfo.processInfo.environment
-        let workspaceID = try #require(environment["CMUX_WORKSPACE_ID"])
-        let surfaceID = try #require(environment["CMUX_SURFACE_ID"])
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        var channel: Channel?
-        do {
-            let connected = try await UnixSocketChannel(path: cmuxSocketPath(), group: group)
-                .connect { _ in group.next().makeSucceededFuture(()) }
-            channel = connected
-            let client = CMUXClient(channel: connected, requestTimeout: .seconds(5))
-            try await client.awaitReady()
-            if let password = environment["CMUX_SOCKET_PASSWORD"], !password.isEmpty {
-                try await client.authenticate(password: password)
-            }
-            let outcome = try await client.terminalRead(
-                workspaceId: workspaceID,
-                surfaceId: surfaceID,
+    @Test func productionUnixSocketAuthenticatesAndNegotiatesViewportReplay() async throws {
+        try await Self.withUnixSocketFixture { fixture in
+            async let authentication: Void = fixture.client.authenticate(
+                password: "  production-secret  "
+            )
+            let authenticationRequest = try await Self.nextRequest(from: fixture)
+            #expect(authenticationRequest.method == "auth.login")
+            #expect(authenticationRequest.params == .object([
+                "password": .string("production-secret"),
+            ]))
+            try await Self.sendResult(
+                .object(["authenticated": .bool(true)]),
+                for: authenticationRequest,
+                through: fixture
+            )
+            try await authentication
+
+            async let pending = fixture.client.terminalRead(
+                workspaceId: "workspace-grid",
+                surfaceId: "surface-grid",
                 lines: 120
             )
-            guard case .updated(let update) = outcome else {
-                Issue.record("live initial source read did not return an update")
-                try await connected.close().get()
-                try await group.shutdownGracefully()
-                return
-            }
+
+            let capabilityRequest = try await Self.nextRequest(from: fixture)
+            #expect(capabilityRequest.method == "system.capabilities")
+            #expect(capabilityRequest.params == .object([:]))
+            try await Self.sendSupportedCapabilities(
+                for: capabilityRequest,
+                through: fixture
+            )
+
+            let replayRequest = try await Self.nextRequest(from: fixture)
+            #expect(replayRequest.method == "terminal.replay")
+            #expect(replayRequest.params == .object([
+                "surface_id": .string("surface-grid"),
+                "anchor": .string("viewport"),
+            ]))
+            let replayPayload = try SharedKitJSON.snakeCaseDecoder.decode(
+                JSONValue.self,
+                from: RenderGridTestSupport.fixtureData()
+            )
+            try await Self.sendResult(
+                replayPayload,
+                for: replayRequest,
+                through: fixture
+            )
+
+            let outcome = try await pending
+            let update = try #require({
+                if case .updated(let update) = outcome { return update }
+                return nil
+            }())
             #expect(update.sourceMode == .renderGrid)
-            #expect(update.replayIdentity != nil)
-            print("liveProductionSourceMode=renderGrid viewportReplay=true terminalContentsPrinted=false")
-            try await connected.close().get()
-            try await group.shutdownGracefully()
-        } catch {
-            try? await channel?.close().get()
-            try? await group.shutdownGracefully()
-            throw error
+            #expect(update.replayIdentity == CMUXTerminalReplayIdentity(
+                epoch: "00000000-0000-4000-8000-000000000027",
+                revision: 4
+            ))
+            #expect(update.screen.cols == 18)
+            #expect(update.screen.rows.count == 5)
+            #expect(update.screen.rows.contains {
+                $0.contains("\u{1B}[38;2;234;234;234;48;2;40;50;40mGREEN BLOCK")
+            })
         }
     }
 
@@ -711,6 +736,22 @@ struct CMUXTerminalReplayTests {
         _ body: @escaping @Sendable (MTELGCmuxFixture) async throws -> T
     ) async throws -> T {
         let fixture = try await MTELGCmuxFixture.make(requestTimeout: .seconds(1))
+        do {
+            let result = try await body(fixture)
+            await fixture.shutdown()
+            return result
+        } catch {
+            await fixture.shutdown()
+            throw error
+        }
+    }
+
+    private static func withUnixSocketFixture<T: Sendable>(
+        _ body: @escaping @Sendable (MTELGCmuxFixture) async throws -> T
+    ) async throws -> T {
+        let fixture = try await MTELGCmuxFixture.makeUnixSocket(
+            requestTimeout: .seconds(1)
+        )
         do {
             let result = try await body(fixture)
             await fixture.shutdown()

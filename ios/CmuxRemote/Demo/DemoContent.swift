@@ -182,22 +182,22 @@ enum DemoContent {
             rows[index] = String(format: wideRow, index, wideRule)
         }
 
-        rows[57] = "\u{1B}[1;38;2;125;207;255;\(greenBackground)m ┌ TRUECOLOR COPY FIXTURE ┐ \(reset)"
-        rows[60] = "\u{1B}[38;2;125;207;255;\(greenBackground)mCOPY A  \(reset)"
-        rows[61] = "\u{1B}[38;2;255;158;100;\(greenBackground)m한글界\(reset)"
-        rows[62] = "\u{1B}[38;2;26;188;156;\(greenBackground)mCOPY B  \(reset)"
+        rows[57] = String(
+            localized: "demo.selection.terminal.complete",
+            defaultValue: "Palette inspection complete"
+        )
+        rows[60] = "e\u{301} · 한글界"
+        rows[61] = "\u{1B}[48;2;40;50;40m                \(reset)"
+        rows[62] = "left  middle  right   "
         rows[63] = ""
         rows[64] = "e\u{301} · 한글界"
         rows[65] = "\u{1B}[48;2;40;50;40m                \(reset)"
         rows[66] = "left  middle  right   "
         rows[67] = ""
-        rows[68] = String(
-            localized: "demo.selection.terminal.complete",
-            defaultValue: "Palette inspection complete"
-        )
-        rows[69] = ""
-        rows[70] = "$ "
-        rows[71] = ""
+        rows[68] = "\u{1B}[1;38;2;125;207;255;\(greenBackground)m ┌ TRUECOLOR COPY FIXTURE ┐ \(reset)"
+        rows[69] = "\u{1B}[38;2;125;207;255;\(greenBackground)mCOPY A  \(reset)"
+        rows[70] = "\u{1B}[38;2;255;158;100;\(greenBackground)m한글界\(reset)"
+        rows[71] = "\u{1B}[38;2;26;188;156;\(greenBackground)mCOPY B  \(reset)"
         return rows
     }()
 

@@ -12,10 +12,10 @@ public struct RowState {
         defer { previousSnapshot = snapshot }
 
         guard let previousSnapshot else {
-            return replaceAll(with: snapshot)
+            return replaceAll(with: snapshot, includeCursor: true)
         }
         if snapshot.requiresFullReset(comparedTo: previousSnapshot) {
-            return replaceAll(with: snapshot)
+            return replaceAll(with: snapshot, includeCursor: snapshot.cursor != cursor)
         }
 
         var ops: [DiffOp] = []
@@ -33,14 +33,19 @@ public struct RowState {
         return ops
     }
 
-    private mutating func replaceAll(with snapshot: Screen) -> [DiffOp] {
+    private mutating func replaceAll(
+        with snapshot: Screen,
+        includeCursor: Bool
+    ) -> [DiffOp] {
         rowHashes = snapshot.rows.map(ScreenHasher.rowHash)
         cursor = snapshot.cursor
         var ops: [DiffOp] = [.clear]
         for (index, row) in snapshot.rows.enumerated() {
             ops.append(.row(y: index, text: row))
         }
-        ops.append(.cursor(x: snapshot.cursor.x, y: snapshot.cursor.y))
+        if includeCursor {
+            ops.append(.cursor(x: snapshot.cursor.x, y: snapshot.cursor.y))
+        }
         return ops
     }
 }

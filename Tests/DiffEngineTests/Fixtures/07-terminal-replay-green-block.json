@@ -1,4 +1,23 @@
 {
+  "before": {
+    "rev": 1,
+    "rows": ["\u001b[38;2;234;234;234;48;2;16;24;32mGREEN BLOCK\u001b[0m"],
+    "cols": 18,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "after": {
+    "rev": 2,
+    "rows": ["\u001b[38;2;234;234;234;48;2;40;50;40mGREEN BLOCK\u001b[0m"],
+    "cols": 18,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "expected_ops": [
+    {
+      "op": "row",
+      "y": 0,
+      "text": "\u001b[38;2;234;234;234;48;2;40;50;40mGREEN BLOCK\u001b[0m"
+    }
+  ],
   "columns": 18,
   "rows": 3,
   "seq": 27,

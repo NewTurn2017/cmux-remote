@@ -32,7 +32,7 @@ struct CMUXRenderGridTests {
         #expect(grid.styles.count == 34)
         #expect(grid.rowSpans.count == 3)
         #expect(grid.scrollbackRows == 2)
-        #expect(grid.scrollbackSpans.count == 2)
+        #expect(grid.scrollbackSpans.count == 34)
         #expect(grid.styles.first { $0.id == 3 }?.background == "#283228")
         #expect(grid.terminalTheme?.background == "#101820")
         #expect(grid.terminalConfigTheme?.foreground == "#eaeaea")
