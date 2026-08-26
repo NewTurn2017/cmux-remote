@@ -37,8 +37,8 @@ targets:
       path: CmuxRemote/Info.plist
       properties:
         CFBundleDisplayName: "cmux Remote"
-        CFBundleShortVersionString: "1.0.10"
-        CFBundleVersion: "15"
+        CFBundleShortVersionString: "1.1.0"
+        CFBundleVersion: "16"
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
         UILaunchScreen: {}
@@ -75,8 +75,8 @@ targets:
     info:
       path: CmuxRemoteTests/Info.plist
       properties:
-        CFBundleShortVersionString: "1.0.10"
-        CFBundleVersion: "15"
+        CFBundleShortVersionString: "1.1.0"
+        CFBundleVersion: "16"
     dependencies:
       - target: CmuxRemote
   CmuxRemoteUITests:
@@ -86,8 +86,8 @@ targets:
     info:
       path: CmuxRemoteUITests/Info.plist
       properties:
-        CFBundleShortVersionString: "1.0.10"
-        CFBundleVersion: "15"
+        CFBundleShortVersionString: "1.1.0"
+        CFBundleVersion: "16"
     dependencies:
       - target: CmuxRemote
 schemes:

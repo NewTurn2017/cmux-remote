@@ -16,7 +16,7 @@ cmux exclusively over a documented JSON-RPC protocol.
 
 ---
 
-## What's new — v1.0.8
+## What's new — v1.1.0
 
 <p align="center">
   <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote brandmark" width="320">
@@ -48,7 +48,7 @@ New or changed since v1.0.5:
 
 ## Status
 
-**Early preview (v1.0.9).** It can:
+**Current release (v1.1.0).** It can:
 
 - list, open, create, rename, and close cmux workspaces and surfaces
 - mirror any terminal surface in near real-time (15 Hz diff polling, 120-line bounded history)
