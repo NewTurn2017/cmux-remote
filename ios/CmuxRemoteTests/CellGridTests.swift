@@ -35,6 +35,41 @@ struct CellGridTests {
         #expect(grid.renderRows[0].columns == 4)
     }
 
+    @Test func producerWidthOverridesAViewerWidthDisagreement() {
+        var grid = CellGrid(cols: 2, rows: 1)
+        grid.replaceRow(
+            0,
+            raw: "\u{1B}[?2026;0;1;1z☀\u{1B}[?2026;1;1;1zX"
+        )
+
+        let row = grid.renderRows[0]
+        #expect(row.runs.map(\.text) == ["☀︎", "X"])
+        #expect(row.runs.map(\.startColumn) == [0, 1])
+        #expect(row.runs.map(\.columns) == [1, 1])
+        #expect(row.selectionRow.spans.map(\.columns) == [0..<1, 1..<2])
+        #expect(row.plainText == "☀X")
+        #expect(row.columns == 2)
+    }
+
+    @Test func legacyAndMalformedWidthMetadataFallBackWithoutLeakingState() {
+        var grid = CellGrid(cols: 3, rows: 1)
+
+        grid.replaceRow(0, raw: "☀X")
+        #expect(grid.renderRows[0].runs.map(\.startColumn) == [0, 2])
+        #expect(grid.renderRows[0].columns == 3)
+
+        grid.replaceRow(0, raw: "\u{1B}[?2026;0;1;2z☀X")
+        #expect(grid.renderRows[0].runs.map(\.startColumn) == [0, 2])
+        #expect(grid.renderRows[0].columns == 3)
+
+        grid.replaceRow(0, raw: "\u{1B}[?2026;0;1;2z☀")
+        #expect(grid.renderRows[0].runs.map(\.columns) == [2])
+
+        grid.replaceRow(0, raw: "☀X")
+        #expect(grid.renderRows[0].runs.map(\.startColumn) == [0, 2])
+        #expect(grid.renderRows[0].columns == 3)
+    }
+
     @Test func maxRenderedColumnsShrinksWhenLongestRowIsReplaced() {
         var grid = CellGrid(cols: 80, rows: 2)
         grid.replaceRow(0, raw: "long")

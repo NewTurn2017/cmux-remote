@@ -12,6 +12,14 @@ struct CMUXRenderGridSpan: Decodable, Equatable, Sendable {
         cellWidth ?? max(1, text.cmuxTerminalCellWidth)
     }
 
+    /// Encodes authoritative geometry in a private CSI record ignored by legacy viewers.
+    var ansiGeometrySequence: String? {
+        guard let cellWidth else { return nil }
+        let scalarCount = text.unicodeScalars.count
+        guard scalarCount > 0 else { return nil }
+        return "\u{1B}[?2026;\(column);\(cellWidth);\(scalarCount)z"
+    }
+
     private enum CodingKeys: String, CodingKey {
         case row
         case column

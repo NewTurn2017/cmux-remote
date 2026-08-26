@@ -134,7 +134,10 @@ struct RenderGridANSITests {
         let row = raw.toScreen(rev: 0).rows[0]
 
         #expect(RenderGridTestSupport.visibleText(row) == "A  ")
-        #expect(row.contains("\u{1B}[38;2;171;205;239;48;2;17;34;51mA "))
+        #expect(row.contains(
+            "\u{1B}[38;2;171;205;239;48;2;17;34;51m" +
+                "\u{1B}[?2026;0;2;2zA "
+        ))
         #expect(!RenderGridTestSupport.visibleText(row).hasSuffix(String(repeating: " ", count: 10)))
     }
 
@@ -153,6 +156,21 @@ struct RenderGridANSITests {
         #expect(row.hasSuffix("X" + RenderGridTestSupport.reset))
     }
 
+    @Test func authoritativeSpanGeometrySurvivesInTheLegacyTextRow() throws {
+        let spans = #"[{"row":0,"column":0,"style_id":0,"text":"☀","cell_width":1},{"row":0,"column":1,"style_id":0,"text":"X","cell_width":1}]"#
+        let raw = try RenderGridTestSupport.decode(RenderGridTestSupport.responseJSON(
+            columns: 2,
+            rows: 1,
+            cursorRow: 0,
+            rowSpans: spans
+        ))
+        let row = raw.toScreen(rev: 0).rows[0]
+
+        #expect(row.contains("\u{1B}[?2026;0;1;1z☀"))
+        #expect(row.contains("\u{1B}[?2026;1;1;1zX"))
+        #expect(String(ANSIParser.parse(row, base: .default).map(\.character)) == "☀X")
+    }
+
     @Test func equalFramesProduceIdenticalUTF8RowsAndChecksums() throws {
         let data = try RenderGridTestSupport.fixtureData()
         let first = try RenderGridTestSupport.decode(data).toScreen(rev: 1)
@@ -164,7 +182,7 @@ struct RenderGridANSITests {
         #expect(first.rows.map { Data($0.utf8) } == second.rows.map { Data($0.utf8) })
         #expect(first.cursor == CursorPos(x: 4, y: 4))
         #expect(ScreenHasher.hash(first) == ScreenHasher.hash(second))
-        #expect(ScreenHasher.hash(first) == "8e3d7360eef5c104")
+        #expect(ScreenHasher.hash(first) == "dd1f8d3b36031621")
         #expect(
             first.rows.map(RenderGridTestSupport.visibleText)
                 == changedStyle.rows.map(RenderGridTestSupport.visibleText)

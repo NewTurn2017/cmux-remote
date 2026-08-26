@@ -29,7 +29,7 @@ public struct CellGrid: Equatable {
         }
         let oldColumns = renderRows[y].columns
         let cells = ANSIParser.parse(raw, base: .default)
-        let renderRow = TerminalRenderRow(cells: cells)
+        let renderRow = TerminalRenderRow(cells: cells, maximumColumns: cols)
         rows[y] = cells
         rawRows[y] = raw
         renderRows[y] = renderRow
@@ -62,14 +62,68 @@ public struct TerminalRenderRow: Equatable {
     public var plainText: String
     let selectionRow: TerminalSelectionRow
 
-    public init(cells: [ANSICell]) {
+    public init(cells: [ANSICell], maximumColumns: Int? = nil) {
         var runs: [TerminalRenderRun] = []
         var spans: [TerminalColumnSpan] = []
         var plainText = ""
         var column = 0
+        var widths = cells.map { TerminalCellWidth.columns(for: $0.character) }
+        var authoritativeStarts: [Int: Int] = [:]
+        var metadataIndex = 0
+        var projectedColumn = 0
 
-        for cell in cells {
-            let cellColumns = TerminalCellWidth.columns(for: cell.character)
+        while metadataIndex < cells.count {
+            let cell = cells[metadataIndex]
+            guard let sourceColumn = cell.sourceColumn,
+                  let sourceWidth = cell.sourceCellWidth,
+                  let scalarCount = cell.sourceScalarCount,
+                  scalarCount > 0,
+                  scalarCount <= cells.count - metadataIndex,
+                  sourceColumn == projectedColumn,
+                  sourceWidth <= (maximumColumns.map { $0 - sourceColumn } ?? Int.max)
+            else {
+                projectedColumn += widths[metadataIndex]
+                metadataIndex += 1
+                continue
+            }
+
+            let sourceRange = metadataIndex..<(metadataIndex + scalarCount)
+            let fallbackWidths = sourceRange.map { widths[$0] }
+            var difference = sourceWidth - sourceRange.reduce(0) { $0 + widths[$1] }
+            if difference < 0 {
+                for index in sourceRange where difference < 0 && widths[index] > 1 {
+                    let reduction = min(widths[index] - 1, -difference)
+                    widths[index] -= reduction
+                    difference += reduction
+                }
+            } else if difference > 0 {
+                for index in sourceRange where difference > 0 && widths[index] > 0 {
+                    let addition = min(max(0, 2 - widths[index]), difference)
+                    widths[index] += addition
+                    difference -= addition
+                }
+            }
+
+            guard difference == 0 else {
+                for (index, fallbackWidth) in zip(sourceRange, fallbackWidths) {
+                    widths[index] = fallbackWidth
+                }
+                projectedColumn += widths[metadataIndex]
+                metadataIndex += 1
+                continue
+            }
+
+            authoritativeStarts[metadataIndex] = sourceColumn
+            projectedColumn = sourceColumn + sourceWidth
+            metadataIndex += scalarCount
+        }
+
+        for (index, cell) in cells.enumerated() {
+            let startsAuthoritativeSpan = authoritativeStarts[index] != nil
+            if let sourceColumn = authoritativeStarts[index] {
+                column = sourceColumn
+            }
+            let cellColumns = widths[index]
             let sourceText = String(cell.character)
             let displayText = TerminalGlyph.textStyleString(for: cell.character)
             plainText.append(sourceText)
@@ -90,6 +144,7 @@ public struct TerminalRenderRow: Equatable {
             if cellColumns == 0, let last = runs.indices.last, runs[last].attr == cell.attr {
                 runs[last].text.append(displayText)
             } else if cellColumns == 1,
+                      !startsAuthoritativeSpan,
                       let last = runs.indices.last,
                       runs[last].attr == cell.attr,
                       runs[last].canMergeAdjacentCells

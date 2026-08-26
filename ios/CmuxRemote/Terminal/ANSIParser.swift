@@ -27,10 +27,22 @@ public struct ANSIAttr: Equatable {
 public struct ANSICell: Equatable {
     public var character: Character
     public var attr: ANSIAttr
+    public var sourceColumn: Int?
+    public var sourceCellWidth: Int?
+    public var sourceScalarCount: Int?
 
-    public init(character: Character, attr: ANSIAttr) {
+    public init(
+        character: Character,
+        attr: ANSIAttr,
+        sourceColumn: Int? = nil,
+        sourceCellWidth: Int? = nil,
+        sourceScalarCount: Int? = nil
+    ) {
         self.character = character
         self.attr = attr
+        self.sourceColumn = sourceColumn
+        self.sourceCellWidth = sourceCellWidth
+        self.sourceScalarCount = sourceScalarCount
     }
 }
 
@@ -38,6 +50,7 @@ public enum ANSIParser {
     public static func parse(_ string: String, base: ANSIAttr) -> [ANSICell] {
         var output: [ANSICell] = []
         var attr = base
+        var pendingGeometry: (start: Int, column: Int, width: Int, remaining: Int)?
         var iterator = string.unicodeScalars.makeIterator()
 
         while let scalar = iterator.next() {
@@ -46,16 +59,56 @@ public enum ANSIParser {
                 var args = ""
                 while let c = iterator.next() {
                     if c.value >= 0x40 && c.value <= 0x7E {
-                        if c == "m" { applySGR(&attr, args: args) }
+                        if c == "z", let geometry = spanGeometry(from: args) {
+                            pendingGeometry = (
+                                start: output.count,
+                                column: geometry.column,
+                                width: geometry.width,
+                                remaining: geometry.scalarCount
+                            )
+                        } else {
+                            pendingGeometry = nil
+                            if c == "m" {
+                                applySGR(&attr, args: args)
+                            }
+                        }
                         break
                     }
                     args.unicodeScalars.append(c)
                 }
             } else {
                 output.append(ANSICell(character: Character(scalar), attr: attr))
+                if var pending = pendingGeometry {
+                    pending.remaining -= 1
+                    if pending.remaining == 0 {
+                        output[pending.start].sourceColumn = pending.column
+                        output[pending.start].sourceCellWidth = pending.width
+                        output[pending.start].sourceScalarCount = output.count - pending.start
+                        pendingGeometry = nil
+                    } else {
+                        pendingGeometry = pending
+                    }
+                }
             }
         }
         return output
+    }
+
+    private static func spanGeometry(
+        from args: String
+    ) -> (column: Int, width: Int, scalarCount: Int)? {
+        let fields = args.split(separator: ";", omittingEmptySubsequences: false)
+        guard fields.count == 4,
+              fields[0] == "?2026",
+              let column = Int(fields[1]),
+              let width = Int(fields[2]),
+              let scalarCount = Int(fields[3]),
+              column >= 0,
+              width > 0,
+              scalarCount > 0,
+              column <= Int.max - width
+        else { return nil }
+        return (column, width, scalarCount)
     }
 
     private static func applySGR(_ attr: inout ANSIAttr, args: String) {

@@ -694,7 +694,10 @@ struct CMUXTerminalReplayTests {
             #expect(update.screen.cols == 18)
             #expect(update.screen.rows.count == 5)
             #expect(update.screen.rows.contains {
-                $0.contains("\u{1B}[38;2;234;234;234;48;2;40;50;40mGREEN BLOCK")
+                $0.contains(
+                    "\u{1B}[38;2;234;234;234;48;2;40;50;40m" +
+                        "\u{1B}[?2026;0;11;11zGREEN BLOCK"
+                )
             })
         }
     }

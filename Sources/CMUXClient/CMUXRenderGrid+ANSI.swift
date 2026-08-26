@@ -45,6 +45,9 @@ extension CMUXRenderGrid {
                     previousBold: activeBold,
                     previousUnderline: activeUnderline
                 )
+                if let geometrySequence = span.ansiGeometrySequence {
+                    ansi += geometrySequence
+                }
                 ansi += span.text
                 occupiedColumns = span.column + span.gridCellWidth
                 activeBold = style.bold
