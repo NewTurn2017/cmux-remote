@@ -218,6 +218,46 @@ struct TerminalViewTests {
         ))
     }
 
+    @Test func longPressArbitratesOnlySelectableOriginsAgainstExactAncestorScrollPans() {
+        let outerScroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        let innerScroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 160, height: 160))
+        let interactionView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 320))
+        outerScroll.addSubview(innerScroll)
+        innerScroll.addSubview(interactionView)
+
+        #expect(TerminalSelectionLongPressGestureRecognizer.shouldPrioritizeSelectionPress(
+            touchBeganOnSelectableContent: true,
+            otherRecognizer: innerScroll.panGestureRecognizer,
+            interactionView: interactionView
+        ))
+        #expect(TerminalSelectionLongPressGestureRecognizer.shouldPrioritizeSelectionPress(
+            touchBeganOnSelectableContent: true,
+            otherRecognizer: outerScroll.panGestureRecognizer,
+            interactionView: interactionView
+        ))
+        #expect(!TerminalSelectionLongPressGestureRecognizer.shouldPrioritizeSelectionPress(
+            touchBeganOnSelectableContent: false,
+            otherRecognizer: innerScroll.panGestureRecognizer,
+            interactionView: interactionView
+        ))
+
+        let otherAncestorPan = UIPanGestureRecognizer()
+        innerScroll.addGestureRecognizer(otherAncestorPan)
+        #expect(!TerminalSelectionLongPressGestureRecognizer.shouldPrioritizeSelectionPress(
+            touchBeganOnSelectableContent: true,
+            otherRecognizer: otherAncestorPan,
+            interactionView: interactionView
+        ))
+
+        let siblingScroll = UIScrollView(frame: .zero)
+        outerScroll.addSubview(siblingScroll)
+        #expect(!TerminalSelectionLongPressGestureRecognizer.shouldPrioritizeSelectionPress(
+            touchBeganOnSelectableContent: true,
+            otherRecognizer: siblingScroll.panGestureRecognizer,
+            interactionView: interactionView
+        ))
+    }
+
     @Test func boundaryDragSessionPreservesGrabOffsetAndEmitsNoBeginAdjustment() throws {
         let epoch = try #require(TerminalGridEpoch(rawValue: 3))
         var session = TerminalSelectionGesturePolicy.BoundaryDragSession(

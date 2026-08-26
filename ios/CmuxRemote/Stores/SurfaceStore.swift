@@ -80,9 +80,18 @@ public final class SurfaceStore {
         switch frame {
         case .screenFull(let frame):
             guard frame.surfaceId == subscribed || subscribed == nil else { return }
-            grid = CellGrid(cols: frame.cols, rows: frame.rowsCount)
-            for (index, row) in frame.rows.enumerated() { grid.replaceRow(index, raw: row) }
-            grid.cursor = frame.cursor
+            var replacement = grid
+            if grid.cols != frame.cols
+                || grid.rows.count != frame.rowsCount
+                || frame.rows.count != frame.rowsCount
+            {
+                replacement = CellGrid(cols: frame.cols, rows: frame.rowsCount)
+            }
+            for (index, row) in frame.rows.enumerated() {
+                replacement.replaceRow(index, raw: row)
+            }
+            replacement.cursor = frame.cursor
+            grid = replacement
             rev = frame.rev
         case .screenDiff(let frame):
             guard frame.surfaceId == subscribed || subscribed == nil else { return }

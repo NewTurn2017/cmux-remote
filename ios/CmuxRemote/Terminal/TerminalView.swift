@@ -256,7 +256,6 @@ struct TerminalView: View {
                     .padding(.bottom, bottomInset + bottomSafeAreaInset + 12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
-
             }
             .onChange(of: store.grid.selectionEpochID) { _, _ in
                 selectionController.advanceGridEpoch(reason: store.grid.selectionEpochChangeReason)
@@ -316,6 +315,77 @@ struct TerminalView: View {
 
 private enum TerminalScrollTarget {
     static let bottom = "terminal-bottom"
+}
+
+final class TerminalSelectionLongPressGestureRecognizer: UILongPressGestureRecognizer {
+    private(set) var initialTouchLocation: CGPoint?
+    private(set) var touchBeganOnSelectableContent = false
+    var selectableContentHitTest: ((CGPoint) -> Bool)?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        clearAttemptState()
+        if let touch = touches.first, let view {
+            let location = touch.location(in: view)
+            initialTouchLocation = location
+            touchBeganOnSelectableContent = selectableContentHitTest?(location) ?? false
+        }
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool {
+        if Self.shouldPrioritizeSelectionPress(
+            touchBeganOnSelectableContent: touchBeganOnSelectableContent,
+            otherRecognizer: preventingGestureRecognizer,
+            interactionView: view
+        ) {
+            return false
+        }
+        return super.canBePrevented(by: preventingGestureRecognizer)
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool {
+        if Self.shouldPrioritizeSelectionPress(
+            touchBeganOnSelectableContent: touchBeganOnSelectableContent,
+            otherRecognizer: preventedGestureRecognizer,
+            interactionView: view
+        ) {
+            return true
+        }
+        return super.canPrevent(preventedGestureRecognizer)
+    }
+
+    override func reset() {
+        clearAttemptState()
+        super.reset()
+    }
+
+    func uninstall() {
+        selectableContentHitTest = nil
+        delegate = nil
+        clearAttemptState()
+    }
+
+    static func shouldPrioritizeSelectionPress(
+        touchBeganOnSelectableContent: Bool,
+        otherRecognizer: UIGestureRecognizer,
+        interactionView: UIView?
+    ) -> Bool {
+        guard touchBeganOnSelectableContent else { return false }
+        var ancestor = interactionView?.superview
+        while let currentAncestor = ancestor {
+            if let scrollView = currentAncestor as? UIScrollView,
+               otherRecognizer === scrollView.panGestureRecognizer {
+                return true
+            }
+            ancestor = currentAncestor.superview
+        }
+        return false
+    }
+
+    private func clearAttemptState() {
+        initialTouchLocation = nil
+        touchBeganOnSelectableContent = false
+    }
 }
 
 final class TerminalSelectionBoundaryPanGestureRecognizer: UIPanGestureRecognizer {
@@ -433,7 +503,7 @@ private final class TerminalSelectionInteractionCoordinator: NSObject, UIGesture
     private var snapshot: TerminalSelectionSnapshot
     private var geometry: TerminalGridGeometry
     private var controller: TerminalSelectionController
-    private weak var longPress: UILongPressGestureRecognizer?
+    private weak var longPress: TerminalSelectionLongPressGestureRecognizer?
     private weak var boundaryPan: TerminalSelectionBoundaryPanGestureRecognizer?
     private weak var cancelTap: UITapGestureRecognizer?
     private var boundaryDragSession: TerminalSelectionGesturePolicy.BoundaryDragSession?
@@ -459,14 +529,19 @@ private final class TerminalSelectionInteractionCoordinator: NSObject, UIGesture
     }
 
     func installGestures(on view: UIView) {
-        let longPress = UILongPressGestureRecognizer(
+        let longPress = TerminalSelectionLongPressGestureRecognizer(
             target: self,
             action: #selector(handleLongPress(_:))
         )
         longPress.minimumPressDuration = TerminalSelectionGesturePolicy.minimumPressDuration
         longPress.allowableMovement = TerminalSelectionGesturePolicy.maximumPressDistance
         longPress.numberOfTouchesRequired = 1
+        longPress.cancelsTouchesInView = false
         longPress.delegate = self
+        longPress.selectableContentHitTest = { [weak self] point in
+            guard let self else { return false }
+            return self.geometry.strictPosition(at: point, in: self.snapshot) != nil
+        }
 
         let boundaryPan = TerminalSelectionBoundaryPanGestureRecognizer(
             target: self,
@@ -504,7 +579,7 @@ private final class TerminalSelectionInteractionCoordinator: NSObject, UIGesture
         boundaryDragSession = nil
 
         if let longPress {
-            longPress.delegate = nil
+            longPress.uninstall()
             view.removeGestureRecognizer(longPress)
         }
         if let boundaryPan {
@@ -552,9 +627,13 @@ private final class TerminalSelectionInteractionCoordinator: NSObject, UIGesture
                     in: visibleInteractionRect(for: view)
                 ) == nil
         }
-        if gestureRecognizer === longPress {
+        if let press = gestureRecognizer as? TerminalSelectionLongPressGestureRecognizer,
+           gestureRecognizer === longPress {
+            guard press.touchBeganOnSelectableContent,
+                  let initialLocation = press.initialTouchLocation
+            else { return false }
             return selectedBoundary(
-                at: location,
+                at: initialLocation,
                 in: visibleInteractionRect(for: view)
             ) == nil
         }

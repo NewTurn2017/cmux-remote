@@ -209,6 +209,57 @@ final class StoresTests: XCTestCase {
         })
     }
 
+    func testSurfaceStoreSameGeometryFullRefreshPreservesSelectionEpoch() {
+        let surfaceStore = SurfaceStore(rpc: StubRPCDispatch())
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 1,
+            rows: ["old", ""],
+            cols: 12,
+            rowsCount: 2,
+            cursor: CursorPos(x: 0, y: 0)
+        )))
+        let selectionEpochID = surfaceStore.grid.selectionEpochID
+
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 2,
+            rows: ["new", "content"],
+            cols: 12,
+            rowsCount: 2,
+            cursor: CursorPos(x: 3, y: 1)
+        )))
+
+        XCTAssertEqual(surfaceStore.grid.selectionEpochID, selectionEpochID)
+        XCTAssertEqual(surfaceStore.grid.rawRows, ["new", "content"])
+        XCTAssertEqual(surfaceStore.grid.cursor, CursorPos(x: 3, y: 1))
+        XCTAssertEqual(surfaceStore.rev, 2)
+    }
+
+    func testSurfaceStoreGeometryChangingFullRefreshAdvancesSelectionEpoch() {
+        let surfaceStore = SurfaceStore(rpc: StubRPCDispatch())
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 1,
+            rows: ["old", ""],
+            cols: 12,
+            rowsCount: 2,
+            cursor: CursorPos(x: 0, y: 0)
+        )))
+        let selectionEpochID = surfaceStore.grid.selectionEpochID
+
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 2,
+            rows: ["new", "content", "row"],
+            cols: 16,
+            rowsCount: 3,
+            cursor: CursorPos(x: 3, y: 2)
+        )))
+
+        XCTAssertNotEqual(surfaceStore.grid.selectionEpochID, selectionEpochID)
+    }
+
     func testSurfaceStoreSendsTextAndKeys() async throws {
         let rpc = StubRPCDispatch()
         let surfaceStore = SurfaceStore(rpc: rpc)
