@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 enum TerminalLayoutPolicy {
     static func defaultFontSize(isPad: Bool) -> CGFloat {
@@ -153,19 +155,53 @@ struct TerminalView: View {
                                             with: .color(CmuxTheme.accentGreen.opacity(0.85))
                                         )
                                     }
+
+                                    if selectionController.phase == .selected,
+                                       let selection = selectionController.selection {
+                                        for boundary in [
+                                            TerminalSelection.Boundary.start,
+                                            TerminalSelection.Boundary.end,
+                                        ] {
+                                            guard let center = TerminalSelectionOverlayGeometry.handleCenter(
+                                                for: boundary,
+                                                selection: selection,
+                                                layout: layout
+                                            ) else { continue }
+                                            let diameter = TerminalSelectionGesturePolicy.visibleHandleDiameter
+                                            let frame = CGRect(
+                                                x: center.x - diameter / 2,
+                                                y: center.y - diameter / 2,
+                                                width: diameter,
+                                                height: diameter
+                                            )
+                                            let handle = Path(ellipseIn: frame)
+                                            context.fill(
+                                                handle,
+                                                with: .color(CmuxTheme.terminalSelectionFill)
+                                            )
+                                            context.stroke(
+                                                handle,
+                                                with: .color(CmuxTheme.terminalSelectionOutline),
+                                                lineWidth: TerminalSelectionGesturePolicy.visibleHandleOutlineWidth
+                                            )
+                                        }
+                                    }
                                 }
                                 .frame(width: contentWidth, height: contentHeight)
                                 .contentShape(Rectangle())
-                                .simultaneousGesture(selectionGesture(
-                                    snapshot: selectionSnapshot,
-                                    geometry: geometry
-                                ))
                                 .onTapGesture {
                                     if selectionController.phase == .selected {
                                         selectionController.cancelSelection()
                                     }
                                 }
                                 .cmuxScanlines()
+                                .overlay {
+                                    TerminalSelectionInteractionSurface(
+                                        snapshot: selectionSnapshot,
+                                        geometry: geometry,
+                                        controller: selectionController
+                                    )
+                                }
 
                                 Color.clear
                                     .frame(width: contentWidth, height: bottomScrollPadding)
@@ -257,45 +293,6 @@ struct TerminalView: View {
         lineHeight * bottomScrollPaddingRows
     }
 
-    private func selectionGesture(
-        snapshot: TerminalSelectionSnapshot,
-        geometry: TerminalGridGeometry
-    ) -> some Gesture {
-        LongPressGesture(
-            minimumDuration: TerminalSelectionGesturePolicy.minimumPressDuration,
-            maximumDistance: TerminalSelectionGesturePolicy.maximumPressDistance
-        )
-        .sequenced(before: DragGesture(
-            minimumDistance: TerminalSelectionGesturePolicy.minimumDragDistance
-        ))
-            .onChanged { value in
-                guard case .second(true, let drag?) = value else { return }
-                if selectionController.phase == .idle {
-                    selectionController.recognizePress(
-                        at: drag.startLocation,
-                        snapshot: snapshot,
-                        geometry: geometry
-                    )
-                }
-                selectionController.moveSelection(to: drag.location, geometry: geometry)
-            }
-            .onEnded { value in
-                if case .second(true, let drag?) = value {
-                    if selectionController.phase == .idle {
-                        selectionController.recognizePress(
-                            at: drag.startLocation,
-                            snapshot: snapshot,
-                            geometry: geometry
-                        )
-                    }
-                    selectionController.moveSelection(to: drag.location, geometry: geometry)
-                }
-                if selectionController.phase == .selecting {
-                    selectionController.endSelection()
-                }
-            }
-    }
-
     private var terminalAccessibilityValue: String {
         guard selectionController.selection != nil else { return accessibilitySnapshot }
         return String(
@@ -314,6 +311,384 @@ struct TerminalView: View {
 
 private enum TerminalScrollTarget {
     static let bottom = "terminal-bottom"
+}
+
+final class TerminalSelectionBoundaryPanGestureRecognizer: UIPanGestureRecognizer {
+    private(set) var initialTouchLocation: CGPoint?
+    private(set) var touchBeganOnHandle = false
+    var handleHitTest: ((CGPoint) -> Bool)?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        clearAttemptState()
+        if let touch = touches.first, let view {
+            let location = touch.location(in: view)
+            initialTouchLocation = location
+            touchBeganOnHandle = handleHitTest?(location) ?? false
+        }
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool {
+        if Self.shouldPrioritizeHandlePan(
+            touchBeganOnHandle: touchBeganOnHandle,
+            otherRecognizer: preventingGestureRecognizer,
+            interactionView: view
+        ) {
+            return false
+        }
+        return super.canBePrevented(by: preventingGestureRecognizer)
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool {
+        if Self.shouldPrioritizeHandlePan(
+            touchBeganOnHandle: touchBeganOnHandle,
+            otherRecognizer: preventedGestureRecognizer,
+            interactionView: view
+        ) {
+            return true
+        }
+        return super.canPrevent(preventedGestureRecognizer)
+    }
+
+    override func reset() {
+        clearAttemptState()
+        super.reset()
+    }
+
+    func uninstall() {
+        handleHitTest = nil
+        delegate = nil
+        clearAttemptState()
+    }
+
+    static func shouldPrioritizeHandlePan(
+        touchBeganOnHandle: Bool,
+        otherRecognizer: UIGestureRecognizer,
+        interactionView: UIView?
+    ) -> Bool {
+        guard touchBeganOnHandle else { return false }
+        var ancestor = interactionView?.superview
+        while let currentAncestor = ancestor {
+            if let scrollView = currentAncestor as? UIScrollView,
+               otherRecognizer === scrollView.panGestureRecognizer {
+                return true
+            }
+            ancestor = currentAncestor.superview
+        }
+        return false
+    }
+
+    private func clearAttemptState() {
+        initialTouchLocation = nil
+        touchBeganOnHandle = false
+    }
+}
+
+@MainActor
+private struct TerminalSelectionInteractionSurface: UIViewRepresentable {
+    let snapshot: TerminalSelectionSnapshot
+    let geometry: TerminalGridGeometry
+    let controller: TerminalSelectionController
+
+    func makeCoordinator() -> TerminalSelectionInteractionCoordinator {
+        TerminalSelectionInteractionCoordinator(
+            snapshot: snapshot,
+            geometry: geometry,
+            controller: controller
+        )
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isOpaque = false
+        view.isAccessibilityElement = false
+        context.coordinator.installGestures(on: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.update(
+            snapshot: snapshot,
+            geometry: geometry,
+            controller: controller
+        )
+    }
+
+    static func dismantleUIView(
+        _ uiView: UIView,
+        coordinator: TerminalSelectionInteractionCoordinator
+    ) {
+        coordinator.uninstallGestures(from: uiView)
+    }
+}
+
+@MainActor
+private final class TerminalSelectionInteractionCoordinator: NSObject, UIGestureRecognizerDelegate {
+    private var snapshot: TerminalSelectionSnapshot
+    private var geometry: TerminalGridGeometry
+    private var controller: TerminalSelectionController
+    private weak var longPress: UILongPressGestureRecognizer?
+    private weak var boundaryPan: TerminalSelectionBoundaryPanGestureRecognizer?
+    private weak var cancelTap: UITapGestureRecognizer?
+    private var boundaryDragSession: TerminalSelectionGesturePolicy.BoundaryDragSession?
+
+    init(
+        snapshot: TerminalSelectionSnapshot,
+        geometry: TerminalGridGeometry,
+        controller: TerminalSelectionController
+    ) {
+        self.snapshot = snapshot
+        self.geometry = geometry
+        self.controller = controller
+    }
+
+    func update(
+        snapshot: TerminalSelectionSnapshot,
+        geometry: TerminalGridGeometry,
+        controller: TerminalSelectionController
+    ) {
+        self.snapshot = snapshot
+        self.geometry = geometry
+        self.controller = controller
+    }
+
+    func installGestures(on view: UIView) {
+        let longPress = UILongPressGestureRecognizer(
+            target: self,
+            action: #selector(handleLongPress(_:))
+        )
+        longPress.minimumPressDuration = TerminalSelectionGesturePolicy.minimumPressDuration
+        longPress.allowableMovement = TerminalSelectionGesturePolicy.maximumPressDistance
+        longPress.numberOfTouchesRequired = 1
+        longPress.delegate = self
+
+        let boundaryPan = TerminalSelectionBoundaryPanGestureRecognizer(
+            target: self,
+            action: #selector(handleBoundaryPan(_:))
+        )
+        boundaryPan.minimumNumberOfTouches = 1
+        boundaryPan.maximumNumberOfTouches = 1
+        boundaryPan.cancelsTouchesInView = false
+        boundaryPan.delegate = self
+        boundaryPan.handleHitTest = { [weak self, weak view] point in
+            guard let self, let view else { return false }
+            return self.selectedBoundary(
+                at: point,
+                in: self.visibleInteractionRect(for: view)
+            ) != nil
+        }
+
+        let cancelTap = UITapGestureRecognizer(
+            target: self,
+            action: #selector(handleCancelTap(_:))
+        )
+        cancelTap.numberOfTouchesRequired = 1
+        cancelTap.delegate = self
+        cancelTap.require(toFail: longPress)
+
+        view.addGestureRecognizer(longPress)
+        view.addGestureRecognizer(boundaryPan)
+        view.addGestureRecognizer(cancelTap)
+        self.longPress = longPress
+        self.boundaryPan = boundaryPan
+        self.cancelTap = cancelTap
+    }
+
+    func uninstallGestures(from view: UIView) {
+        boundaryDragSession = nil
+
+        if let longPress {
+            longPress.delegate = nil
+            view.removeGestureRecognizer(longPress)
+        }
+        if let boundaryPan {
+            boundaryPan.uninstall()
+            view.removeGestureRecognizer(boundaryPan)
+        }
+        if let cancelTap {
+            cancelTap.delegate = nil
+            view.removeGestureRecognizer(cancelTap)
+        }
+
+        self.longPress = nil
+        self.boundaryPan = nil
+        self.cancelTap = nil
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let view = gestureRecognizer.view else { return false }
+        let location = gestureRecognizer.location(in: view)
+        if let pan = gestureRecognizer as? TerminalSelectionBoundaryPanGestureRecognizer,
+           gestureRecognizer === boundaryPan {
+            guard pan.touchBeganOnHandle,
+                  let initialLocation = pan.initialTouchLocation,
+                  let boundary = selectedBoundary(
+                    at: initialLocation,
+                    in: visibleInteractionRect(for: view)
+                  ),
+                  let visualCenter = visualCenter(for: boundary)
+            else {
+                boundaryDragSession = nil
+                return false
+            }
+            boundaryDragSession = TerminalSelectionGesturePolicy.BoundaryDragSession(
+                epoch: controller.epoch,
+                activeBoundary: boundary,
+                initialVisualCenter: visualCenter,
+                initialTouch: initialLocation
+            )
+            return true
+        }
+        if gestureRecognizer === cancelTap {
+            return controller.phase == .selected
+                && selectedBoundary(
+                    at: location,
+                    in: visibleInteractionRect(for: view)
+                ) == nil
+        }
+        if gestureRecognizer === longPress {
+            return selectedBoundary(
+                at: location,
+                in: visibleInteractionRect(for: view)
+            ) == nil
+        }
+        return true
+    }
+
+    @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        guard let view = recognizer.view else { return }
+        let location = recognizer.location(in: view)
+
+        switch recognizer.state {
+        case .began:
+            controller.recognizePress(
+                at: location,
+                snapshot: snapshot,
+                geometry: geometry
+            )
+            controller.moveSelection(to: location, geometry: geometry)
+        case .changed:
+            controller.moveSelection(to: location, geometry: geometry)
+        case .ended:
+            controller.moveSelection(to: location, geometry: geometry)
+            if controller.phase == .selecting {
+                controller.endSelection()
+            }
+        case .cancelled:
+            if controller.phase == .selecting {
+                controller.cancelSelection()
+            }
+        default:
+            break
+        }
+    }
+
+    @objc func handleBoundaryPan(_ recognizer: UIPanGestureRecognizer) {
+        guard let view = recognizer.view else { return }
+        let translation = recognizer.translation(in: view)
+
+        switch recognizer.state {
+        case .began:
+            break
+        case .changed:
+            adjustBoundary(for: .changed, translation: translation)
+        case .ended:
+            adjustBoundary(for: .ended, translation: translation)
+            boundaryDragSession = nil
+        case .cancelled, .failed:
+            boundaryDragSession = nil
+        default:
+            break
+        }
+    }
+
+    @objc func handleCancelTap(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended, controller.phase == .selected else { return }
+        controller.cancelSelection()
+    }
+
+    private func visibleInteractionRect(for view: UIView) -> CGRect {
+        var visibleRect = view.bounds
+        var ancestor = view.superview
+
+        while let currentAncestor = ancestor {
+            if currentAncestor.clipsToBounds || currentAncestor is UIScrollView {
+                visibleRect = visibleRect.intersection(
+                    view.convert(currentAncestor.bounds, from: currentAncestor)
+                )
+                if visibleRect.isNull || visibleRect.isEmpty {
+                    return .null
+                }
+            }
+            ancestor = currentAncestor.superview
+        }
+
+        return visibleRect
+    }
+
+    private func selectedBoundary(
+        at point: CGPoint,
+        in visibleRect: CGRect
+    ) -> TerminalSelection.Boundary? {
+        guard !visibleRect.isNull,
+              visibleRect.width >= TerminalSelectionGesturePolicy.handleHitDiameter,
+              visibleRect.height >= TerminalSelectionGesturePolicy.handleHitDiameter,
+              let startCenter = visualCenter(for: .start),
+              let endCenter = visualCenter(for: .end)
+        else { return nil }
+        return TerminalSelectionGesturePolicy.boundary(
+            at: point,
+            startCenter: startCenter,
+            endCenter: endCenter,
+            in: visibleRect
+        )
+    }
+
+    private func visualCenter(
+        for boundary: TerminalSelection.Boundary
+    ) -> CGPoint? {
+        guard controller.phase == .selected,
+              let selection = controller.selection
+        else { return nil }
+        return TerminalSelectionOverlayGeometry.handleCenter(
+            for: boundary,
+            selection: selection,
+            layout: TerminalGridLayout(
+                cellWidth: geometry.cellWidth,
+                lineHeight: geometry.lineHeight
+            ),
+            origin: geometry.origin
+        )
+    }
+
+    private func adjustBoundary(
+        for update: TerminalSelectionGesturePolicy.BoundaryDragUpdate,
+        translation: CGPoint
+    ) {
+        guard var session = boundaryDragSession,
+              let visualCenter = session.adjustmentCenter(
+                for: update,
+                translation: translation
+              ),
+              let adjustedBoundary = controller.adjustSelectionBoundary(
+                session.activeBoundary,
+                toVisualCenter: visualCenter,
+                geometry: geometry,
+                epoch: session.epoch
+              )
+        else { return }
+
+        if adjustedBoundary != session.activeBoundary,
+           let adjustedCenter = self.visualCenter(for: adjustedBoundary) {
+            session.retarget(
+                to: adjustedBoundary,
+                visualCenter: adjustedCenter,
+                translation: translation
+            )
+        }
+        boundaryDragSession = session
+    }
 }
 
 private extension ClosedRange where Bound == CGFloat {

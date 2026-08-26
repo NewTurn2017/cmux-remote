@@ -35,6 +35,14 @@ struct TerminalSelectionReducer: Equatable, Sendable {
             guard eventEpoch == epoch, phase == .selecting, selection != nil else { return nil }
             phase = .selected
 
+        case .adjustBoundary(let boundary, let position, let eventEpoch):
+            guard eventEpoch == epoch,
+                  phase == .selected,
+                  let adjusted = selection?.adjusting(boundary, to: position)
+            else { return nil }
+            selection = adjusted.selection
+            return .boundaryAdjusted(adjusted.activeBoundary)
+
         case .cancel, .pinch:
             clearSelection()
 

@@ -52,4 +52,35 @@ struct TerminalSelectionOverlayGeometry {
 
         return frames
     }
+
+    static func handleCenter(
+        for boundary: TerminalSelection.Boundary,
+        selection: TerminalSelection,
+        layout: TerminalGridLayout,
+        origin: CGPoint = TerminalGridGeometry.canvasOrigin
+    ) -> CGPoint? {
+        let frames = frames(for: selection, layout: layout, origin: origin)
+        switch boundary {
+        case .start:
+            guard let first = frames.first else { return nil }
+            return CGPoint(x: first.minX, y: first.midY)
+        case .end:
+            guard let last = frames.last else { return nil }
+            return CGPoint(x: last.maxX, y: last.midY)
+        }
+    }
+
+    static func adjustmentPosition(
+        for boundary: TerminalSelection.Boundary,
+        visualCenter: CGPoint,
+        selection: TerminalSelection,
+        geometry: TerminalGridGeometry
+    ) -> TerminalGridPosition? {
+        let insideOffset = geometry.cellWidth / 2
+        let insidePoint = CGPoint(
+            x: visualCenter.x + (boundary == .start ? insideOffset : -insideOffset),
+            y: visualCenter.y
+        )
+        return geometry.clampedPosition(at: insidePoint, in: selection.snapshot)
+    }
 }

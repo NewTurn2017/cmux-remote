@@ -1,0 +1,134 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "demo.selection.surface.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truecolor Copy"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トゥルーカラーコピー"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.command" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "$ cmux palette --selection"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "$ cmux palette --selection"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.complete" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palette inspection complete"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パレットの確認が完了しました"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.scrollHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scroll lanes continue below"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下にスクロールレーンが続きます"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.scrollRow" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "render pass %02d · scroll lane"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描画パス %02d · スクロールレーン"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.subtitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truecolor, Unicode, and copy"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トゥルーカラー、Unicode、コピー"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.wideRow" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "wide canvas %02d · %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワイドキャンバス %02d · %@"
+          }
+        }
+      }
+    },
+    "demo.selection.workspace.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selection Lab"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択ラボ"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

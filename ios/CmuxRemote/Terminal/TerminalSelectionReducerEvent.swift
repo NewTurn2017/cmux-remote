@@ -8,6 +8,11 @@ enum TerminalSelectionReducerEvent: Equatable, Sendable {
     case move(to: TerminalGridPosition, epoch: TerminalGridEpoch)
     case reverse(to: TerminalGridPosition, epoch: TerminalGridEpoch)
     case end(epoch: TerminalGridEpoch)
+    case adjustBoundary(
+        TerminalSelection.Boundary,
+        to: TerminalGridPosition,
+        epoch: TerminalGridEpoch
+    )
     case cancel
     case copy(epoch: TerminalGridEpoch)
     case pinch

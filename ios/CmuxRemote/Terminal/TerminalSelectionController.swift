@@ -71,6 +71,27 @@ final class TerminalSelectionController {
         reducer.reduce(.end(epoch: epoch))
     }
 
+    func adjustSelectionBoundary(
+        _ boundary: TerminalSelection.Boundary,
+        toVisualCenter visualCenter: CGPoint,
+        geometry: TerminalGridGeometry,
+        epoch eventEpoch: TerminalGridEpoch
+    ) -> TerminalSelection.Boundary? {
+        guard phase == .selected,
+              let selection,
+              let position = TerminalSelectionOverlayGeometry.adjustmentPosition(
+                for: boundary,
+                visualCenter: visualCenter,
+                selection: selection,
+                geometry: geometry
+              ),
+              case .boundaryAdjusted(let activeBoundary) = reducer.reduce(
+                .adjustBoundary(boundary, to: position, epoch: eventEpoch)
+              )
+        else { return nil }
+        return activeBoundary
+    }
+
     func cancelSelection() {
         reducer.reduce(.cancel)
     }
