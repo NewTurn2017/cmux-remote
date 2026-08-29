@@ -339,6 +339,15 @@ final class TerminalArtifactUITests: XCTestCase {
         if fakeRelay {
             app.launchEnvironment["CMUX_FAKE_RELAY"] = "1"
             app.launchEnvironment["CMUX_UI_TEST_FILE_FEATURE_STALE_GATE"] = "1"
+        } else {
+            let runnerEnvironment = ProcessInfo.processInfo.environment
+            if let host = runnerEnvironment["CMUX_HOST"], !host.isEmpty {
+                app.launchEnvironment["CMUX_HOST"] = host
+            }
+            if let port = runnerEnvironment["CMUX_PORT"], !port.isEmpty {
+                app.launchEnvironment["CMUX_PORT"] = port
+            }
+            app.launchEnvironment["CMUX_REAL_RELAY"] = "1"
         }
         app.launchEnvironment["CMUX_SKIP_SPLASH"] = "1"
         app.launchEnvironment["CMUX_UI_TEST_FILE_FEATURE_FIXTURES"] = "1"
