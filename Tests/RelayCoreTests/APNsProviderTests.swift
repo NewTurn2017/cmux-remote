@@ -172,7 +172,7 @@ final class APNsProviderTests: XCTestCase {
                 id: "n1",
                 workspaceId: "w1",
                 surfaceId: nil,
-                title: "cmux 알림",
+                title: "cmux notification",
                 subtitle: nil,
                 body: "body",
                 ts: 42,

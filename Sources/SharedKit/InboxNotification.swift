@@ -122,7 +122,7 @@ private extension EventFrame {
     var titleFallback: String {
         if isNeedsInputEvent { return "\(needsInputSourceName) needs input" }
         switch name {
-        case "notification.created": return "cmux 알림"
+        case "notification.created": return "cmux notification"
         default: return name
         }
     }

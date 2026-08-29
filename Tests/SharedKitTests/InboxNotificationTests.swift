@@ -17,7 +17,7 @@ final class InboxNotificationTests: XCTestCase {
 
         XCTAssertEqual(record?.id, "n-partial")
         XCTAssertEqual(record?.workspaceId, "w1")
-        XCTAssertEqual(record?.title, "cmux 알림")
+        XCTAssertEqual(record?.title, "cmux notification")
         XCTAssertEqual(record?.body, "새 알림이 도착했습니다.")
         XCTAssertEqual(record?.threadId, "workspace-w1")
     }
