@@ -1,0 +1,1202 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>cmux Remote 1.1.1 App Store Screenshots</title>
+  <style>
+    @font-face {
+      font-family: Departure;
+      src: url("../../ios/CmuxRemote/Resources/Fonts/DepartureMono-Regular.otf");
+    }
+    @font-face {
+      font-family: Geist;
+      src: url("../../ios/CmuxRemote/Resources/Fonts/GeistMono-Regular.ttf");
+      font-weight: 400;
+    }
+    @font-face {
+      font-family: Geist;
+      src: url("../../ios/CmuxRemote/Resources/Fonts/GeistMono-Medium.ttf");
+      font-weight: 500;
+    }
+    @font-face {
+      font-family: Geist;
+      src: url("../../ios/CmuxRemote/Resources/Fonts/GeistMono-Bold.ttf");
+      font-weight: 700;
+    }
+
+    :root {
+      --canvas: #1a1b26;
+      --terminal: #000;
+      --surface: #24283b;
+      --raised: #292e42;
+      --sunken: #1f2335;
+      --ink: #c0caf5;
+      --ink-dim: #a9b1d6;
+      --terminal-text: #f1f2f8;
+      --muted: #565f89;
+      --divider: #3b4261;
+      --green: #9ece6a;
+      --blue: #7aa2f7;
+      --cyan: #7dcfff;
+      --yellow: #e0af68;
+      --orange: #ff9e64;
+      --red: #f7768e;
+      --magenta: #bb9af7;
+      --purple: #9d7cd8;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; overflow: hidden; }
+    body {
+      position: relative;
+      color: white;
+      background: #090b12;
+      font-family: Geist, ui-monospace, monospace;
+      -webkit-font-smoothing: antialiased;
+    }
+    body.phone { width: 1320px; height: 2868px; }
+    body.ipad { width: 2752px; height: 2064px; }
+
+    .stage {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        radial-gradient(circle at 16% 22%, rgba(122,162,247,.26), transparent 31%),
+        radial-gradient(circle at 83% 28%, rgba(187,154,247,.20), transparent 32%),
+        radial-gradient(circle at 55% 82%, rgba(158,206,106,.12), transparent 34%),
+        linear-gradient(145deg, #090b12 0%, #111528 47%, #0c101a 100%);
+    }
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: .24;
+      background-image:
+        linear-gradient(rgba(122,162,247,.09) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(122,162,247,.09) 1px, transparent 1px);
+      background-size: 58px 58px;
+      mask-image: linear-gradient(to bottom, black, transparent 76%);
+    }
+    .stage::after {
+      content: "";
+      position: absolute;
+      left: -10%;
+      right: -10%;
+      bottom: -7%;
+      height: 42%;
+      z-index: -1;
+      background: linear-gradient(115deg, rgba(122,162,247,.14), rgba(187,154,247,.20), rgba(158,206,106,.12));
+      filter: blur(90px);
+      transform: skewY(-7deg);
+    }
+
+    .brand {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-family: Departure, monospace;
+      font-size: 28px;
+      letter-spacing: 2px;
+      color: var(--ink);
+      z-index: 4;
+    }
+    .phone .brand { top: 86px; left: 76px; }
+    .ipad .brand { top: 68px; left: 104px; font-size: 30px; }
+    .brand-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 28px rgba(158,206,106,.85);
+    }
+    .brand strong { color: var(--green); font-weight: 400; }
+    .version {
+      margin-left: 10px;
+      padding: 7px 12px 6px;
+      color: var(--muted);
+      border: 1px solid var(--divider);
+      border-radius: 8px;
+      font-size: 17px;
+      letter-spacing: 1px;
+    }
+
+    .headline {
+      position: absolute;
+      z-index: 5;
+      font-weight: 700;
+      letter-spacing: -5px;
+      text-wrap: balance;
+      text-shadow: 0 20px 70px rgba(0,0,0,.55);
+    }
+    .sub {
+      position: absolute;
+      z-index: 5;
+      color: rgba(241,242,248,.72);
+      font-weight: 500;
+      text-wrap: balance;
+    }
+    .phone .headline {
+      top: 170px;
+      left: 76px;
+      width: 1168px;
+      text-align: center;
+      font-size: 108px;
+      line-height: 1.08;
+    }
+    .phone .sub {
+      top: 438px;
+      left: 126px;
+      width: 1068px;
+      text-align: center;
+      font-size: 35px;
+      line-height: 1.45;
+    }
+    .ipad .headline {
+      top: 128px;
+      left: 130px;
+      width: 2492px;
+      text-align: center;
+      font-size: 95px;
+      line-height: 1.08;
+    }
+    .ipad .sub {
+      top: 352px;
+      left: 280px;
+      width: 2192px;
+      text-align: center;
+      font-size: 34px;
+      line-height: 1.4;
+    }
+
+    .device {
+      position: absolute;
+      z-index: 3;
+      background: #06070a;
+      border: 2px solid rgba(255,255,255,.16);
+      box-shadow:
+        0 70px 180px rgba(0,0,0,.72),
+        0 0 0 8px rgba(59,66,97,.55),
+        inset 0 0 0 2px rgba(255,255,255,.08);
+      overflow: hidden;
+    }
+    .phone-device {
+      left: 177px;
+      top: 624px;
+      width: 966px;
+      height: 2174px;
+      padding: 20px;
+      border-radius: 112px 112px 86px 86px;
+    }
+    .phone-screen {
+      position: relative;
+      width: 926px;
+      height: 2134px;
+      overflow: hidden;
+      border-radius: 92px 92px 68px 68px;
+      background: #000;
+    }
+    .phone-screen::before {
+      content: "";
+      position: absolute;
+      z-index: 40;
+      width: 286px;
+      height: 76px;
+      left: 320px;
+      top: 24px;
+      border-radius: 42px;
+      background: #06070a;
+    }
+    .ipad-device {
+      left: 151px;
+      top: 486px;
+      width: 2450px;
+      height: 1500px;
+      padding: 20px;
+      border-radius: 80px;
+    }
+    .ipad-screen {
+      position: relative;
+      width: 2410px;
+      height: 1460px;
+      overflow: hidden;
+      border-radius: 60px;
+      background: #000;
+    }
+
+    .ios-status {
+      height: 96px;
+      padding: 0 54px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--ink);
+      background: #000;
+      font-family: Departure, monospace;
+      font-size: 26px;
+      letter-spacing: 1px;
+    }
+    .ios-status-right { display: flex; align-items: center; gap: 16px; }
+    .signal { letter-spacing: 1px; color: var(--ink-dim); }
+    .battery {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 69px;
+      height: 33px;
+      border-radius: 8px;
+      border: 2px solid var(--divider);
+      color: var(--green);
+      font-size: 18px;
+    }
+    .ipad .ios-status {
+      height: 72px;
+      padding: 0 46px;
+      font-size: 21px;
+    }
+
+    .app-shell {
+      position: absolute;
+      inset: 96px 0 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+    }
+    .ipad .app-shell { inset: 72px 0 0; }
+
+    .terminal-header {
+      flex: none;
+      padding: 24px 28px 18px;
+      background: #000;
+    }
+    .header-row {
+      height: 94px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .square-button, .header-main, .file-button {
+      height: 88px;
+      border: 2px solid var(--divider);
+      background: var(--sunken);
+      color: var(--ink);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .square-button, .file-button { width: 88px; flex: none; font-size: 32px; }
+    .header-main {
+      flex: 1;
+      justify-content: flex-start;
+      gap: 16px;
+      padding: 0 22px;
+      font-size: 28px;
+      overflow: hidden;
+    }
+    .online {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 20px rgba(158,206,106,.75);
+      flex: none;
+    }
+    .workspace-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500;
+    }
+    .battery-badge {
+      color: var(--green);
+      border: 1px solid var(--divider);
+      background: var(--raised);
+      border-radius: 9px;
+      font-family: Departure, monospace;
+      font-size: 19px;
+      padding: 10px 14px;
+    }
+    .header-close { margin-left: auto; color: var(--muted); }
+    .surface-tabs {
+      display: flex;
+      gap: 12px;
+      margin-top: 18px;
+      overflow: hidden;
+    }
+    .surface-tab {
+      height: 58px;
+      padding: 0 20px;
+      border-radius: 10px;
+      background: var(--sunken);
+      border: 2px solid var(--divider);
+      color: var(--muted);
+      font-size: 21px;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+    .surface-tab.active {
+      background: var(--raised);
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .surface-tab.new { color: var(--green); border-color: rgba(158,206,106,.7); }
+
+    .terminal {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      padding: 36px 30px;
+      overflow: hidden;
+      background:
+        repeating-linear-gradient(to bottom, rgba(255,255,255,.018), rgba(255,255,255,.018) 1px, transparent 1px, transparent 6px),
+        #000;
+      color: var(--terminal-text);
+      font-size: 23px;
+      line-height: 1.55;
+      letter-spacing: -.4px;
+    }
+    .term-line { min-height: 35px; white-space: pre; }
+    .t-green { color: var(--green); }
+    .t-blue { color: var(--blue); }
+    .t-cyan { color: var(--cyan); }
+    .t-yellow { color: var(--yellow); }
+    .t-orange { color: var(--orange); }
+    .t-red { color: var(--red); }
+    .t-magenta { color: var(--magenta); }
+    .t-purple { color: var(--purple); }
+    .t-muted { color: var(--muted); }
+    .cursor {
+      display: inline-block;
+      width: 12px;
+      height: 27px;
+      background: var(--green);
+      vertical-align: -5px;
+      box-shadow: 0 0 15px rgba(158,206,106,.75);
+    }
+
+    .selection-band {
+      position: absolute;
+      left: 24px;
+      right: 74px;
+      top: 298px;
+      height: 160px;
+      border: 3px solid rgba(241,242,248,.92);
+      border-radius: 12px;
+      background: rgba(122,162,247,.38);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.8);
+      pointer-events: none;
+    }
+    .selection-handle {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--blue);
+      border: 4px solid white;
+      box-shadow: 0 6px 16px rgba(0,0,0,.55);
+    }
+    .selection-handle.start { left: -12px; top: -14px; }
+    .selection-handle.end { right: -14px; bottom: -14px; }
+    .selection-actions {
+      position: absolute;
+      right: 36px;
+      top: 470px;
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      border: 2px solid var(--divider);
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: 0 18px 42px rgba(0,0,0,.62);
+    }
+    .selection-actions span {
+      width: 72px;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      border: 2px solid var(--divider);
+      color: var(--ink);
+      background: var(--raised);
+      font-size: 28px;
+    }
+    .selection-actions .copy {
+      color: var(--canvas);
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+
+    .accessory {
+      flex: none;
+      padding: 22px;
+      margin: 0 24px 24px;
+      border: 2px solid var(--divider);
+      border-radius: 22px;
+      background: var(--surface);
+      box-shadow: 0 -18px 55px rgba(0,0,0,.65);
+    }
+    .composer {
+      height: 82px;
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 2px solid var(--divider);
+      border-radius: 13px;
+      background: var(--sunken);
+      color: var(--ink);
+      font-size: 24px;
+    }
+    .mode {
+      padding: 10px 13px;
+      border: 1px solid var(--divider);
+      border-radius: 8px;
+      color: var(--green);
+      font-family: Departure, monospace;
+      font-size: 17px;
+    }
+    .prompt { color: var(--green); font-family: Departure, monospace; }
+    .composer .draft { color: var(--ink-dim); overflow: hidden; white-space: nowrap; }
+    .action-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .action-key {
+      width: 72px;
+      height: 72px;
+      border-radius: 12px;
+      border: 2px solid var(--divider);
+      color: var(--ink);
+      background: var(--raised);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-family: Departure, monospace;
+    }
+    .action-key.send {
+      margin-left: auto;
+      color: var(--canvas);
+      background: var(--green);
+      border-color: var(--green);
+      font-size: 31px;
+    }
+    .action-key.highlight {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 4px rgba(122,162,247,.14);
+    }
+    .shortcut-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .shortcut {
+      flex: 1;
+      height: 54px;
+      border-radius: 8px;
+      border: 1px solid var(--divider);
+      color: var(--ink);
+      background: var(--sunken);
+      font-family: Departure, monospace;
+      font-size: 17px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .files-sheet {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1040px;
+      border-radius: 42px 42px 0 0;
+      background: var(--surface);
+      box-shadow: 0 -30px 90px rgba(0,0,0,.72);
+      overflow: hidden;
+      border-top: 2px solid var(--divider);
+    }
+    .sheet-grabber {
+      width: 110px;
+      height: 10px;
+      margin: 18px auto 14px;
+      border-radius: 9px;
+      background: var(--muted);
+    }
+    .sheet-head {
+      height: 150px;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      border-bottom: 2px solid var(--divider);
+    }
+    .sheet-title { font-family: Departure, monospace; font-size: 31px; color: var(--ink); }
+    .sheet-subtitle { margin-top: 12px; font-size: 20px; color: var(--ink-dim); }
+    .sheet-buttons { margin-left: auto; display: flex; gap: 16px; }
+    .sheet-button {
+      width: 74px;
+      height: 74px;
+      border: 2px solid var(--divider);
+      background: var(--sunken);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ink);
+      font-size: 28px;
+    }
+    .sheet-button.refresh { color: var(--blue); }
+    .file-list { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+    .file-row {
+      height: 210px;
+      padding: 22px;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      border-radius: 22px;
+      border: 2px solid var(--divider);
+      background: var(--sunken);
+    }
+    .file-row.ready { border-color: var(--green); }
+    .thumb {
+      width: 150px;
+      height: 150px;
+      border-radius: 18px;
+      border: 2px solid var(--divider);
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 68% 26%, #f7768e 0 10%, transparent 11%),
+        linear-gradient(140deg, #7aa2f7 0 33%, #bb9af7 33% 58%, #9ece6a 58% 100%);
+      position: relative;
+    }
+    .thumb::after {
+      content: "";
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 20px;
+      height: 46px;
+      background: #1f2335;
+      clip-path: polygon(0 100%, 22% 42%, 39% 68%, 65% 10%, 100% 100%);
+    }
+    .file-copy { min-width: 0; flex: 1; }
+    .file-name {
+      color: var(--ink);
+      font-size: 27px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-meta { margin-top: 14px; color: var(--ink-dim); font-size: 20px; }
+    .file-state { margin-top: 12px; color: var(--green); font-size: 20px; }
+    .file-arrow { color: var(--muted); font-size: 40px; }
+    .doc-thumb {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ink-dim);
+      font-size: 50px;
+      background: var(--raised);
+    }
+    .privacy-footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 82px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 30px;
+      color: var(--ink-dim);
+      background: var(--sunken);
+      font-size: 18px;
+    }
+    .privacy-footer .lock { color: var(--green); }
+
+    .workspace-list-screen, .settings-screen {
+      position: absolute;
+      inset: 96px 0 0;
+      padding: 40px 34px;
+      background: var(--canvas);
+      color: var(--ink);
+    }
+    .ipad .workspace-list-screen, .ipad .settings-screen { inset: 72px 0 0; }
+    .list-title {
+      font-family: Departure, monospace;
+      font-size: 52px;
+      letter-spacing: 1px;
+    }
+    .list-title .remote { color: var(--green); }
+    .relay-status {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 20px;
+    }
+    .search {
+      height: 78px;
+      margin-top: 34px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      border: 2px solid var(--divider);
+      border-radius: 14px;
+      background: var(--sunken);
+      color: var(--muted);
+      font-size: 24px;
+    }
+    .search .slash { color: var(--green); font-family: Departure, monospace; }
+    .rule {
+      margin: 32px 0 18px;
+      color: var(--muted);
+      font-family: Departure, monospace;
+      font-size: 19px;
+      letter-spacing: 2px;
+    }
+    .workspace-cards { display: flex; flex-direction: column; gap: 16px; }
+    .workspace-card {
+      min-height: 126px;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      border: 2px solid var(--divider);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+    .workspace-card.active { background: var(--raised); }
+    .workspace-index {
+      width: 74px;
+      height: 74px;
+      border: 2px solid var(--divider);
+      border-radius: 12px;
+      background: var(--sunken);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Departure, monospace;
+      font-size: 24px;
+    }
+    .workspace-card.active .workspace-index { border-color: var(--green); color: var(--green); }
+    .workspace-copy { min-width: 0; }
+    .workspace-card h4 { margin: 0; font-size: 27px; font-weight: 500; }
+    .workspace-card p { margin: 9px 0 0; color: var(--muted); font-size: 19px; }
+    .workspace-card p b { color: var(--blue); font-weight: 500; }
+    .workspace-arrow { margin-left: auto; color: var(--green); font-size: 32px; }
+    .card-icon {
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--divider);
+      border-radius: 11px;
+      background: var(--sunken);
+      color: var(--muted);
+      font-size: 22px;
+    }
+
+    .settings-title { font-family: Departure, monospace; font-size: 50px; }
+    .settings-card {
+      margin-top: 28px;
+      padding: 28px;
+      border: 2px solid var(--divider);
+      border-radius: 20px;
+      background: var(--surface);
+    }
+    .settings-rule {
+      color: var(--muted);
+      font-family: Departure, monospace;
+      font-size: 20px;
+      letter-spacing: 2px;
+    }
+    .guide-step {
+      display: flex;
+      gap: 18px;
+      margin-top: 24px;
+    }
+    .step-index {
+      width: 46px;
+      height: 46px;
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--divider);
+      border-radius: 8px;
+      color: var(--green);
+      background: var(--sunken);
+      font-family: Departure, monospace;
+      font-size: 18px;
+    }
+    .step-copy h4 { margin: 0; color: var(--ink); font-size: 22px; font-weight: 500; }
+    .step-copy p { margin: 7px 0 0; color: var(--muted); font-size: 17px; line-height: 1.45; }
+    .connect-field {
+      height: 66px;
+      margin-top: 22px;
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--divider);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--sunken);
+      font-size: 19px;
+    }
+    .connect-button {
+      height: 64px;
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      color: var(--canvas);
+      background: var(--green);
+      font-family: Departure, monospace;
+      font-size: 19px;
+    }
+
+    .float-card, .float-pill-row {
+      position: absolute;
+      z-index: 8;
+    }
+    .float-pill-row {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+    }
+    .phone .float-pill-row { left: 60px; right: 60px; top: 560px; }
+    .ipad .float-pill-row { left: 220px; right: 220px; top: 430px; }
+    .float-pill {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 16px 24px;
+      border: 2px solid rgba(192,202,245,.22);
+      border-radius: 999px;
+      background: rgba(36,40,59,.80);
+      box-shadow: 0 18px 45px rgba(0,0,0,.3);
+      backdrop-filter: blur(15px);
+      color: var(--ink);
+      font-family: Departure, monospace;
+      font-size: 20px;
+    }
+    .float-pill .dot { color: var(--green); }
+    .phone.f2 .device { top: 650px; }
+    .phone.f2 .float-card {
+      right: 48px;
+      top: 1110px;
+      width: 350px;
+      padding: 24px;
+      border: 2px solid rgba(122,162,247,.65);
+      border-radius: 30px;
+      background: rgba(36,40,59,.96);
+      box-shadow: 0 28px 70px rgba(0,0,0,.55), 0 0 55px rgba(122,162,247,.23);
+    }
+    .copy-icon {
+      width: 74px;
+      height: 74px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--canvas);
+      background: var(--blue);
+      font-size: 32px;
+    }
+    .float-card h3 { margin: 22px 0 0; color: var(--ink); font-size: 29px; }
+    .float-card p { margin: 12px 0 0; color: var(--ink-dim); font-size: 19px; line-height: 1.45; }
+
+    .phone.f3 .float-card {
+      right: 38px;
+      top: 1040px;
+      width: 370px;
+      padding: 18px;
+      border: 2px solid rgba(158,206,106,.65);
+      border-radius: 28px;
+      background: rgba(31,35,53,.96);
+      box-shadow: 0 30px 70px rgba(0,0,0,.62);
+    }
+    .float-preview {
+      height: 230px;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 70% 24%, #f7768e 0 8%, transparent 9%),
+        linear-gradient(145deg, #7aa2f7 0 30%, #bb9af7 30% 58%, #9ece6a 58%);
+      position: relative;
+      overflow: hidden;
+    }
+    .float-preview::after {
+      content: "";
+      position: absolute;
+      left: 30px;
+      right: 30px;
+      bottom: 28px;
+      height: 80px;
+      background: rgba(31,35,53,.92);
+      clip-path: polygon(0 100%, 22% 46%, 40% 72%, 67% 9%, 100% 100%);
+    }
+    .preview-label {
+      padding: 18px 6px 4px;
+      color: var(--green);
+      font-family: Departure, monospace;
+      font-size: 19px;
+    }
+
+    .phone.f4 .phone-device { top: 610px; }
+    .phone.f4 .accessory {
+      box-shadow: 0 -30px 90px rgba(122,162,247,.18), 0 -18px 55px rgba(0,0,0,.65);
+      border-color: rgba(122,162,247,.62);
+    }
+    .phone.f4 .float-pill-row { top: 562px; }
+
+    .phone.f5 .phone-device { top: 620px; }
+    .phone.f5 .float-pill-row { top: 550px; }
+
+    .ipad .terminal-header {
+      padding: 18px 30px 14px;
+    }
+    .ipad .header-row { height: 76px; gap: 12px; }
+    .ipad .square-button, .ipad .file-button { width: 72px; height: 72px; border-radius: 12px; font-size: 25px; }
+    .ipad .header-main { height: 72px; border-radius: 12px; font-size: 24px; }
+    .ipad .surface-tabs { margin-top: 12px; }
+    .ipad .surface-tab { height: 44px; font-size: 18px; }
+    .ipad .terminal { padding: 26px 34px; font-size: 20px; line-height: 1.42; }
+    .ipad .accessory {
+      margin: 0 20px 20px;
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: minmax(430px, 1fr) auto;
+      gap: 10px 14px;
+      align-items: center;
+    }
+    .ipad .composer { height: 64px; font-size: 20px; }
+    .ipad .action-row { margin: 0; gap: 8px; }
+    .ipad .action-key { width: 62px; height: 62px; font-size: 22px; }
+    .ipad .shortcut-row { grid-column: 1 / -1; margin: 0; gap: 7px; }
+    .ipad .shortcut { height: 50px; font-size: 15px; }
+    .ipad .selection-band { left: 30px; right: 310px; top: 228px; height: 120px; }
+    .ipad .selection-actions { top: 355px; right: 86px; }
+    .ipad .files-sheet {
+      left: auto;
+      right: 54px;
+      bottom: 86px;
+      width: 930px;
+      height: 940px;
+      border: 2px solid var(--divider);
+      border-radius: 34px;
+      box-shadow: 0 32px 100px rgba(0,0,0,.75);
+    }
+    .ipad .sheet-grabber { display: none; }
+    .ipad .sheet-head { margin-top: 10px; }
+    .ipad .file-row { height: 185px; }
+    .ipad .privacy-footer { border-radius: 0 0 32px 32px; }
+
+    .ipad .workspace-list-screen {
+      padding: 44px 68px;
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 54px;
+    }
+    .ipad .workspace-intro { padding-right: 20px; }
+    .ipad .list-title { font-size: 74px; line-height: 1.05; }
+    .ipad .list-kicker {
+      margin-top: 34px;
+      max-width: 750px;
+      color: var(--ink-dim);
+      font-size: 28px;
+      line-height: 1.5;
+    }
+    .ipad .search { margin-top: 44px; }
+    .ipad .workspace-cards { padding-top: 22px; }
+    .ipad .workspace-card { min-height: 126px; }
+    .ipad .workspace-card h4 { font-size: 26px; }
+
+    .ipad.f2 .float-pill-row { top: 420px; }
+    .ipad.f3 .float-pill-row { top: 424px; }
+
+    .soft-glow {
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+      filter: blur(5px);
+      opacity: .75;
+    }
+    .glow-one {
+      width: 430px;
+      height: 430px;
+      left: -180px;
+      top: 980px;
+      background: radial-gradient(circle, rgba(122,162,247,.45), transparent 68%);
+    }
+    .glow-two {
+      width: 520px;
+      height: 520px;
+      right: -240px;
+      top: 1480px;
+      background: radial-gradient(circle, rgba(187,154,247,.35), transparent 68%);
+    }
+  </style>
+</head>
+<body>
+  <div id="stage" class="stage"></div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const device = params.get("device") === "ipad" ? "ipad" : "phone";
+    const locale = params.get("locale") === "en" ? "en" : "ko";
+    const frame = Math.max(1, Number(params.get("frame") || 1));
+
+    const COPY = {
+      ko: {
+        phone: [
+          ["Mac의 cmux를<br>손안에서", "워크스페이스부터 실시간 터미널까지, 어디서든 이어서 제어하세요."],
+          ["색은 그대로,<br>선택은 정밀하게", "Truecolor 터미널과 드래그 선택·복사로 코드를 정확하게 다룹니다."],
+          ["터미널의 파일을<br>바로 열어보세요", "사진·파일 업로드부터 최근 이미지 미리보기까지 한곳에서."],
+          ["명령은 빠르게,<br>터미널은 더 넓게", "첨부·하단 이동·Return을 한 줄에 모은 새 커맨드 덱."],
+          ["내 네트워크 안에서<br>안전하게", "Tailscale 기반 사설 연결. 광고도, 분석 도구도 없습니다."]
+        ],
+        ipad: [
+          ["넓은 터미널을 위한<br>진짜 iPad 작업공간", "전체 화면 터미널과 압축된 커맨드 덱으로 긴 세션도 한눈에."],
+          ["파일은 터미널 옆에서<br>바로 확인", "작업 흐름을 가리지 않는 Files 팝오버와 이미지 미리보기."],
+          ["모든 워크스페이스를<br>한눈에", "여러 에이전트와 surface를 iPad 전체 화면에서 빠르게 전환하세요."]
+        ],
+        labels: {
+          terminalFiles: "터미널 파일",
+          terminalFilesSub: "최근 업로드 및 이 터미널에 표시된 파일",
+          ready: "준비됨",
+          cleanup: "뷰어를 닫으면 임시 사본이 삭제됩니다.",
+          copyTitle: "드래그해서 바로 복사",
+          copySub: "한글·CJK 폭과 줄바꿈도 정확하게",
+          preview: "이미지 미리보기",
+          chips: [["LIVE MIRROR", "6 WORKSPACES"], ["TRUECOLOR", "DRAG TO COPY"], ["PHOTO + FILE", "RECENT UPLOADS"], ["ATTACH", "BOTTOM", "SEND"], ["TAILSCALE", "NO ANALYTICS", "NO ADS"]],
+          ipadChips: [["FULL WIDTH", "LIVE TERMINAL"], ["FILES POPOVER", "IMAGE PREVIEW"], ["WORKSPACES", "MULTI-SURFACE"]]
+        }
+      },
+      en: {
+        phone: [
+          ["Your Mac terminal.<br>In your hand.", "Control cmux workspaces and live terminal sessions from anywhere."],
+          ["True color.<br>Precise selection.", "Keep every ANSI color and drag to copy exactly what you need."],
+          ["Terminal files.<br>On your phone.", "Upload photos and files, then preview recent images in one place."],
+          ["Faster commands.<br>More terminal room.", "Attach, jump to bottom, and send from one compact command deck."],
+          ["Private by design.<br>Yours end to end.", "A private Tailscale connection with no ads and no analytics."]
+        ],
+        ipad: [
+          ["A true iPad workspace<br>for wide terminals", "A full-width terminal and compact command deck keep long sessions in view."],
+          ["Preview files<br>beside your terminal", "A focused Files popover keeps images close without covering your workflow."],
+          ["Every workspace<br>at a glance", "Move between agents and surfaces across the full iPad display."]
+        ],
+        labels: {
+          terminalFiles: "Terminal files",
+          terminalFilesSub: "Recent uploads and files visible in this terminal",
+          ready: "Ready",
+          cleanup: "Viewer copies are removed when closed.",
+          copyTitle: "Drag. Select. Copy.",
+          copySub: "Accurate across CJK widths and wrapped lines",
+          preview: "IMAGE PREVIEW",
+          chips: [["LIVE MIRROR", "6 WORKSPACES"], ["TRUECOLOR", "DRAG TO COPY"], ["PHOTO + FILE", "RECENT UPLOADS"], ["ATTACH", "BOTTOM", "SEND"], ["TAILSCALE", "NO ANALYTICS", "NO ADS"]],
+          ipadChips: [["FULL WIDTH", "LIVE TERMINAL"], ["FILES POPOVER", "IMAGE PREVIEW"], ["WORKSPACES", "MULTI-SURFACE"]]
+        }
+      }
+    };
+
+    const text = COPY[locale];
+    const caption = text[device][frame - 1];
+    document.documentElement.lang = locale;
+    document.body.className = `${device} f${frame}`;
+
+    function statusBar() {
+      return `<div class="ios-status"><span>9:41</span><span class="ios-status-right"><span class="signal">▂▄▆█</span><span>◉</span><span class="battery">80%</span></span></div>`;
+    }
+
+    function header(workspace = "cmux remote") {
+      return `<div class="terminal-header">
+        <div class="header-row">
+          <div class="square-button">‹</div>
+          <div class="header-main"><span class="online"></span><span class="workspace-name">${workspace}</span><span class="battery-badge">▰ 80%</span><span class="header-close">×</span></div>
+          <div class="square-button">▦</div>
+          <div class="file-button">▧</div>
+        </div>
+        <div class="surface-tabs">
+          <div class="surface-tab active">OmO · cmux-iphone&nbsp; ×</div>
+          <div class="surface-tab">relay logs&nbsp; ×</div>
+          <div class="surface-tab new">＋ new</div>
+        </div>
+      </div>`;
+    }
+
+    function terminalLines() {
+      return `
+        <div class="term-line"><span class="t-muted">╭─</span> <span class="t-blue">cmux Remote</span> <span class="t-muted">/ release 1.1.1</span></div>
+        <div class="term-line"><span class="t-muted">│</span> <span class="t-green">● relay connected</span> <span class="t-muted">over Tailscale</span></div>
+        <div class="term-line"><span class="t-muted">│</span></div>
+        <div class="term-line"><span class="t-muted">│</span> <span class="t-cyan">$ swift test</span></div>
+        <div class="term-line"><span class="t-muted">│</span> Building <span class="t-magenta">SharedKit</span> · <span class="t-blue">RelayCore</span></div>
+        <div class="term-line"><span class="t-muted">│</span> <span class="t-green">✓ 248 tests passed</span> <span class="t-muted">in 4.8s</span></div>
+        <div class="term-line"><span class="t-muted">│</span></div>
+        <div class="term-line"><span class="t-muted">│</span> <span class="t-yellow">git diff --stat</span></div>
+        <div class="term-line"><span class="t-muted">│</span> TerminalView.swift       <span class="t-green">+84</span> <span class="t-red">-12</span></div>
+        <div class="term-line"><span class="t-muted">│</span> ArtifactService.swift    <span class="t-green">+61</span> <span class="t-red">-8</span></div>
+        <div class="term-line"><span class="t-muted">│</span></div>
+        <div class="term-line"><span class="t-muted">╰─</span> <span class="t-orange">ready for review</span></div>
+        <div class="term-line"></div>
+        <div class="term-line"><span class="t-purple">cmux-iphone</span> on <span class="t-blue">main</span> <span class="t-yellow">⇡</span></div>
+        <div class="term-line"><span class="t-green">❯</span> <span class="cursor"></span></div>`;
+    }
+
+    function accessory(highlight = false) {
+      const h = highlight ? " highlight" : "";
+      return `<div class="accessory">
+        <div class="composer"><span class="mode">CMD</span><span class="prompt">$</span><span class="draft">type a command…</span></div>
+        <div class="action-row">
+          <div class="action-key">⌨︎</div>
+          <div class="action-key">⌫</div>
+          <div class="action-key">▣</div>
+          <div class="action-key${h}">▧</div>
+          <div class="action-key${h}">＋</div>
+          <div class="action-key${h}">⇣</div>
+          <div class="action-key send">↵</div>
+        </div>
+        <div class="shortcut-row">
+          ${["esc","^C","tab","←","↑","↓","→"].map(k => `<div class="shortcut">${k}</div>`).join("")}
+        </div>
+        <div class="shortcut-row">
+          ${["OK","/","$","/new","space"].map(k => `<div class="shortcut">${k}</div>`).join("")}
+        </div>
+      </div>`;
+    }
+
+    function terminalScreen(options = {}) {
+      const selection = options.selection ? `<div class="selection-band"><span class="selection-handle start"></span><span class="selection-handle end"></span></div>
+        <div class="selection-actions"><span class="copy">▣</span><span>×</span></div>` : "";
+      return `${statusBar()}<div class="app-shell">${header(options.workspace)}<div class="terminal">${terminalLines()}${selection}</div>${accessory(options.highlight)}</div>`;
+    }
+
+    function filesSheet() {
+      const l = text.labels;
+      return `<div class="files-sheet">
+        <div class="sheet-grabber"></div>
+        <div class="sheet-head">
+          <div><div class="sheet-title">${l.terminalFiles}</div><div class="sheet-subtitle">${l.terminalFilesSub}</div></div>
+          <div class="sheet-buttons"><div class="sheet-button refresh">↻</div><div class="sheet-button">×</div></div>
+        </div>
+        <div class="file-list">
+          <div class="file-row ready">
+            <div class="thumb"></div>
+            <div class="file-copy"><div class="file-name">IMG_2330.PNG</div><div class="file-meta">image/png · 421KB</div><div class="file-state">${l.ready}</div></div>
+            <div class="file-arrow">›</div>
+          </div>
+          <div class="file-row">
+            <div class="thumb doc-thumb">⌑</div>
+            <div class="file-copy"><div class="file-name">release-checklist.pdf</div><div class="file-meta">application/pdf · 645KB</div><div class="file-state">${l.ready}</div></div>
+            <div class="file-arrow">›</div>
+          </div>
+        </div>
+        <div class="privacy-footer"><span class="lock">▣</span>${l.cleanup}</div>
+      </div>`;
+    }
+
+    function workspaceList(ipad = false) {
+      const cards = [
+        ["01", "agent-lab", "4", true],
+        ["02", "study-bot", "3", false],
+        ["03", "cmux-remote", "2", false],
+        ["04", "next-app", "1", false],
+        ["05", "infra-ops", "3", false],
+        ["06", "inbox-zero", "1", false]
+      ].map(([i,n,c,a]) => `<div class="workspace-card${a ? " active" : ""}">
+        <div class="workspace-index">${i}</div>
+        <div class="workspace-copy"><h4>${n}</h4><p><b>${c}</b> surfaces</p></div>
+        <div class="workspace-arrow">${a ? "→" : ""}</div><div class="card-icon">✎</div><div class="card-icon">×</div>
+      </div>`).join("");
+      if (ipad) {
+        return `${statusBar()}<div class="workspace-list-screen">
+          <div class="workspace-intro">
+            <div class="list-title">cmux<br><span class="remote">remote</span></div>
+            <div class="relay-status"><span class="online"></span>relay connected</div>
+            <div class="list-kicker">${locale === "ko" ? "Mac에서 실행 중인 모든 작업을 iPad 한 화면에서 보고, 필요한 surface로 바로 이동하세요." : "See every task running on your Mac and jump straight into the surface that needs you."}</div>
+            <div class="search"><span class="slash">/</span>filter…</div>
+          </div>
+          <div><div class="rule">════ WORKSPACES ════</div><div class="workspace-cards">${cards}</div></div>
+        </div>`;
+      }
+      return `${statusBar()}<div class="workspace-list-screen">
+        <div class="list-title">cmux <span class="remote">remote</span></div>
+        <div class="relay-status"><span class="online"></span>relay connected</div>
+        <div class="search"><span class="slash">/</span>filter…</div>
+        <div class="rule">════ WORKSPACES ════</div>
+        <div class="workspace-cards">${cards}</div>
+      </div>`;
+    }
+
+    function settingsScreen() {
+      const ko = locale === "ko";
+      return `${statusBar()}<div class="settings-screen">
+        <div class="settings-title">settings</div>
+        <div class="settings-card">
+          <div class="settings-rule">════ ${ko ? "PRIVATE CONNECTION" : "PRIVATE CONNECTION"} ════</div>
+          <div class="guide-step"><div class="step-index">01</div><div class="step-copy"><h4>${ko ? "Mac에서 cmux와 Tailscale을 켭니다." : "Run cmux and Tailscale on your Mac."}</h4><p>${ko ? "두 기기는 같은 tailnet 안에서만 통신합니다." : "Both devices communicate inside your own tailnet."}</p></div></div>
+          <div class="guide-step"><div class="step-index">02</div><div class="step-copy"><h4>${ko ? "개인 릴레이에 연결합니다." : "Connect to your private relay."}</h4><p>${ko ? "외부 relay나 개발자 서버를 거치지 않습니다." : "No developer-operated or third-party relay is involved."}</p></div></div>
+          <div class="connect-field">macbook-pro.tailnet.ts.net</div>
+          <div class="connect-button">[ SAVE &amp; RECONNECT ]</div>
+        </div>
+        <div class="settings-card">
+          <div class="settings-rule">════ PRIVACY ════</div>
+          <div class="guide-step"><div class="step-index">✓</div><div class="step-copy"><h4>${ko ? "분석 도구 없음" : "No analytics"}</h4><p>${ko ? "터미널 내용과 업로드 파일은 사용자 네트워크를 벗어나지 않습니다." : "Terminal content and uploads stay on your own network."}</p></div></div>
+          <div class="guide-step"><div class="step-index">✓</div><div class="step-copy"><h4>${ko ? "광고와 추적 없음" : "No ads or tracking"}</h4><p>${ko ? "연결 토큰은 iOS Keychain에만 저장됩니다." : "Connection tokens are stored only in the iOS Keychain."}</p></div></div>
+        </div>
+      </div>`;
+    }
+
+    function pills(items) {
+      return `<div class="float-pill-row">${items.map((item, index) => `<div class="float-pill"><span class="dot">${index === 0 ? "●" : "›"}</span>${item}</div>`).join("")}</div>`;
+    }
+
+    function phoneFrame() {
+      let screen = "";
+      let outside = pills(text.labels.chips[frame - 1]);
+      if (frame === 1) screen = terminalScreen();
+      if (frame === 2) {
+        screen = terminalScreen({selection: true});
+        outside += `<div class="float-card"><div class="copy-icon">▣</div><h3>${text.labels.copyTitle}</h3><p>${text.labels.copySub}</p></div>`;
+      }
+      if (frame === 3) {
+        screen = `${terminalScreen()}${filesSheet()}`;
+        outside += `<div class="float-card"><div class="float-preview"></div><div class="preview-label">${text.labels.preview}</div></div>`;
+      }
+      if (frame === 4) screen = terminalScreen({highlight: true});
+      if (frame === 5) screen = settingsScreen();
+      return `<div class="device phone-device"><div class="phone-screen">${screen}</div></div>${outside}`;
+    }
+
+    function ipadFrame() {
+      let screen = "";
+      if (frame === 1) screen = terminalScreen({workspace: "cmux remote · release"});
+      if (frame === 2) screen = `${terminalScreen({workspace: "cmux remote · assets"})}${filesSheet()}`;
+      if (frame === 3) screen = workspaceList(true);
+      return `<div class="device ipad-device"><div class="ipad-screen">${screen}</div></div>${pills(text.labels.ipadChips[frame - 1])}`;
+    }
+
+    const stage = document.getElementById("stage");
+    stage.innerHTML = `
+      <div class="soft-glow glow-one"></div><div class="soft-glow glow-two"></div>
+      <div class="brand"><span class="brand-dot"></span><span>cmux <strong>remote</strong></span><span class="version">1.1.1</span></div>
+      <div class="headline">${caption[0]}</div>
+      <div class="sub">${caption[1]}</div>
+      ${device === "phone" ? phoneFrame() : ipadFrame()}
+    `;
+  </script>
+</body>
+</html>
