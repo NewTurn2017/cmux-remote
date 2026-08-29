@@ -23,7 +23,10 @@ struct SettingsView: View {
 
                 section(title: "demo mode") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Mac이나 Tailscale 없이 앱을 둘러볼 수 있어요. 가짜 워크스페이스 / 터미널 / 알림이 채워집니다. App Review 평가 경로이기도 합니다.")
+                        Text(String(
+                            localized: "settings.demo.description",
+                            defaultValue: "Explore the app without a Mac or Tailscale. Demo workspaces, terminals, and notifications are preloaded. This is also the App Review evaluation path."
+                        ))
                             .cmuxMono(11)
                             .foregroundStyle(CmuxTheme.muted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +108,10 @@ struct SettingsView: View {
                                 Text("LOCAL IOS NOTIFICATIONS")
                                     .cmuxDisplay(11)
                                     .foregroundStyle(CmuxTheme.ink)
-                                Text("사용자 입력이 필요한 이벤트만 iOS 배너로 보냅니다. Inbox 기록과 배지는 계속 유지됩니다.")
+                                Text(String(
+                                    localized: "settings.notifications.description",
+                                    defaultValue: "Only events that require your input appear as iOS banners. Inbox history and badges remain available."
+                                ))
                                     .cmuxMono(11)
                                     .foregroundStyle(CmuxTheme.muted)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -115,7 +121,10 @@ struct SettingsView: View {
                         .accessibilityIdentifier("LocalNotificationsEnabledToggle")
 
                         if onTriggerTestNotification != nil {
-                            Text("로컬 인젝션은 cmux 응답과 무관하게 Inbox에 즉시 쌓입니다. iOS 배너는 위 설정이 켜져 있을 때만 요청합니다. 라운드트립 라인은 relay → cmux → events.stream 경로 살아있는지 별도로 표시.")
+                            Text(String(
+                                localized: "settings.notifications.test_description",
+                                defaultValue: "Local injection appears in Inbox immediately without waiting for cmux. An iOS banner is requested only when the setting above is enabled. The round-trip status separately verifies the relay → cmux → events.stream path."
+                            ))
                                 .cmuxMono(11)
                                 .foregroundStyle(CmuxTheme.muted)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -203,20 +212,47 @@ struct SettingsView: View {
             CmuxRule(title: "tutorial")
             VStack(alignment: .leading, spacing: 12) {
                 GuideStep(number: 1,
-                          title: "Mac에서 cmux와 Tailscale을 켭니다.",
-                          detail: "iPhone과 Mac이 같은 tailnet에 있어야 합니다.")
+                          title: String(
+                              localized: "settings.guide.step1.title",
+                              defaultValue: "Start cmux and Tailscale on your Mac."
+                          ),
+                          detail: String(
+                              localized: "settings.guide.step1.detail",
+                              defaultValue: "Your iPhone and Mac must be on the same tailnet."
+                          ))
                 GuideStep(number: 2,
-                          title: "Mac 터미널에서 릴레이를 실행합니다.",
+                          title: String(
+                              localized: "settings.guide.step2.title",
+                              defaultValue: "Start the relay in Terminal on your Mac."
+                          ),
                           detail: "swift run cmux-relay serve --config ~/.cmuxremote/relay.json")
                 GuideStep(number: 3,
-                          title: "relay.json의 listen을 열어둡니다.",
-                          detail: "실기기 연결은 0.0.0.0:4399 또는 Tailscale IP 바인딩이 필요합니다.")
+                          title: String(
+                              localized: "settings.guide.step3.title",
+                              defaultValue: "Make the listen address in relay.json reachable."
+                          ),
+                          detail: String(
+                              localized: "settings.guide.step3.detail",
+                              defaultValue: "A physical device requires binding to 0.0.0.0:4399 or your Tailscale IP."
+                          ))
                 GuideStep(number: 4,
-                          title: "아래 Mac 연결에 host와 port를 입력합니다.",
-                          detail: "host는 100.x Tailscale IP나 tailnet DNS, port는 보통 4399.")
+                          title: String(
+                              localized: "settings.guide.step4.title",
+                              defaultValue: "Enter the host and port under Mac Connection."
+                          ),
+                          detail: String(
+                              localized: "settings.guide.step4.detail",
+                              defaultValue: "Use a 100.x Tailscale IP or tailnet DNS name. The default port is 4399."
+                          ))
                 GuideStep(number: 5,
-                          title: "저장 후 연결 다시 시도를 누릅니다.",
-                          detail: "Workspaces가 보이면 완료. 실패 시 Mac 릴레이/Tailscale 상태 확인.")
+                          title: String(
+                              localized: "settings.guide.step5.title",
+                              defaultValue: "Select Save & Reconnect."
+                          ),
+                          detail: String(
+                              localized: "settings.guide.step5.detail",
+                              defaultValue: "When Workspaces appear, you are connected. If not, check the relay and Tailscale on your Mac."
+                          ))
             }
         }
         .padding(14)
@@ -283,7 +319,11 @@ private enum TestNotificationStatus: Equatable {
         switch self {
         case .idle: return nil
         case .sending: return "sending…"
-        case .sent: return "sent — Inbox에 곧 도착합니다."
+        case .sent:
+            return String(
+                localized: "settings.notifications.test_sent",
+                defaultValue: "sent — arriving in Inbox shortly"
+            )
         case .failed(let message): return "failed: \(message)"
         }
     }

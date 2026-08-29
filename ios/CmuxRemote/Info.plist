@@ -37,7 +37,7 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Mac에서 실행 중인 cmux relay에 연결해 작업공간과 터미널을 원격으로 제어하기 위해 로컬 네트워크 접근이 필요합니다.</string>
+	<string>Local network access is required to connect to the cmux relay on your Mac and remotely control workspaces and terminals.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>DepartureMono-Regular.otf</string>
