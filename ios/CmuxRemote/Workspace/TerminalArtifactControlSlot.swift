@@ -154,7 +154,7 @@ struct TerminalArtifactControlSlot: View {
         ))
         .accessibilityHint(String(
             localized: "terminal.artifact.button_hint",
-            defaultValue: "Shows files whose paths are visible in the active terminal."
+            defaultValue: "Shows recent uploads and files whose paths are visible in the active terminal."
         ))
     }
 

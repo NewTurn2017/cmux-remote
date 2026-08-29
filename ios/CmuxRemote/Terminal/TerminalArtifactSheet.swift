@@ -61,7 +61,7 @@ struct TerminalFilesSheet: View {
 
                 Text(String(
                     localized: "terminal.artifact.sheet.subtitle",
-                    defaultValue: "Files visible in this terminal"
+                    defaultValue: "Recent uploads and files visible in this terminal"
                 ))
                 .cmuxMono(11)
                 .foregroundStyle(CmuxTheme.inkDim)
@@ -191,7 +191,7 @@ struct TerminalFilesSheet: View {
             .foregroundStyle(CmuxTheme.ink)
             Text(String(
                 localized: "terminal.artifact.sheet.empty_detail",
-                defaultValue: "Print a file path in the active terminal, then refresh."
+                defaultValue: "Upload a file or print its path in the active terminal, then refresh."
             ))
             .cmuxMono(11)
             .foregroundStyle(CmuxTheme.inkDim)

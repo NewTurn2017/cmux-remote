@@ -495,7 +495,12 @@ actor TerminalArtifactService {
         self.authorizations = ArtifactAuthorizationStore(now: now, makeID: makeID)
     }
 
-    func scan(scope: Scope, advertisedCapabilities: Set<String>? = nil) async throws -> ScanResult {
+    func scan(
+        scope: Scope,
+        advertisedCapabilities: Set<String>? = nil,
+        trustedUploadedPaths: [String] = []
+    ) async throws -> ScanResult {
+        let uploadedCandidates = await trustedUploadCandidates(paths: trustedUploadedPaths)
         let nativeAdvertised = advertisedCapabilities.map {
             $0.contains("terminal.artifact.v1") || $0.contains("terminal.artifact.list.v1")
         }
@@ -510,14 +515,21 @@ actor TerminalArtifactService {
             )
             switch response {
             case .success(let value):
-                return try await recordNativeScan(value, scope: scope)
+                return try await recordNativeScan(
+                    value,
+                    scope: scope,
+                    uploadedCandidates: uploadedCandidates
+                )
             case .failure(let code) where code == "method_not_found":
                 break
             case .failure(let code):
                 throw Error.native(code)
             }
         }
-        return try await fallbackScan(scope: scope)
+        return try await fallbackScan(
+            scope: scope,
+            uploadedCandidates: uploadedCandidates
+        )
     }
 
     func stat(deviceID: String, artifactID: String) async throws -> StatResult {
@@ -671,7 +683,10 @@ actor TerminalArtifactService {
         )
     }
 
-    private func fallbackScan(scope: Scope) async throws -> ScanResult {
+    private func fallbackScan(
+        scope: Scope,
+        uploadedCandidates: [ArtifactAuthorizationStore.Candidate]
+    ) async throws -> ScanResult {
         async let textResponse = dispatchNative(
             "surface.read_text",
             .object([
@@ -686,8 +701,8 @@ actor TerminalArtifactService {
         let terminalText = try terminalText(from: await textResponse)
         let cwd = workingDirectory(from: await surfacesResponse, surfaceID: scope.surfaceID)
         let detected = detector.paths(in: terminalText)
-        var seen: Set<String> = []
-        var candidates: [ArtifactAuthorizationStore.Candidate] = []
+        var seen = Set(uploadedCandidates.map(\.canonicalPath))
+        var candidates = Array(uploadedCandidates.prefix(200))
         candidates.reserveCapacity(min(detected.count, 200))
         for path in detected {
             guard candidates.count < 200 else { break }
@@ -698,12 +713,17 @@ actor TerminalArtifactService {
         return await record(scope: scope, candidates: candidates, source: .relayFallback)
     }
 
-    private func recordNativeScan(_ value: JSONValue, scope: Scope) async throws -> ScanResult {
+    private func recordNativeScan(
+        _ value: JSONValue,
+        scope: Scope,
+        uploadedCandidates: [ArtifactAuthorizationStore.Candidate]
+    ) async throws -> ScanResult {
         guard case .object(let object) = value,
               case .array(let artifacts)? = object["artifacts"] else { throw Error.native("invalid_response") }
-        var seen: Set<String> = []
-        var candidates: [ArtifactAuthorizationStore.Candidate] = []
+        var seen = Set(uploadedCandidates.map(\.canonicalPath))
+        var candidates = Array(uploadedCandidates.prefix(200))
         for artifact in artifacts.prefix(200) {
+            guard candidates.count < 200 else { break }
             guard case .object(let fields) = artifact,
                   case .string(let path)? = fields["path"],
                   let inspected = try? await inspect(path: path, cwd: nil),
@@ -711,6 +731,20 @@ actor TerminalArtifactService {
             candidates.append(candidate(from: inspected, source: .native))
         }
         return await record(scope: scope, candidates: candidates, source: .native)
+    }
+
+    private func trustedUploadCandidates(
+        paths: [String]
+    ) async -> [ArtifactAuthorizationStore.Candidate] {
+        var seen: Set<String> = []
+        var candidates: [ArtifactAuthorizationStore.Candidate] = []
+        candidates.reserveCapacity(min(paths.count, 200))
+        for path in paths.prefix(200) {
+            guard let inspected = try? await inspect(path: path, cwd: nil),
+                  seen.insert(inspected.canonicalPath).inserted else { continue }
+            candidates.append(candidate(from: inspected, source: .relayFallback))
+        }
+        return candidates
     }
 
     private func record(

@@ -219,6 +219,116 @@ final class WebSocketHandlerTests: XCTestCase {
         expect(await cmux.snapshot() == [])
     }
 
+    func testCommittedImageUploadAppearsInOwnerArtifactScanOnly() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cmux = RecordingCMUXFacade()
+        let uploadService = ChunkedFileUploadService(rootURL: directory)
+        let artifactService = TerminalArtifactService(dispatchNative: { method, _ in
+            switch method {
+            case "mobile.terminal.artifact.scan":
+                return .failure(code: "method_not_found")
+            case "surface.read_text":
+                return .success(.object(["text": .string("")]))
+            case "surface.list":
+                return .success(.object(["surfaces": .array([])]))
+            default:
+                return .failure(code: "method_not_found")
+            }
+        })
+        let owner = WSProtocolMachine(
+            cmux: cmux,
+            authenticatedDeviceID: "owner-device",
+            uploadService: uploadService,
+            artifactService: artifactService
+        )
+        _ = await hello(owner)
+
+        let image = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let digest = SHA256.hash(data: image).map { String(format: "%02x", $0) }.joined()
+        let begin = try await typedRPC(
+            owner,
+            id: "image-begin",
+            method: RemoteRPCMethod.uploadBegin.rawValue,
+            payload: ChunkUploadBeginRequest(
+                batchId: UUID().uuidString,
+                filename: "camera.png",
+                mimeType: "image/png",
+                bytes: image.count,
+                sha256: digest,
+                batchFileCount: 1,
+                batchBytes: image.count
+            ),
+            result: ChunkUploadBeginResult.self
+        )
+        _ = try await typedRPC(
+            owner,
+            id: "image-chunk",
+            method: RemoteRPCMethod.uploadChunk.rawValue,
+            payload: ChunkUploadChunkRequest(
+                uploadId: begin.uploadId,
+                offset: 0,
+                dataBase64: image.base64EncodedString()
+            ),
+            result: ChunkUploadChunkResult.self
+        )
+        let committed = try await typedRPC(
+            owner,
+            id: "image-commit",
+            method: RemoteRPCMethod.uploadCommit.rawValue,
+            payload: ChunkUploadCommitRequest(uploadId: begin.uploadId),
+            result: ChunkUploadCommitResult.self
+        )
+
+        let ownerScan = try await typedRPC(
+            owner,
+            id: "owner-scan",
+            method: RemoteRPCMethod.artifactScan.rawValue,
+            payload: TerminalArtifactScanRequest(workspaceId: "workspace", surfaceId: "surface"),
+            result: TerminalArtifactScanResult.self
+        )
+        let artifact = try XCTUnwrap(ownerScan.artifacts.first)
+        XCTAssertEqual(artifact.filename, committed.filename)
+        XCTAssertEqual(artifact.mimeType, "image/png")
+        XCTAssertEqual(artifact.bytes, image.count)
+        XCTAssertTrue(artifact.isImage)
+
+        let fetched = try await typedRPC(
+            owner,
+            id: "owner-fetch",
+            method: RemoteRPCMethod.artifactFetch.rawValue,
+            payload: TerminalArtifactFetchRequest(artifactId: artifact.artifactId, offset: 0),
+            result: TerminalArtifactFetchResult.self
+        )
+        XCTAssertEqual(try fetched.decodedBytes(), image)
+        let thumbnail = try await typedRPC(
+            owner,
+            id: "owner-thumbnail",
+            method: RemoteRPCMethod.artifactThumbnail.rawValue,
+            payload: TerminalArtifactThumbnailRequest(artifactId: artifact.artifactId),
+            result: TerminalArtifactThumbnailResult.self
+        )
+        XCTAssertFalse(try thumbnail.decodedBytes().isEmpty)
+
+        let otherDevice = WSProtocolMachine(
+            cmux: cmux,
+            authenticatedDeviceID: "other-device",
+            uploadService: uploadService,
+            artifactService: artifactService
+        )
+        _ = await hello(otherDevice)
+        let otherScan = try await typedRPC(
+            otherDevice,
+            id: "other-scan",
+            method: RemoteRPCMethod.artifactScan.rawValue,
+            payload: TerminalArtifactScanRequest(workspaceId: "workspace", surfaceId: "surface"),
+            result: TerminalArtifactScanResult.self
+        )
+        XCTAssertTrue(otherScan.artifacts.isEmpty)
+    }
+
     func testStableBatchIDEnforcesFileCountAcrossWebSocketReconnects() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -726,13 +726,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Shows files whose paths are visible in the active terminal."
+            "value": "Shows recent uploads and files whose paths are visible in the active terminal."
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "활성 터미널에 경로가 표시된 파일을 보여 줍니다."
+            "value": "최근 업로드와 활성 터미널에 경로가 표시된 파일을 보여 줍니다."
           }
         }
       }
@@ -998,13 +998,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Print a file path in the active terminal, then refresh."
+            "value": "Upload a file or print its path in the active terminal, then refresh."
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "활성 터미널에 파일 경로를 출력한 다음 새로 고침하세요."
+            "value": "파일을 업로드하거나 활성 터미널에 경로를 출력한 다음 새로 고침하세요."
           }
         }
       }
@@ -1078,13 +1078,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Files visible in this terminal"
+            "value": "Recent uploads and files visible in this terminal"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 터미널에 표시된 파일"
+            "value": "최근 업로드 및 이 터미널에 표시된 파일"
           }
         }
       }

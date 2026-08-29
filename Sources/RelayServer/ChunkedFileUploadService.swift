@@ -150,6 +150,7 @@ public actor ChunkedFileUploadService {
     private let filesystemCheckpoint: @Sendable (FilesystemCheckpoint) -> Void
     private var activeUploads: [String: ActiveUpload] = [:]
     private var completedUploads: [String: CompletedRecord] = [:]
+    private var completedUploadOrder: [String] = []
     private var orphanCleanupTask: Task<Void, Never>?
     private var orphanCleanupGeneration: UUID?
     private var orphanScanResources: OrphanScanResources?
@@ -492,6 +493,7 @@ public actor ChunkedFileUploadService {
                 sha256: actualHash
             )
             completedUploads[canonicalUploadID] = CompletedRecord(metadata: active.metadata, result: result)
+            completedUploadOrder.append(canonicalUploadID)
             return result
         } catch let error as ServiceError {
             closeStagingDescriptors(active, removeTemporary: true)
@@ -500,6 +502,30 @@ public actor ChunkedFileUploadService {
             closeStagingDescriptors(active, removeTemporary: true)
             throw Self.error("write_failed", "Atomic commit failed: \(error)")
         }
+    }
+
+    /// Returns the newest committed files uploaded by one authenticated device.
+    ///
+    /// These paths are server-minted results, not client-provided scan input. The artifact
+    /// service can therefore safely authorize them for the same device without exposing
+    /// arbitrary host paths or another device's uploads.
+    func recentCommittedUploads(
+        authenticatedDeviceID: String,
+        limit: Int = 200
+    ) throws -> [CommittedUpload] {
+        let deviceID = try Self.validatedDeviceID(authenticatedDeviceID)
+        guard limit > 0 else { return [] }
+        let boundedLimit = min(limit, 200)
+        var results: [CommittedUpload] = []
+        results.reserveCapacity(min(boundedLimit, completedUploads.count))
+        for uploadID in completedUploadOrder.reversed() {
+            guard results.count < boundedLimit else { break }
+            guard let completed = completedUploads[uploadID],
+                  completed.metadata.deviceID == deviceID
+            else { continue }
+            results.append(completed.result)
+        }
+        return results
     }
 
     /// The number of standalone batch-accounting entries retained by the service.

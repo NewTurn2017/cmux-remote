@@ -221,11 +221,14 @@ public actor WSProtocolMachine {
                 guard !request.surfaceId.isEmpty else {
                     throw RemoteProtocolError.invalidField("surface_id")
                 }
+                let recentUploads = try await uploadService.recentCommittedUploads(
+                    authenticatedDeviceID: authenticatedDeviceID
+                )
                 let scan = try await artifactService.scan(scope: .init(
                     deviceID: authenticatedDeviceID,
                     workspaceID: request.workspaceId,
                     surfaceID: request.surfaceId
-                ))
+                ), trustedUploadedPaths: recentUploads.map(\.path))
                 result = try Self.jsonValue(TerminalArtifactScanResult(
                     generation: scan.generation,
                     artifacts: scan.artifacts.map {

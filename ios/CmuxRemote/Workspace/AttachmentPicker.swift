@@ -95,6 +95,8 @@ enum AttachmentFixtureProvider {
             return try boundarySelections(root: root)
         case "live-matrix":
             return try liveMatrixSelections(root: root)
+        case "uploaded-image":
+            return try uploadedImageSelections(root: root)
         default:
             return try happySelections(root: root)
         }
@@ -138,6 +140,12 @@ enum AttachmentFixtureProvider {
             ],
             root: root
         )
+    }
+
+    private static func uploadedImageSelections(root: URL) throws -> [AttachmentSelection] {
+        let url = root.appendingPathComponent("uploaded-camera.png")
+        try DemoContent.fileFeatureImageBytes.write(to: url, options: .atomic)
+        return [AttachmentSelection(url: url, declaredMIMEType: "image/png")]
     }
 
     private static func fixtureSelections(names: [String], root: URL) throws -> [AttachmentSelection] {

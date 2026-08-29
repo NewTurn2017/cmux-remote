@@ -14,6 +14,14 @@ public actor DemoRPCDispatch: RPCDispatch {
     public typealias SubscribeHandler = @Sendable (String) async -> Void
     public typealias FileFeatureQAStateHandler = @Sendable (String) async -> Void
 
+    private struct CommittedArtifact {
+        let artifactID: String
+        let filename: String
+        let mimeType: String
+        let data: Data
+        let revision: String
+    }
+
     private var onSubscribe: SubscribeHandler?
     private var onFileFeatureQAState: FileFeatureQAStateHandler?
     private var workspaces: [DemoWorkspace]
@@ -38,6 +46,8 @@ public actor DemoRPCDispatch: RPCDispatch {
         sha256: String,
         data: Data
     )] = [:]
+    private var committedArtifacts: [String: CommittedArtifact] = [:]
+    private var committedArtifactOrder: [String] = []
     private var activeImageRevision: String
 
     public init(
@@ -357,10 +367,25 @@ public actor DemoRPCDispatch: RPCDispatch {
             else {
                 return errorResponse(code: .uploadNotFound, message: "The deterministic upload is unavailable")
             }
+            let path = deterministicAttachmentPath(filename: upload.filename)
+            if attachmentScenario == "uploaded-image",
+               upload.mimeType.hasPrefix("image/")
+            {
+                let artifactID = "demo-artifact-\(request.uploadId)"
+                committedArtifacts[artifactID] = CommittedArtifact(
+                    artifactID: artifactID,
+                    filename: upload.filename,
+                    mimeType: upload.mimeType,
+                    data: upload.data,
+                    revision: upload.sha256
+                )
+                committedArtifactOrder.removeAll { $0 == artifactID }
+                committedArtifactOrder.append(artifactID)
+            }
             return try encodedResponse(ChunkUploadCommitResult(
                 uploadId: request.uploadId,
                 filename: upload.filename,
-                path: deterministicAttachmentPath(filename: upload.filename),
+                path: path,
                 bytes: upload.bytes,
                 mimeType: upload.mimeType,
                 sha256: upload.sha256
@@ -386,6 +411,24 @@ public actor DemoRPCDispatch: RPCDispatch {
 
         case .artifactScan:
             let request = try params.decode(TerminalArtifactScanRequest.self)
+            if attachmentScenario == "uploaded-image" {
+                let artifacts = committedArtifactOrder.reversed().compactMap {
+                    committedArtifacts[$0]
+                }.map {
+                    TerminalArtifact(
+                        artifactId: $0.artifactID,
+                        filename: $0.filename,
+                        mimeType: $0.mimeType,
+                        bytes: $0.data.count,
+                        revision: $0.revision,
+                        isImage: true
+                    )
+                }
+                return try encodedResponse(TerminalArtifactScanResult(
+                    generation: DemoContent.fileFeatureScanGeneration + committedArtifactOrder.count,
+                    artifacts: artifacts
+                ))
+            }
             switch request.surfaceId {
             case DemoContent.fileFeatureUnavailableSurfaceID:
                 return errorResponse(code: .methodNotFound, message: "Terminal artifacts are unavailable")
@@ -428,6 +471,17 @@ public actor DemoRPCDispatch: RPCDispatch {
 
         case .artifactStat:
             let request = try params.decode(TerminalArtifactStatRequest.self)
+            if let artifact = committedArtifacts[request.artifactId] {
+                return try encodedResponse(TerminalArtifactStatResult(
+                    artifactId: request.artifactId,
+                    filename: artifact.filename,
+                    mimeType: artifact.mimeType,
+                    bytes: artifact.data.count,
+                    revision: artifact.revision,
+                    width: DemoContent.fileFeatureImageWidth,
+                    height: DemoContent.fileFeatureImageHeight
+                ))
+            }
             if request.artifactId == DemoContent.fileFeatureStaleArtifactID {
                 return errorResponse(code: .fileChanged, message: "The deterministic artifact changed")
             }
@@ -455,6 +509,17 @@ public actor DemoRPCDispatch: RPCDispatch {
 
         case .artifactThumbnail:
             let request = try params.decode(TerminalArtifactThumbnailRequest.self)
+            if let artifact = committedArtifacts[request.artifactId] {
+                return try encodedResponse(TerminalArtifactThumbnailResult(
+                    artifactId: request.artifactId,
+                    revision: artifact.revision,
+                    dimension: request.dimension,
+                    width: DemoContent.fileFeatureImageWidth,
+                    height: DemoContent.fileFeatureImageHeight,
+                    mimeType: artifact.mimeType,
+                    dataBase64: artifact.data.base64EncodedString()
+                ))
+            }
             guard request.artifactId == DemoContent.fileFeatureImageArtifact.artifactId else {
                 return errorResponse(code: .unsupportedMedia, message: "The deterministic artifact has no thumbnail")
             }
@@ -476,6 +541,19 @@ public actor DemoRPCDispatch: RPCDispatch {
 
         case .artifactFetch:
             let request = try params.decode(TerminalArtifactFetchRequest.self)
+            if let artifact = committedArtifacts[request.artifactId],
+               request.offset <= artifact.data.count
+            {
+                let chunk = artifact.data.dropFirst(request.offset)
+                return try encodedResponse(TerminalArtifactFetchResult(
+                    artifactId: request.artifactId,
+                    offset: request.offset,
+                    totalBytes: artifact.data.count,
+                    revision: artifact.revision,
+                    dataBase64: Data(chunk).base64EncodedString(),
+                    eof: true
+                ))
+            }
             guard request.artifactId == DemoContent.fileFeatureImageArtifact.artifactId,
                   request.offset <= DemoContent.fileFeatureImageBytes.count
             else {
