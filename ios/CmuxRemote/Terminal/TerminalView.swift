@@ -1,3 +1,4 @@
+import SharedKit
 import SwiftUI
 
 enum TerminalLayoutPolicy {
@@ -26,7 +27,6 @@ struct TerminalView: View {
         GeometryReader { proxy in
             let cellWidth = fontMetrics.cellWidth
             let lineHeight = fontMetrics.lineHeight
-            let layout = TerminalGridLayout(cellWidth: cellWidth, lineHeight: lineHeight)
             let bottomScrollPadding = Self.bottomScrollPadding(lineHeight: lineHeight)
             let leftInset: CGFloat = 16
             let topInset = max(0, topContentInset)
@@ -44,7 +44,7 @@ struct TerminalView: View {
             let visibleCols = contentColumns
 
             ZStack(alignment: .top) {
-                CmuxTheme.terminal
+                CmuxTheme.terminalViewportBackground
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -53,62 +53,14 @@ struct TerminalView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         ScrollViewReader { verticalScroll in
                             ScrollView(.vertical, showsIndicators: false) {
-                                Canvas { context, _ in
-                                    for (y, row) in store.grid.renderRows.enumerated() {
-                                        for run in row.runs where run.startColumn < visibleCols {
-                                            guard run.attr.bg != .default, run.columns > 0 else { continue }
-                                            let frame = layout.frame(
-                                                startColumn: run.startColumn,
-                                                columns: run.columns,
-                                                row: y
-                                            )
-                                                .offsetBy(dx: leftInset, dy: 8)
-                                            context.fill(
-                                                Path(frame),
-                                                with: .color(run.attr.bg.swiftUI)
-                                            )
-                                        }
-
-                                        for run in row.runs where run.startColumn < visibleCols {
-                                            let frame = layout.frame(
-                                                startColumn: run.startColumn,
-                                                columns: run.columns,
-                                                row: y
-                                            )
-                                                .offsetBy(dx: leftInset, dy: 8)
-                                            var runContext = context
-                                            runContext.clip(to: Path(frame))
-                                            runContext.draw(
-                                                Text(run.text)
-                                                    .font(fontMetrics.font(bold: run.attr.bold))
-                                                    .foregroundStyle(run.attr.fg.swiftUI),
-                                                at: frame.origin,
-                                                anchor: .topLeading
-                                            )
-                                            if run.attr.underline, run.columns > 0 {
-                                                context.fill(
-                                                    Path(CGRect(
-                                                        x: frame.minX,
-                                                        y: frame.maxY - 2,
-                                                        width: frame.width,
-                                                        height: max(1, fontMetrics.fontSize / 12)
-                                                    )),
-                                                    with: .color(run.attr.fg.swiftUI)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    if store.grid.cursor.x < visibleCols {
-                                        let cursorX = leftInset + CGFloat(store.grid.cursor.x) * cellWidth
-                                        let cursorY = 8 + CGFloat(store.grid.cursor.y) * lineHeight
-                                        context.fill(
-                                            Path(CGRect(x: cursorX, y: cursorY, width: cellWidth, height: lineHeight)),
-                                            with: .color(CmuxTheme.accentGreen.opacity(0.85))
-                                        )
-                                    }
-                                }
-                                .frame(width: contentWidth, height: contentHeight)
+                                TerminalCanvas(
+                                    grid: store.grid,
+                                    fontMetrics: fontMetrics,
+                                    leftInset: leftInset,
+                                    visibleColumns: visibleCols,
+                                    width: contentWidth,
+                                    height: contentHeight
+                                )
                                 .cmuxScanlines()
 
                                 Color.clear
@@ -153,11 +105,15 @@ struct TerminalView: View {
                     }
             )
         }
-        .background(CmuxTheme.terminal)
+        .background(CmuxTheme.terminalViewportBackground)
     }
 
     static func bottomScrollPadding(lineHeight: CGFloat) -> CGFloat {
         lineHeight * bottomScrollPaddingRows
+    }
+
+    static func isCursorRenderable(_ cursor: CursorPos, columns: Int, rows: Int) -> Bool {
+        cursor.x >= 0 && cursor.y >= 0 && cursor.x < columns && cursor.y < rows
     }
 
     private var accessibilitySnapshot: String {
@@ -166,6 +122,93 @@ struct TerminalView: View {
             .map { $0.plainText.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
+    }
+}
+
+struct TerminalCanvas: View {
+    let grid: CellGrid
+    let fontMetrics: TerminalFontMetrics
+    let leftInset: CGFloat
+    let visibleColumns: Int
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        let layout = TerminalGridLayout(
+            cellWidth: fontMetrics.cellWidth,
+            lineHeight: fontMetrics.lineHeight
+        )
+
+        Canvas { context, _ in
+            for (y, row) in grid.renderRows.enumerated() {
+                for run in row.runs where run.startColumn < visibleColumns {
+                    guard run.attr.bg != .default, run.columns > 0 else { continue }
+                    let frame = layout.frame(
+                        startColumn: run.startColumn,
+                        columns: run.columns,
+                        row: y
+                    )
+                        .offsetBy(dx: leftInset, dy: 8)
+                    context.fill(
+                        Path(frame),
+                        with: .color(run.attr.bg.swiftUI)
+                    )
+                }
+
+                for run in row.runs where run.startColumn < visibleColumns {
+                    let frame = layout.frame(
+                        startColumn: run.startColumn,
+                        columns: run.columns,
+                        row: y
+                    )
+                        .offsetBy(dx: leftInset, dy: 8)
+                    var runContext = context
+                    runContext.clip(to: Path(frame))
+                    runContext.draw(
+                        Text(run.text)
+                            .font(fontMetrics.font(bold: run.attr.bold))
+                            .foregroundStyle(run.attr.fg.swiftUI),
+                        at: frame.origin,
+                        anchor: .topLeading
+                    )
+                    if run.attr.underline, run.columns > 0 {
+                        context.fill(
+                            Path(CGRect(
+                                x: frame.minX,
+                                y: frame.maxY - 2,
+                                width: frame.width,
+                                height: max(1, fontMetrics.fontSize / 12)
+                            )),
+                            with: .color(run.attr.fg.swiftUI)
+                        )
+                    }
+                }
+            }
+
+            if TerminalView.isCursorRenderable(
+                grid.cursor,
+                columns: visibleColumns,
+                rows: grid.renderRows.count
+            ) {
+                let cursorX = leftInset + CGFloat(grid.cursor.x) * fontMetrics.cellWidth
+                let cursorY = 8 + CGFloat(grid.cursor.y) * fontMetrics.lineHeight
+                context.fill(
+                    Path(CGRect(
+                        x: cursorX,
+                        y: cursorY,
+                        width: fontMetrics.cellWidth,
+                        height: fontMetrics.lineHeight
+                    )),
+                    with: .color(CmuxTheme.accentGreen.opacity(0.85))
+                )
+            }
+        }
+        .frame(width: width, height: height)
+        .background(CmuxTheme.terminalViewportBackground)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("TerminalCanvasBackground")
+        .accessibilityLabel("Terminal viewport background")
+        .accessibilityValue("opaque-black")
     }
 }
 

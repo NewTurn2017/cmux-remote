@@ -31,13 +31,22 @@ public actor RPCClient: RPCDispatch {
         let request = RPCRequest(id: id, method: method, params: params)
         let data = try SharedKitJSON.deterministicEncoder.encode(request)
         guard let text = String(data: data, encoding: .utf8) else { throw RPCClientError.encoding }
-        return try await withCheckedThrowingContinuation { continuation in
-            pending[id] = continuation
-            Task { await transport.send(text: text) }
-            Task {
-                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                self.failPending(id: id, error: RPCClientError.timeout)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                pending[id] = continuation
+                Task { await transport.send(text: text) }
+                Task {
+                    // This bounded RPC deadline uses the injected timeout duration; it never polls for state.
+                    try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    self.failPending(id: id, error: RPCClientError.timeout)
+                }
             }
+        } onCancel: {
+            Task { await self.failPending(id: id, error: CancellationError()) }
         }
     }
 

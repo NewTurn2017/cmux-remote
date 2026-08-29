@@ -5,6 +5,41 @@ import SharedKit
 /// reviewers can't bring their own Tailscale-connected Mac, so this gives
 /// them a populated, navigable surface to evaluate the app against).
 enum DemoContent {
+    static let fileFeatureHappySurfaceID = "SF-DEMO-1A"
+    static let fileFeatureReplacementSurfaceID = "SF-DEMO-1B"
+    static let fileFeatureUnavailableSurfaceID = "SF-DEMO-1C"
+    static let fileFeatureErrorSurfaceID = "SF-DEMO-2A"
+    static let fileFeatureMalformedSurfaceID = "SF-DEMO-2B"
+    static let fileFeatureScanGeneration = 8
+    static let fileFeatureReplacementRevision = "demo-artifact-r2"
+    static let fileFeatureStaleArtifactID = "demo-artifact-stale"
+    static let fileFeatureQAStateBlocked = "blocked"
+    static let fileFeatureQAStateReleased = "released"
+    static let fileFeatureImageWidth = 96
+    static let fileFeatureImageHeight = 64
+    static let fileFeatureImageBytes = Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAADK0lEQVR4nOXbMWsUQRQH8HfDFvkMRlAImFILG1OkkC0N2KcwTeAC6QRBiRGHQCqtBAMhEIXUBmyPlDY2EdIoBgxqkU+QK+UyyTLO3O7Om903b3bnccVyt3cHf34393bu3eDG7B24rq3POdTVz5M3gKmXJ+9R558/+IE6f+827vUXv45rz8lXZ4pjoT+wsTRCvVkvS09nEpChZmNplGxM+eqMkc6VIPuTlWBGuRUNAIx2x5k6UhnpuajjLYdVqZfRqHTMNShBSnkJHJUOAFwJKiodSnklnKL+E5QOpbwOTlGmoFpKK9uQApwaQRWU9p/fhc6WvAeOcOoFVVDav8xoZfsbdDyaCjiugvpByQMOQlCnKXnDQQsqyo4jWkpN4PgIMjLSc4mNUhmczWNYRL4UWlD8lKams3k8uXnU4MXHi4b7O3MHO8Y9p8tDlv0dlx7n9/2ngQRNjaMssqiaY1T5rEFlGem5qGM7uxia49CCeCkRwWlZUAWlhfUjAPjy7iHE1+OEFlRBScUUW4/DICgApTBwaAXRUQoGh1xQUYqMnosfpcBwAgkqyo4DRand5jguQQ0pVVxVhalAgvwoMcJhEISixA6HTZALpRjg8AcElxkZMS2sH+09mrfPZImGP6AySrM359nhFDW4ePYW9YRzgv0d9ZnSc1H14VX9FiV2fwc738QvSF6vOH//fDceevKaf4uS4VusKHsxVhnplFRGLpSIik2QLPmqGu2O7TgYKTEIkg49jspIz4WLUmhBEtPjxEApnCDp1RyzUwokSDZrjhkpkQuSLV1VlVGiHn2jFXTr8ZQusUlzbFOiHn3LQkYDbVxV2ZRIpyhFJ+AwUsq6AoeLkugWnPADuRkpnLPDNUBOa3gU6Wy3IErn7HBtkk7AIqI0+PVp6L2/Ix16HJf/Z7W7v2PPcemzXtj/r/kLkjHtHNONvvmsQTKanxwCTFGK3sAhopTF2ePQUcKOvomYexw6Su6jb1kv4bRISfQYTiuUsn7DaT6QK2JujunKfSA3Q1xV9ascKYmk4HhQylKDg6Uk0oTjTkmUpQPp1eny0Ihp7mBHJA4HrDIy+gfWvP9wUPwWiAAAAABJRU5ErkJggg=="
+    ) ?? Data()
+    static let fileFeatureThumbnailBytes = Data(base64Encoded:
+        "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"
+    ) ?? Data()
+    static let fileFeatureImageArtifact = TerminalArtifact(
+        artifactId: "demo-artifact-image",
+        filename: "terminal-visible.png",
+        mimeType: "image/png",
+        bytes: fileFeatureImageBytes.count,
+        revision: "demo-artifact-r1",
+        isImage: true
+    )
+    static let fileFeatureDocumentArtifact = TerminalArtifact(
+        artifactId: "demo-artifact-document",
+        filename: "build-notes.pdf",
+        mimeType: "application/pdf",
+        bytes: 24,
+        revision: "demo-document-r1",
+        isImage: false
+    )
+
     static let workspaces: [DemoWorkspace] = [
         DemoWorkspace(
             id: "WS-DEMO-1",

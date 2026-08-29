@@ -9,6 +9,7 @@ struct ContentView: View {
     let surfaceStore: SurfaceStore
     let notifStore: NotificationStore
     let hostStatusStore: HostStatusStore
+    let remoteFiles: RemoteFileFeatureCoordinator
     let onDisconnect: () -> Void
     let onReconnect: () -> Void
     let onTriggerTestNotification: @MainActor () -> TestNotificationResult
@@ -27,6 +28,7 @@ struct ContentView: View {
                     surfaceStore: surfaceStore,
                     notifStore: notifStore,
                     hostStatusStore: hostStatusStore,
+                    remoteFiles: remoteFiles,
                     preferredSurfaceId: $requestedSurfaceId,
                     onBack: { selectedTab = .workspaces }
                 )

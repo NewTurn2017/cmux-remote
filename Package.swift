@@ -64,6 +64,8 @@ let package = Package(
             .product(name: "NIOCore", package: "swift-nio"),
             .product(name: "NIOPosix", package: "swift-nio"),
             .product(name: "NIOEmbedded", package: "swift-nio"),
+        ], resources: [
+            .copy("Fixtures"),
         ]),
         .testTarget(name: "DiffEngineTests", dependencies: [
             "RelayCore",

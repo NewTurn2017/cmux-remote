@@ -22,6 +22,9 @@ public actor DiffEngine {
     public private(set) var rev: Int = 0
     public private(set) var currentFps: Int
 
+    /// The most recently decoded authoritative snapshot used by diff and checksum output.
+    public private(set) var latestSnapshot: Screen?
+
     private let reader: SurfaceReader
     private let clock: Clock
     private var state = RowState()
@@ -64,6 +67,7 @@ public actor DiffEngine {
         if clock.now - lastInput > idleAfter { currentFps = idleFps }
         let snapshot = try await reader.read(workspaceId: workspaceId,
                                              surfaceId: surfaceId, lines: lines)
+        latestSnapshot = snapshot
         let ops = state.ingest(snapshot: snapshot)
         if !ops.isEmpty {
             rev &+= 1

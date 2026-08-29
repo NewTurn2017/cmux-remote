@@ -44,7 +44,7 @@ struct Serve: AsyncParsableCommand {
         let conn = CmuxConnection(group: group)
         let facade = CMUXFacadeImpl(connection: conn)
         let reader = CmuxSurfaceReader(connection: conn)
-        let manager = SessionManager(reader: reader,
+        let manager = SessionManager(terminalReader: reader,
                                      defaultFps: store.current.defaultFps,
                                      idleFps: store.current.idleFps)
         let deviceStore = try DeviceStore(url: URL(fileURLWithPath: devicesStorePath()))
@@ -109,10 +109,29 @@ struct Serve: AsyncParsableCommand {
         let routes = Routes(deviceStore: deviceStore,
                             config: effectiveConfig,
                             auth: auth)
-        let server = HTTPServer(group: group, routes: routes, auth: auth,
-                                deviceStore: deviceStore,
-                                sessionManager: manager,
-                                cmux: facade)
+        let uploadRoot = ProcessInfo.processInfo.environment["CMUX_RELAY_UPLOAD_ROOT"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let uploadService = uploadRoot.map { ChunkedFileUploadService(rootURL: $0) }
+            ?? ChunkedFileUploadService()
+        let artifactService = TerminalArtifactService(dispatchNative: { method, params in
+            do {
+                return .success(try await facade.dispatch(method: method, params: params))
+            } catch let error as RPCError {
+                return .failure(code: error.code)
+            } catch {
+                return .failure(code: "internal_error")
+            }
+        })
+        let server = HTTPServer(
+            group: group,
+            routes: routes,
+            auth: auth,
+            deviceStore: deviceStore,
+            sessionManager: manager,
+            cmux: facade,
+            uploadService: uploadService,
+            artifactService: artifactService
+        )
 
         let (host, port) = parseListen(store.current.listen)
 

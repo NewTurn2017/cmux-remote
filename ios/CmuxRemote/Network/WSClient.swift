@@ -6,11 +6,19 @@ public actor WSClient {
     public let headers: [String: String]
 
     public var onText: (@Sendable (String) -> Void)?
-    public var onOpen: (@Sendable () -> Void)?
+    public var onOpen: (@Sendable () async -> Void)?
     public var onClose: (@Sendable (Int) -> Void)?
 
-    private var task: URLSessionWebSocketTask?
-    private let session: URLSession
+    private var task: (any WSClientConnection)?
+    private let connectionFactory: any WSClientConnectionFactory
+    private let reconnectDelay: @Sendable (TimeInterval) async throws -> Void
+    private var generation: UInt64 = 0
+    private var openGeneration: UInt64?
+    private var flushingGeneration: UInt64?
+    private var closeNotificationGeneration: UInt64?
+    private var receiveTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
+    private var pendingTexts: [String] = []
     private var backoff: TimeInterval = 1.0
     private var shouldReconnect = true
     private let log = Logger(subsystem: "com.genie.cmuxremote", category: "ws")
@@ -18,24 +26,30 @@ public actor WSClient {
     public init(url: URL, headers: [String: String]) {
         self.url = url
         self.headers = headers
-        let config = URLSessionConfiguration.ephemeral
-        // URLSessionWebSocketTask init via `(URL, protocols:)` ignores any
-        // URLRequest-level custom headers. Stash Authorization (and other
-        // ancillary headers) on the session so they ride along the upgrade
-        // request alongside the protocols we'll pass at connect time.
-        var extra: [AnyHashable: Any] = [:]
-        for (key, value) in headers where key != "Sec-WebSocket-Protocol" {
-            extra[key] = value
+        connectionFactory = URLSessionWebSocketConnectionFactory()
+        reconnectDelay = { delay in
+            // Reconnect backoff is an intended bounded delay; injection keeps tests event-driven.
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
-        if !extra.isEmpty { config.httpAdditionalHeaders = extra }
-        self.session = URLSession(configuration: config)
+    }
+
+    init(
+        url: URL,
+        headers: [String: String],
+        connectionFactory: any WSClientConnectionFactory,
+        reconnectDelay: @escaping @Sendable (TimeInterval) async throws -> Void
+    ) {
+        self.url = url
+        self.headers = headers
+        self.connectionFactory = connectionFactory
+        self.reconnectDelay = reconnectDelay
     }
 
     public func setOnText(_ handler: (@Sendable (String) -> Void)?) {
         onText = handler
     }
 
-    public func setOnOpen(_ handler: (@Sendable () -> Void)?) {
+    public func setOnOpen(_ handler: (@Sendable () async -> Void)?) {
         onOpen = handler
     }
 
@@ -43,80 +57,225 @@ public actor WSClient {
         onClose = handler
     }
 
-    public func connect() {
-        shouldReconnect = true
-        // URLSessionWebSocketTask validates the server's negotiated
-        // subprotocol against the `protocols:` argument — setting
-        // `Sec-WebSocket-Protocol` via URLRequest is silently ignored at
-        // negotiate time, which made the task close the channel right
-        // after the 101 handshake. Auxiliary headers (Authorization) still
-        // ride on the request.
-        let offered = (headers["Sec-WebSocket-Protocol"] ?? "")
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        var request = URLRequest(url: url)
-        for (key, value) in headers where key != "Sec-WebSocket-Protocol" {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-        let task: URLSessionWebSocketTask
-        if offered.isEmpty {
-            task = session.webSocketTask(with: request)
-        } else {
-            // URLSession only accepts (URL, protocols:) — use it when we
-            // have offered protocols but copy the extra headers onto a
-            // request first via a custom delegate. Easiest path: pass URL
-            // form and rely on the Authorization header set above before
-            // we drop into the URLSession API by re-using URLRequest's URL.
-            task = session.webSocketTask(with: request.url ?? url, protocols: offered)
-        }
-        task.resume()
-        self.task = task
-        onOpen?()
-        backoff = 1.0
-        Task { await self.receiveLoop(task) }
+    public func connect() async {
+        await startConnection(clearPending: generation != 0)
     }
 
     public func send(text: String) async {
-        task?.send(.string(text)) { [weak self] error in
-            guard let error else { return }
-            Task { await self?.notifyClose(errorCode: -1, message: error.localizedDescription) }
+        guard shouldReconnect else { return }
+        guard let currentTask = task,
+              openGeneration == generation,
+              flushingGeneration != generation
+        else {
+            pendingTexts.append(text)
+            return
+        }
+
+        let currentGeneration = generation
+        do {
+            try await currentTask.send(text: text)
+        } catch {
+            guard shouldReconnect, generation == currentGeneration, task === currentTask else { return }
+            notifySendFailure(generation: currentGeneration, message: error.localizedDescription)
         }
     }
 
     public func close() async {
         shouldReconnect = false
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
+        generation &+= 1
+        openGeneration = nil
+        flushingGeneration = nil
+        closeNotificationGeneration = nil
+        pendingTexts.removeAll()
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        await stopCurrentConnection()
     }
 
-    private func receiveLoop(_ currentTask: URLSessionWebSocketTask) async {
-        while shouldReconnect && task === currentTask {
-            do {
-                let message = try await currentTask.receive()
-                switch message {
-                case .string(let text): onText?(text)
-                case .data(let data): onText?(String(data: data, encoding: .utf8) ?? "")
-                @unknown default: break
-                }
-            } catch {
-                log.error("websocket closed: \(error.localizedDescription, privacy: .public)")
-                onClose?(currentTask.closeCode.rawValue)
-                if shouldReconnect { await reconnectAfterBackoff() }
-                return
+    private func startConnection(clearPending: Bool) async {
+        shouldReconnect = true
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        generation &+= 1
+        let currentGeneration = generation
+        openGeneration = nil
+        flushingGeneration = nil
+        closeNotificationGeneration = nil
+        if clearPending {
+            pendingTexts.removeAll()
+        }
+
+        await stopCurrentConnection()
+
+        let offered = (headers["Sec-WebSocket-Protocol"] ?? "")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let connection = await connectionFactory.makeConnection(
+            url: url,
+            headers: headers,
+            protocols: offered,
+            onOpen: { [weak self] in
+                await self?.connectionDidOpen(generation: currentGeneration)
+            },
+            onClose: { [weak self] code in
+                await self?.connectionDidClose(generation: currentGeneration, code: code)
+            }
+        )
+        guard shouldReconnect, generation == currentGeneration else {
+            await connection.cancel()
+            return
+        }
+
+        task = connection
+        startReceiveLoop(connection, generation: currentGeneration)
+        await connection.resume()
+        guard shouldReconnect, generation == currentGeneration, task === connection else { return }
+    }
+
+    private func stopCurrentConnection() async {
+        let currentTask = task
+        let currentReceiveTask = receiveTask
+        task = nil
+        receiveTask = nil
+        currentReceiveTask?.cancel()
+        await currentTask?.cancel()
+        await currentReceiveTask?.value
+    }
+
+    private func startReceiveLoop(
+        _ currentTask: any WSClientConnection,
+        generation currentGeneration: UInt64
+    ) {
+        receiveTask = Task { [weak self] in
+            guard let self,
+                  let close = await self.receiveLoop(currentTask, generation: currentGeneration)
+            else { return }
+
+            Task { [weak self] in
+                await self?.connectionDidClose(
+                    generation: currentGeneration,
+                    code: close.code,
+                    message: close.message
+                )
             }
         }
     }
 
-    private func notifyClose(errorCode: Int, message: String) {
-        log.error("websocket send failed: \(message, privacy: .public)")
-        onClose?(errorCode)
+    private func connectionDidOpen(generation currentGeneration: UInt64) async {
+        guard shouldReconnect,
+              generation == currentGeneration,
+              task != nil,
+              openGeneration != currentGeneration
+        else { return }
+
+        openGeneration = currentGeneration
+        backoff = 1.0
+        await onOpen?()
+
+        guard shouldReconnect,
+              generation == currentGeneration,
+              openGeneration == currentGeneration,
+              task != nil
+        else { return }
+
+        flushingGeneration = currentGeneration
+        await flushPendingTexts(generation: currentGeneration)
     }
 
-    private func reconnectAfterBackoff() async {
+    private func flushPendingTexts(generation currentGeneration: UInt64) async {
+        while shouldReconnect,
+              generation == currentGeneration,
+              openGeneration == currentGeneration,
+              let currentTask = task,
+              !pendingTexts.isEmpty
+        {
+            let text = pendingTexts.removeFirst()
+            do {
+                try await currentTask.send(text: text)
+            } catch {
+                guard shouldReconnect, generation == currentGeneration, task === currentTask else { return }
+                pendingTexts.insert(text, at: 0)
+                flushingGeneration = nil
+                notifySendFailure(generation: currentGeneration, message: error.localizedDescription)
+                return
+            }
+        }
+        if generation == currentGeneration {
+            flushingGeneration = nil
+        }
+    }
+
+    private func connectionDidClose(
+        generation currentGeneration: UInt64,
+        code: Int,
+        message: String? = nil
+    ) async {
+        guard shouldReconnect,
+              generation == currentGeneration,
+              task != nil
+        else { return }
+
+        let shouldNotifyClose = closeNotificationGeneration != currentGeneration
+        generation &+= 1
+        let reconnectGeneration = generation
+        openGeneration = nil
+        flushingGeneration = nil
+        closeNotificationGeneration = nil
+        await stopCurrentConnection()
+
+        if let message {
+            log.error("websocket closed: \(message, privacy: .public)")
+        }
+        if shouldNotifyClose {
+            onClose?(code)
+        }
+        scheduleReconnect(generation: reconnectGeneration)
+    }
+
+    private func receiveLoop(
+        _ currentTask: any WSClientConnection,
+        generation currentGeneration: UInt64
+    ) async -> (code: Int, message: String)? {
+        while shouldReconnect, generation == currentGeneration, task === currentTask {
+            do {
+                let text = try await currentTask.receiveText()
+                guard shouldReconnect, generation == currentGeneration, task === currentTask else { return nil }
+                if let text {
+                    onText?(text)
+                }
+            } catch {
+                return (await currentTask.closeCode(), error.localizedDescription)
+            }
+        }
+        return nil
+    }
+
+    private func notifySendFailure(generation currentGeneration: UInt64, message: String) {
+        log.error("websocket send failed: \(message, privacy: .public)")
+        guard closeNotificationGeneration != currentGeneration else { return }
+        closeNotificationGeneration = currentGeneration
+        onClose?(-1)
+    }
+
+    private func scheduleReconnect(generation reconnectGeneration: UInt64) {
         let delay = min(backoff, 30)
-        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-        backoff = min(backoff * 2, 30)
-        connect()
+        let reconnectDelay = reconnectDelay
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            do {
+                try await reconnectDelay(delay)
+            } catch {
+                return
+            }
+            await self?.performReconnect(generation: reconnectGeneration, completedDelay: delay)
+        }
+    }
+
+    private func performReconnect(generation reconnectGeneration: UInt64, completedDelay: TimeInterval) async {
+        guard shouldReconnect, generation == reconnectGeneration else { return }
+        reconnectTask = nil
+        backoff = min(completedDelay * 2, 30)
+        await startConnection(clearPending: false)
     }
 }

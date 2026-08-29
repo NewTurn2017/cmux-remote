@@ -91,6 +91,39 @@ struct WireProtocolTests {
         #expect(back == h)
     }
 
+    @Test func screenFullFromSnapshotCarriesGeometryAndStyledRows() throws {
+        let styled = "\u{1B}[38;2;234;234;234;48;2;40;50;40mgreen\u{1B}[0m"
+        let screen = Screen(
+            rev: 9,
+            rows: [styled, ""],
+            cols: 12,
+            cursor: CursorPos(x: 5, y: 0)
+        )
+
+        let full = ScreenFull(surfaceId: "surface", screen: screen)
+
+        #expect(full.rev == 9)
+        #expect(full.rows == [styled, ""])
+        #expect(full.cols == 12)
+        #expect(full.rowsCount == 2)
+        #expect(full.cursor == CursorPos(x: 5, y: 0))
+    }
+
+    @Test func screenDiffEncodingNeverCarriesResizeGeometry() throws {
+        let frame = PushFrame.screenDiff(ScreenDiff(
+            surfaceId: "surface",
+            rev: 10,
+            ops: [.row(y: 0, text: "changed")]
+        ))
+
+        let data = try SharedKitJSON.deterministicEncoder.encode(frame)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        #expect(object["type"] as? String == "screen.diff")
+        #expect(object["cols"] == nil)
+        #expect(object["rowsCount"] == nil)
+    }
+
     @Test func pushFrameEncodeRoundTrip() throws {
         let original = PushFrame.screenDiff(ScreenDiff(
             surfaceId: "s1",

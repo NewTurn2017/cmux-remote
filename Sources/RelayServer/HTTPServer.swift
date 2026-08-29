@@ -34,6 +34,8 @@ public final class HTTPServer: @unchecked Sendable {
     public let deviceStore: DeviceStore
     public let sessionManager: SessionManager
     public let cmux: CMUXFacade
+    private let uploadService: ChunkedFileUploadService
+    private let artifactService: TerminalArtifactService
     public let logger = Logger(label: "HTTPServer")
 
     public init(group: MultiThreadedEventLoopGroup,
@@ -49,6 +51,35 @@ public final class HTTPServer: @unchecked Sendable {
         self.deviceStore = deviceStore
         self.sessionManager = sessionManager
         self.cmux = cmux
+        self.uploadService = ChunkedFileUploadService()
+        self.artifactService = TerminalArtifactService(dispatchNative: { method, params in
+            do {
+                return .success(try await cmux.dispatch(method: method, params: params))
+            } catch let error as RPCError {
+                return .failure(code: error.code)
+            } catch {
+                return .failure(code: "internal_error")
+            }
+        })
+    }
+
+    init(group: MultiThreadedEventLoopGroup,
+         routes: Routes,
+         auth: AuthService,
+         deviceStore: DeviceStore,
+         sessionManager: SessionManager,
+         cmux: CMUXFacade,
+         uploadService: ChunkedFileUploadService,
+         artifactService: TerminalArtifactService)
+    {
+        self.group = group
+        self.routes = routes
+        self.auth = auth
+        self.deviceStore = deviceStore
+        self.sessionManager = sessionManager
+        self.cmux = cmux
+        self.uploadService = uploadService
+        self.artifactService = artifactService
     }
 
     /// Bind the server and return the listening channel. The caller is
@@ -60,6 +91,8 @@ public final class HTTPServer: @unchecked Sendable {
         let store = self.deviceStore
         let manager = self.sessionManager
         let cmux = self.cmux
+        let uploadService = self.uploadService
+        let artifactService = self.artifactService
 
         let bs = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
@@ -93,10 +126,14 @@ public final class HTTPServer: @unchecked Sendable {
                     },
                     upgradePipelineHandler: { @Sendable ch, head in
                         let did = HTTPServer.deviceIdFromWSHeaders(head.headers, store: store) ?? ""
-                        let handler = WebSocketHandler(deviceId: did,
-                                                       deviceStore: store,
-                                                       sessionManager: manager,
-                                                       cmuxClient: cmux)
+                        let handler = WebSocketHandler(
+                            deviceId: did,
+                            deviceStore: store,
+                            sessionManager: manager,
+                            cmuxClient: cmux,
+                            uploadService: uploadService,
+                            artifactService: artifactService
+                        )
                         return ch.pipeline.addHandler(handler)
                     }
                 )

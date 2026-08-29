@@ -9,7 +9,8 @@ enum CmuxTheme {
     static let surface      = hex(0x24283B)   // primary card / panel
     static let surfaceRaised = hex(0x292E42)  // hover/selected
     static let surfaceSunken = hex(0x1F2335)  // inset panels
-    static let terminal     = hex(0x16161E)   // terminal viewport — deepest
+    static let terminal     = hex(0x16161E)   // Tokyo Night panel — deepest
+    static let terminalViewportBackground = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
 
     // Text
     static let ink          = hex(0xC0CAF5)   // primary fg

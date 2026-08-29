@@ -154,7 +154,17 @@ private func normalizedSocketPassword(_ raw: String?) -> String? {
 public struct UnixSocketChannel {
     public let path: String
     public let group: EventLoopGroup
-    public init(path: String, group: EventLoopGroup) { self.path = path; self.group = group }
+    public let connectTimeout: TimeAmount
+
+    public init(
+        path: String,
+        group: EventLoopGroup,
+        connectTimeout: TimeAmount = .seconds(10)
+    ) {
+        self.path = path
+        self.group = group
+        self.connectTimeout = connectTimeout
+    }
 
     public func connect(handler: @escaping @Sendable (Channel) -> EventLoopFuture<Void>)
         async throws -> Channel
@@ -163,6 +173,7 @@ public struct UnixSocketChannel {
             throw UnixSocketChannelError.socketMissing(path)
         }
         let bs = ClientBootstrap(group: group)
+            .connectTimeout(connectTimeout)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .channelInitializer { channel in
                 channel.pipeline.addHandlers([

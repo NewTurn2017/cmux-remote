@@ -6,6 +6,8 @@ import SharedKit
 
 public enum CMUXClientError: Error, Equatable {
     case timeout
+    /// The NIO inbound bridge could not be installed, so responses cannot be delivered.
+    case inboundHandlerInstallationFailed
     case rpc(RPCError)
     case decoding(String)
     case channelClosed
@@ -13,19 +15,54 @@ public enum CMUXClientError: Error, Equatable {
 }
 
 public actor CMUXClient {
+    /// Sequences inbound installation so readiness deadlines are deterministic in tests.
+    typealias InboundInstallationGate = @Sendable (
+        @escaping @Sendable () async throws -> Void
+    ) async throws -> Void
+
     private let channel: Channel
     private let requestTimeout: TimeAmount
+    private let inboundInstallationGate: InboundInstallationGate
     private let logger = Logger(label: "CMUXClient")
 
     private var pending: [String: CheckedContinuation<RPCResponse, Error>] = [:]
     private var pushHandler: (@Sendable (PushFrame) -> Void)?
     private var terminalError: CMUXClientError?
     private var bridgeReady = false
-    private var bridgeWaiters: [CheckedContinuation<Void, Never>] = []
+    private var bridgeInstallationError: CMUXClientError?
+    private var bridgeWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+
+    /// Cached per connection so a replacement client renegotiates after reconnecting.
+    var negotiatedTerminalSourceMode: CMUXTerminalSourceMode?
+
+    /// One shared negotiation task serves all currently registered typed waiters.
+    var terminalCapabilityNegotiationTask: Task<Void, Never>?
+    var terminalCapabilityNegotiationWaiters: [
+        UUID: CheckedContinuation<CMUXTerminalSourceMode, Error>
+    ] = [:]
+
+    /// Bounded replay identity state; screen payloads are never retained here.
+    var terminalContinuityState = CMUXTerminalContinuityState()
+
+    nonisolated static let inboundBridgeHandlerName = "CMUXClient.InboundBridge"
 
     public init(channel: Channel, requestTimeout: TimeAmount = .seconds(5)) {
         self.channel = channel
         self.requestTimeout = requestTimeout
+        self.inboundInstallationGate = { operation in
+            try await operation()
+        }
+        Task { await self.installInboundHandler() }
+    }
+
+    init(
+        channel: Channel,
+        requestTimeout: TimeAmount = .seconds(5),
+        inboundInstallationGate: @escaping InboundInstallationGate
+    ) {
+        self.channel = channel
+        self.requestTimeout = requestTimeout
+        self.inboundInstallationGate = inboundInstallationGate
         Task { await self.installInboundHandler() }
     }
 
@@ -36,9 +73,36 @@ public actor CMUXClient {
     /// would arrive at a pipeline that has no inbound bridge yet and get
     /// silently dropped, which surfaces as `CMUXClientError.timeout` after
     /// 5 s.
+    ///
+    /// This source-compatible readiness gate records installation failures as
+    /// terminal client errors, so the first authenticated RPC still receives
+    /// the exact failure even though older callers do not use `try` here.
     public func awaitReady() async {
+        _ = try? await awaitReadyOrThrow()
+    }
+
+    /// Waits for the inbound bridge and surfaces installation failure or cancellation.
+    /// Test fixtures and new callers use this throwing form to enforce bounded readiness.
+    public func awaitReadyOrThrow() async throws {
         if bridgeReady { return }
-        await withCheckedContinuation { bridgeWaiters.append($0) }
+        if let bridgeInstallationError { throw bridgeInstallationError }
+
+        let waiterID = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if bridgeReady {
+                    continuation.resume()
+                } else if let bridgeInstallationError {
+                    continuation.resume(throwing: bridgeInstallationError)
+                } else {
+                    bridgeWaiters[waiterID] = continuation
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelBridgeWaiter(waiterID) }
+        }
     }
 
     public func onEventStream(_ handler: @escaping @Sendable (PushFrame) -> Void) {
@@ -153,11 +217,30 @@ public actor CMUXClient {
 
     private func installInboundHandler() async {
         let handler = ClientInboundBridge(client: self)
-        try? await channel.pipeline.addHandler(handler).get()
-        bridgeReady = true
-        let waiters = bridgeWaiters
-        bridgeWaiters.removeAll()
-        for waiter in waiters { waiter.resume() }
+        let channel = self.channel
+        do {
+            try await inboundInstallationGate {
+                try await channel.pipeline.addHandler(
+                    handler,
+                    name: Self.inboundBridgeHandlerName
+                ).get()
+            }
+            bridgeReady = true
+            let waiters = Array(bridgeWaiters.values)
+            bridgeWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+        } catch {
+            let clientError = CMUXClientError.inboundHandlerInstallationFailed
+            bridgeInstallationError = clientError
+            if terminalError == nil { terminalError = clientError }
+            let waiters = Array(bridgeWaiters.values)
+            bridgeWaiters.removeAll()
+            for waiter in waiters { waiter.resume(throwing: clientError) }
+        }
+    }
+
+    private func cancelBridgeWaiter(_ id: UUID) {
+        bridgeWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
     }
 
     fileprivate func deliver(line: ByteBuffer) {

@@ -62,17 +62,66 @@ struct CMUXSurfaceRaw: Decodable {
 
 // MARK: surface.read_text
 
-/// cmux returns terminal contents as a flat newline-joined `text` string plus
-/// a base64 mirror. We synthesize a `Screen` by splitting on `\n`. `cols` is
-/// derived from the longest line; `cursor` defaults to `(0,0)` — cmux v2 does
-/// not currently expose cursor coordinates over RPC, so the relay's DiffEngine
-/// emits a stub cursor until that's added upstream.
+/// Translates compatible plain-text and render-grid daemon responses to `Screen`.
+///
+/// A validated render grid is authoritative when present. Legacy responses keep
+/// their original newline splitting, column derivation, and stub cursor behavior.
 struct CMUXReadTextRaw: Decodable {
+    /// Relay-local retention policy applied after decoding daemon replay depth.
+    static let retainedLineLimit = 120
+
     let text: String
+    let renderGrid: CMUXRenderGrid?
+
+    init(text: String, renderGrid: CMUXRenderGrid?) {
+        self.text = text
+        self.renderGrid = renderGrid
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        renderGrid = try container.decodeIfPresent(CMUXRenderGrid.self, forKey: .renderGrid)
+    }
 
     func toScreen(rev: Int) -> Screen {
+        if let renderGrid {
+            let allRows = renderGrid.canonicalANSIRows()
+            let retainedRows = Array(allRows.suffix(Self.retainedLineLimit))
+            let droppedRows = allRows.count - retainedRows.count
+            let cursor: CursorPos
+            if let sourceCursor = renderGrid.cursor, sourceCursor.visible {
+                let retainedRow = renderGrid.scrollbackRows + sourceCursor.row - droppedRows
+                cursor = retainedRows.indices.contains(retainedRow)
+                    ? CursorPos(x: sourceCursor.column, y: retainedRow)
+                    : .hidden
+            } else {
+                cursor = .hidden
+            }
+
+            return Screen(
+                rev: rev,
+                rows: retainedRows,
+                cols: renderGrid.columns,
+                cursor: cursor,
+                snapshotMetadata: ScreenSnapshotMetadata(
+                    renderEpoch: renderGrid.renderEpoch.rawValue,
+                    renderRevision: renderGrid.renderRevision.rawValue,
+                    viewportRows: renderGrid.rows,
+                    terminalForeground: renderGrid.resolvedTerminalForeground,
+                    terminalBackground: renderGrid.resolvedTerminalBackground,
+                    terminalThemeRevision: renderGrid.terminalThemeRevision
+                )
+            )
+        }
+
         let rows = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let cols = rows.map { $0.count }.max() ?? 0
         return Screen(rev: rev, rows: rows, cols: cols, cursor: CursorPos(x: 0, y: 0))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text
+        case renderGrid
     }
 }

@@ -15,8 +15,12 @@ public final class CMUXFacadeImpl: CMUXFacade, @unchecked Sendable {
     }
 
     public func dispatch(method: String, params: JSONValue) async throws -> JSONValue {
-        let client = try await connection.connect()
-        let resp = try await client.call(method: method, params: params)
-        return try resp.unwrapResult()
+        do {
+            let client = try await connection.connect()
+            let resp = try await client.call(method: method, params: params)
+            return try resp.unwrapResult()
+        } catch CMUXClientError.rpc(let error) {
+            throw error
+        }
     }
 }

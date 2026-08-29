@@ -28,6 +28,12 @@ final class ANSIParserTests: XCTestCase {
         XCTAssertEqual(cells.first?.attr.bg, .rgb(10, 20, 30))
     }
 
+    func testExactRGBForegroundAndBackgroundColors() {
+        let cells = ANSIParser.parse("\u{1B}[38;2;125;207;255;48;2;157;124;216mX", base: .default)
+        XCTAssertEqual(cells.first?.attr.fg, .rgb(125, 207, 255))
+        XCTAssertEqual(cells.first?.attr.bg, .rgb(157, 124, 216))
+    }
+
     func testBrightBackgroundColor() {
         let cells = ANSIParser.parse("\u{1B}[104mX", base: .default)
         XCTAssertEqual(cells.first?.attr.bg, .bright(.blue))
@@ -43,5 +49,30 @@ final class ANSIParserTests: XCTestCase {
         XCTAssertEqual(cells.count, 1)
         XCTAssertEqual(cells.first?.character, "X")
         XCTAssertEqual(cells.first?.attr, .default)
+    }
+
+    func testPrivateProducerGeometryAnnotatesOnlyItsDeclaredScalarSpan() {
+        let cells = ANSIParser.parse(
+            "\u{1B}[?2026;3;1;1z☀\u{1B}[32mX",
+            base: .default
+        )
+
+        XCTAssertEqual(cells.map(\.character), ["☀", "X"])
+        XCTAssertEqual(cells[0].sourceColumn, 3)
+        XCTAssertEqual(cells[0].sourceCellWidth, 1)
+        XCTAssertEqual(cells[0].sourceScalarCount, 1)
+        XCTAssertNil(cells[1].sourceColumn)
+        XCTAssertEqual(cells[1].attr.fg, .green)
+    }
+
+    func testMalformedPrivateProducerGeometryDoesNotLeakToFollowingText() {
+        let cells = ANSIParser.parse(
+            "\u{1B}[?2026;0;1;2z☀\u{1B}[31mX",
+            base: .default
+        )
+
+        XCTAssertEqual(cells.map(\.character), ["☀", "X"])
+        XCTAssertTrue(cells.allSatisfy { $0.sourceColumn == nil })
+        XCTAssertEqual(cells[1].attr.fg, .red)
     }
 }

@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import SharedKit
 @testable import RelayServer
 @testable import RelayCore
 
@@ -126,6 +127,29 @@ final class HTTPServerTests: XCTestCase {
             HTTPServer.maxWebSocketFrameBytes,
             base64Length + conservativeJSONEnvelopeOverhead,
             "file.upload sends base64 in one JSON-RPC WebSocket frame; the decoder limit must not close normal image uploads"
+        )
+    }
+
+    func testWebSocketFrameLimitRemainsExactly24MiB() {
+        XCTAssertEqual(HTTPServer.maxWebSocketFrameBytes, 24 * 1024 * 1024)
+    }
+
+    func testMaximumChunkRPCStaysBelowExistingFrameLimit() throws {
+        let request = try RPCRequest(
+            id: "chunk",
+            method: RemoteRPCMethod.uploadChunk.rawValue,
+            payload: ChunkUploadChunkRequest(
+                uploadId: UUID().uuidString,
+                offset: 0,
+                dataBase64: Data(
+                    repeating: 0xA5,
+                    count: ChunkUploadLimits.rawChunkBytes
+                ).base64EncodedString()
+            )
+        )
+        XCTAssertLessThan(
+            try JSONEncoder().encode(request).count,
+            HTTPServer.maxWebSocketFrameBytes
         )
     }
 }

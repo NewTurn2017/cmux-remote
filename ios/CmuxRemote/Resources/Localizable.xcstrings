@@ -1,0 +1,1398 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "attachment.batch.aggregate_progress": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attachment upload progress"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "첨부 파일 업로드 진행률"
+          }
+        }
+      }
+    },
+    "attachment.batch.byte_progress": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of %2$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 중 %1$@"
+          }
+        }
+      }
+    },
+    "attachment.batch.cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel upload"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업로드 취소"
+          }
+        }
+      }
+    },
+    "attachment.batch.cancelled": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cancelled"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소됨"
+          }
+        }
+      }
+    },
+    "attachment.batch.count_status": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld %2$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ %1$lld개"
+          }
+        }
+      }
+    },
+    "attachment.batch.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "failed"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실패"
+          }
+        }
+      }
+    },
+    "attachment.batch.dismiss": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss attachment results"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "첨부 결과 닫기"
+          }
+        }
+      }
+    },
+    "attachment.batch.file_list": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택한 파일"
+          }
+        }
+      }
+    },
+    "attachment.batch.retry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry failed uploads"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실패한 업로드 다시 시도"
+          }
+        }
+      }
+    },
+    "attachment.batch.succeeded": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "uploaded"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업로드됨"
+          }
+        }
+      }
+    },
+    "attachment.batch.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attachments"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "첨부 파일"
+          }
+        }
+      }
+    },
+    "attachment.batch.unattempted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "not attempted"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시도 안 함"
+          }
+        }
+      }
+    },
+    "attachment.failure.batch_size": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batch too large"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전체 파일 용량 초과"
+          }
+        }
+      }
+    },
+    "attachment.failure.file_count": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 개수 초과"
+          }
+        }
+      }
+    },
+    "attachment.failure.file_too_large": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File too large"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 용량 초과"
+          }
+        }
+      }
+    },
+    "attachment.failure.source_unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source unavailable"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일을 사용할 수 없음"
+          }
+        }
+      }
+    },
+    "attachment.failure.update_required": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relay update required"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "릴레이 업데이트 필요"
+          }
+        }
+      }
+    },
+    "attachment.failure.upload": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload failed"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업로드 실패"
+          }
+        }
+      }
+    },
+    "attachment.file.button": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attach files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 첨부"
+          }
+        }
+      }
+    },
+    "attachment.file.import_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected files could not be accessed."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택한 파일에 접근할 수 없습니다."
+          }
+        }
+      }
+    },
+    "attachment.item.accessibility_status": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "attachment.item.cancelled": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelled"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소됨"
+          }
+        }
+      }
+    },
+    "attachment.item.ready": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "준비됨"
+          }
+        }
+      }
+    },
+    "attachment.item.staging": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "준비 중"
+          }
+        }
+      }
+    },
+    "attachment.item.succeeded": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploaded"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업로드됨"
+          }
+        }
+      }
+    },
+    "attachment.item.unattempted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not attempted"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시도 안 함"
+          }
+        }
+      }
+    },
+    "attachment.item.uploading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploading %1$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 업로드 중"
+          }
+        }
+      }
+    },
+    "attachment.photo.button": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attach photo from device"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "기기에서 사진 첨부"
+          }
+        }
+      }
+    },
+    "notification.test.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This should appear in Inbox and as an iOS banner while the app is in the background."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inbox에 쌓이고 앱이 백그라운드에 있을 때 iOS 배너로 표시되어야 합니다."
+          }
+        }
+      }
+    },
+    "notification.test.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux test notification"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux 테스트 알림"
+          }
+        }
+      }
+    },
+    "settings.demo.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Explore the app without a Mac or Tailscale. Demo workspaces, terminals, and notifications are preloaded. This is also the App Review evaluation path."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac이나 Tailscale 없이 앱을 둘러볼 수 있습니다. 데모 워크스페이스, 터미널, 알림이 미리 채워져 있습니다. App Review 평가 경로이기도 합니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step1.detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your iPhone and Mac must be on the same tailnet."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone과 Mac이 같은 tailnet에 있어야 합니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step1.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start cmux and Tailscale on your Mac."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 cmux와 Tailscale을 실행합니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step2.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start the relay in Terminal on your Mac."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac의 터미널에서 릴레이를 실행합니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step3.detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A physical device requires binding to 0.0.0.0:4399 or your Tailscale IP."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실기기 연결은 0.0.0.0:4399 또는 Tailscale IP 바인딩이 필요합니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step3.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Make the listen address in relay.json reachable."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "relay.json의 listen 주소에 접근할 수 있게 설정합니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step4.detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use a 100.x Tailscale IP or tailnet DNS name. The default port is 4399."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "100.x Tailscale IP 또는 tailnet DNS 이름을 사용합니다. 기본 포트는 4399입니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step4.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the host and port under Mac Connection."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac Connection에 host와 port를 입력합니다."
+          }
+        }
+      }
+    },
+    "settings.guide.step5.detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When Workspaces appear, you are connected. If not, check the relay and Tailscale on your Mac."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspaces가 표시되면 연결된 것입니다. 표시되지 않으면 Mac의 릴레이와 Tailscale 상태를 확인하세요."
+          }
+        }
+      }
+    },
+    "settings.guide.step5.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select Save & Reconnect."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save & Reconnect를 선택합니다."
+          }
+        }
+      }
+    },
+    "settings.notifications.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only events that require your input appear as iOS banners. Inbox history and badges remain available."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사용자 입력이 필요한 이벤트만 iOS 배너로 표시됩니다. Inbox 기록과 배지는 계속 유지됩니다."
+          }
+        }
+      }
+    },
+    "settings.notifications.test_description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local injection appears in Inbox immediately without waiting for cmux. An iOS banner is requested only when the setting above is enabled. The round-trip status separately verifies the relay → cmux → events.stream path."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 인젝션은 cmux 응답을 기다리지 않고 Inbox에 즉시 표시됩니다. 위 설정을 켠 경우에만 iOS 배너를 요청합니다. 라운드트립 상태는 relay → cmux → events.stream 경로를 별도로 확인합니다."
+          }
+        }
+      }
+    },
+    "settings.notifications.test_sent": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sent — arriving in Inbox shortly"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전송됨 — 곧 Inbox에 도착합니다"
+          }
+        }
+      }
+    },
+    "terminal.artifact.accessibility_summary": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, %3$@, %4$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, %3$@, %4$@"
+          }
+        }
+      }
+    },
+    "terminal.artifact.button": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show terminal files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 파일 보기"
+          }
+        }
+      }
+    },
+    "terminal.artifact.button_hint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows files whose paths are visible in the active terminal."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "활성 터미널에 경로가 표시된 파일을 보여 줍니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.byte_cap": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image exceeds the 32 MiB preview limit."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지가 32MiB 미리보기 제한을 초과했습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.corrupt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image data could not be decoded."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 데이터를 디코딩할 수 없습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.error": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The preview failed without changing the terminal."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널은 변경되지 않았으며 미리보기에 실패했습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.file_changed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file changed after it appeared in the terminal."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널에 표시된 후 파일이 변경되었습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.generic": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only file information is available for this type."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 파일 형식은 파일 정보만 제공합니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The preview is still being prepared."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미리보기를 준비하고 있습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.oversized": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image is larger than the supported preview size."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지가 지원되는 미리보기 크기보다 큽니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.pixel_cap": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image exceeds the 40 megapixel preview limit."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지가 4천만 픽셀 미리보기 제한을 초과했습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.ready": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image is ready to open."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지를 열 준비가 되었습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.stale": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh to request a new terminal-visible authorization."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 터미널 표시 접근 권한을 요청하려면 새로 고침하세요."
+          }
+        }
+      }
+    },
+    "terminal.artifact.detail.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file or relay preview method is unavailable."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 또는 릴레이 미리보기 기능을 사용할 수 없습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.generic_hint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file type cannot be previewed."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 파일 형식은 미리 볼 수 없습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.loading_thumbnail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading thumbnail"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "썸네일 불러오는 중"
+          }
+        }
+      }
+    },
+    "terminal.artifact.open_hint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the full image viewer."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전체 이미지 뷰어를 엽니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.close": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close terminal files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 파일 닫기"
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.empty": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No visible files found"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "표시된 파일이 없습니다"
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.empty_detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Print a file path in the active terminal, then refresh."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "활성 터미널에 파일 경로를 출력한 다음 새로 고침하세요."
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal files could not be loaded."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 파일을 불러올 수 없습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.list": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal file list"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 파일 목록"
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanning visible terminal output for files."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화면에 표시된 터미널 출력에서 파일을 찾고 있습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh terminal files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 파일 새로 고침"
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.subtitle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files visible in this terminal"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 터미널에 표시된 파일"
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 파일"
+          }
+        }
+      }
+    },
+    "terminal.artifact.sheet.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This relay does not provide terminal file previews."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 릴레이는 터미널 파일 미리보기를 지원하지 않습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.byte_cap": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image byte limit exceeded"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 바이트 제한 초과"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.corrupt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corrupt image"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "손상된 이미지"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.error": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview failed"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미리보기 실패"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.file_changed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File changed"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일이 변경됨"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.generic": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File only"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 정보만 제공"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "불러오는 중"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.oversized": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image too large"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 용량이 너무 큼"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.pixel_cap": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image pixel limit exceeded"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 픽셀 제한 초과"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.ready": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "준비됨"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.stale": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authorization expired"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "접근 권한 만료"
+          }
+        }
+      }
+    },
+    "terminal.artifact.state.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사용할 수 없음"
+          }
+        }
+      }
+    },
+    "terminal.artifact.thumbnail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image thumbnail"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 썸네일"
+          }
+        }
+      }
+    },
+    "terminal.artifact.viewer.cleanup_note": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viewer copies are removed when closed."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "뷰어를 닫으면 임시 사본이 삭제됩니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.viewer.close": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close image viewer"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 뷰어 닫기"
+          }
+        }
+      }
+    },
+    "terminal.artifact.viewer.corrupt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The full image could not be displayed."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전체 이미지를 표시할 수 없습니다."
+          }
+        }
+      }
+    },
+    "terminal.artifact.viewer.temp_files": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temporary viewer files"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "임시 뷰어 파일"
+          }
+        }
+      }
+    },
+    "workspace.live_input.placeholder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your input is sent immediately…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "입력 내용이 즉시 전송됩니다…"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

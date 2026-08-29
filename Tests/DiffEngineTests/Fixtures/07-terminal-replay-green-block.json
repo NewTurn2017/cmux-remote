@@ -1,0 +1,98 @@
+{
+  "before": {
+    "rev": 1,
+    "rows": ["\u001b[38;2;234;234;234;48;2;16;24;32mGREEN BLOCK\u001b[0m"],
+    "cols": 18,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "after": {
+    "rev": 2,
+    "rows": ["\u001b[38;2;234;234;234;48;2;40;50;40mGREEN BLOCK\u001b[0m"],
+    "cols": 18,
+    "cursor": {"x": 0, "y": 0}
+  },
+  "expected_ops": [
+    {
+      "op": "row",
+      "y": 0,
+      "text": "\u001b[38;2;234;234;234;48;2;40;50;40mGREEN BLOCK\u001b[0m"
+    }
+  ],
+  "columns": 18,
+  "rows": 3,
+  "seq": 27,
+  "surface_id": "surface-red",
+  "workspace_id": "workspace-red",
+  "workspace_ref": "workspace:fixture",
+  "window_ref": "window:fixture",
+  "window_id": "window-red",
+  "surface_ref": "surface:fixture",
+  "text": "GREEN BLOCK\nstyled relay RED\n",
+  "base64": "R1JFRU4gQkxPQ0sKc3R5bGVkIHJlbGF5IFJFRAo=",
+  "render_grid": {
+    "format": "cmux.render-grid.v1",
+    "surface_id": "surface-red",
+    "state_seq": 27,
+    "render_epoch": "00000000-0000-4000-8000-000000000027",
+    "render_revision": 4,
+    "columns": 18,
+    "rows": 3,
+    "cursor": {
+      "row": 2,
+      "column": 0,
+      "visible": true,
+      "blinking": false,
+      "style": 0
+    },
+    "full": true,
+    "cleared_rows": [],
+    "styles": [
+      {
+        "id": 3,
+        "foreground": "#eaeaea",
+        "background": "#283228",
+        "foreground_source": "rgb",
+        "background_source": "rgb",
+        "bold": false,
+        "faint": false,
+        "italic": false,
+        "underline": false,
+        "blink": false,
+        "inverse": false,
+        "invisible": false,
+        "strikethrough": false,
+        "overline": false
+      }
+    ],
+    "row_spans": [
+      {
+        "row": 0,
+        "column": 0,
+        "style_id": 3,
+        "text": "GREEN BLOCK",
+        "cell_width": 11
+      },
+      {
+        "row": 1,
+        "column": 0,
+        "style_id": 3,
+        "text": "styled relay RED",
+        "cell_width": 16
+      }
+    ],
+    "scrollback_spans": [],
+    "active_screen": "primary",
+    "modes": [],
+    "terminal_foreground": "#eaeaea",
+    "terminal_background": "#101820",
+    "terminal_cursor_color": "#eaeaea",
+    "terminal_theme": "tokyonight",
+    "terminal_config_theme": "tokyonight",
+    "terminal_theme_revision": 1,
+    "scrollback_rows": 0,
+    "anchor": "viewport",
+    "scrolled_rows": 0,
+    "history_rows": 0,
+    "row_space_revision": 1
+  }
+}

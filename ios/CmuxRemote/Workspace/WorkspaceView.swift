@@ -1,17 +1,17 @@
 import SwiftUI
 import UIKit
-import PhotosUI
 import SharedKit
 
 struct WorkspaceView: View {
-    private static let attachmentMaxDimension: CGFloat = 2048
-    private static let preferredAttachmentMaxBytes = 6 * 1024 * 1024
-    private static let attachmentJPEGQualities: [CGFloat] = [0.78, 0.68, 0.56]
+    private static let padKeyboardDeckClearance: CGFloat = 146
+    private static let terminalViewportStyle: WorkspaceSurroundStyle = .terminalViewport
+    private static let surroundStyle: WorkspaceSurroundStyle = .physicalBlack
 
     @Bindable var workspaceStore: WorkspaceStore
     @Bindable var surfaceStore: SurfaceStore
     @Bindable var notifStore: NotificationStore
     @Bindable var hostStatusStore: HostStatusStore
+    @Bindable var remoteFiles: RemoteFileFeatureCoordinator
     @Binding var preferredSurfaceId: String?
     let onBack: () -> Void
     @State private var showDrawer = false
@@ -28,10 +28,12 @@ struct WorkspaceView: View {
     @State private var pendingCloseSurface: Surface?
     @State private var surfaceActionInFlight = false
     @State private var surfaceActionError: String?
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var attachmentInFlight = false
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
     @FocusState private var commandFieldFocused: Bool
+
+    private var attachmentStore: AttachmentStore {
+        remoteFiles.attachments.store
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -43,7 +45,8 @@ struct WorkspaceView: View {
             let keyboardControlsActive = keyboardVisible || commandFieldFocused || liveInputFocused
             let keyboardAccessoryOffset: CGFloat = keyboardControlsActive ? -112 : 0
             let bottomObstruction = keyboardVisible ? 0 : proxy.safeAreaInsets.bottom
-            let accessoryBottomPadding: CGFloat = keyboardVisible ? keyboardAccessoryOffset + 12 : 0
+            let padKeyboardDeckVisible = keyboardHeight > 20
+                && UIDevice.current.userInterfaceIdiom == .pad
             let terminalBottomInset = max(0, accessoryHeight + keyboardAccessoryOffset + 10)
             let terminalTopInset = keyboardControlsActive
                 ? proxy.safeAreaInsets.top + 20
@@ -61,20 +64,66 @@ struct WorkspaceView: View {
                     terminalHeader
                         .padding(.horizontal, 18)
                         .padding(.top, 12)
+                        .background(Self.surroundStyle.color.ignoresSafeArea(edges: .top))
                         .readHeight($headerHeight)
                     Spacer()
                     terminalAccessory(layout: accessoryLayout)
+                        .frame(width: max(0, proxy.size.width - 32))
                         .padding(.horizontal, 16)
-                        .padding(.bottom, accessoryBottomPadding)
+                        .background(Self.surroundStyle.color.ignoresSafeArea(edges: .bottom))
                         .readHeight($accessoryHeight)
+                    if padKeyboardDeckVisible {
+                        Color.clear
+                            .frame(height: Self.padKeyboardDeckClearance)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if attachmentStore.items.isEmpty {
+                    if accessoryLayout == .padLandscape {
+                        padKeyboardAttachmentControls
+                            .padding(.top, 100)
+                            .padding(.trailing, 24)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    }
+                } else {
+                    AttachmentBatchView(store: attachmentStore)
+                        .frame(width: max(0, proxy.size.width - 32))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(
+                            .top,
+                            accessoryLayout == .padLandscape
+                                ? 100
+                                : 54
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
 
                 scrollToBottomButton
                     .padding(.trailing, 24)
-                    .padding(.bottom, bottomObstruction + keyboardAccessoryOffset + accessoryHeight + 22)
+                    .padding(
+                        .bottom,
+                        bottomObstruction + keyboardAccessoryOffset + accessoryHeight + 22
+                    )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("TerminalViewportBackground")
+                    .accessibilityValue(Self.terminalViewportStyle.rawValue)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(false)
+
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("WorkspaceSurroundBackground")
+                    .accessibilityValue(Self.surroundStyle.rawValue)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(false)
             }
-            .background(CmuxTheme.terminal.ignoresSafeArea())
+            .background(Self.surroundStyle.color.ignoresSafeArea())
         }
         .sheet(isPresented: $showDrawer) {
             WorkspaceDrawer(store: workspaceStore) { workspaceId, surfaceId in
@@ -137,16 +186,21 @@ struct WorkspaceView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardHeight = 0
         }
-        .onChange(of: selectedPhotoItem) { _, item in
-            guard let item else { return }
-            Task { await attachPhoto(item) }
+        .onChange(of: attachmentStore.isUploading) { wasUploading, isUploading in
+            guard wasUploading, !isUploading else { return }
+            synchronizeAttachmentDraft(with: attachmentStore.quotedPaths)
         }
     }
 
     private func updateKeyboardHeight(from notification: Notification) {
-        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-        let screenHeight = UIScreen.main.bounds.height
-        updateKeyboardHeight(max(0, screenHeight - frame.minY))
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+              let window = windowScene.windows.first(where: { $0.isKeyWindow })
+        else { return }
+        let keyboardOverlap = max(0, min(window.bounds.height, frame.height))
+        updateKeyboardHeight(keyboardOverlap)
     }
 
     private func updateKeyboardHeight(_ nextHeight: CGFloat) {
@@ -202,6 +256,13 @@ struct WorkspaceView: View {
                 )
 
                 HeaderSquare(systemName: "square.grid.2x2") { showDrawer = true }
+                TerminalArtifactControlSlot(
+                    remoteFiles: remoteFiles,
+                    surfaceStore: surfaceStore,
+                    connection: workspaceStore.connection,
+                    workspaceID: activeWorkspaceId,
+                    surfaceID: activeSurfaceId
+                )
             }
 
             if !commandFieldFocused, keyboardHeight <= 20, let workspace = currentWorkspace {
@@ -289,9 +350,11 @@ struct WorkspaceView: View {
                     submitButton(layout: layout)
                 }
                 inputFeedback(lineLimit: 2)
-                VStack(spacing: 4) {
-                    primaryShortcutRow
-                    secondaryShortcutRow
+                if attachmentStore.items.isEmpty {
+                    VStack(spacing: 4) {
+                        primaryShortcutRow
+                        secondaryShortcutRow
+                    }
                 }
             }
         case .padLandscape:
@@ -365,7 +428,10 @@ struct WorkspaceView: View {
                     .accessibilityLabel("Live terminal input")
 
                     if liveInputEcho.isEmpty {
-                        Text("입력하면 바로 전송됩니다…")
+                        Text(String(
+                            localized: "workspace.live_input.placeholder",
+                            defaultValue: "Your input is sent immediately…"
+                        ))
                             .cmuxMono(14)
                             .foregroundStyle(CmuxTheme.muted)
                             .lineLimit(1)
@@ -417,9 +483,9 @@ struct WorkspaceView: View {
     }
 
     private func utilityActionButtons(layout: WorkspaceAccessoryLayout) -> some View {
-        let controlSize: CGFloat = layout == .padLandscape ? 44 : 40
-        let controlHeight: CGFloat = layout == .padLandscape ? 44 : 36
-        return HStack(spacing: 8) {
+        let controlSize: CGFloat = 44
+        let controlHeight: CGFloat = 44
+        return HStack(spacing: layout == .padLandscape ? 8 : 4) {
             IconKey(systemName: "keyboard.chevron.compact.down",
                     accessibilityLabel: "Dismiss keyboard",
                     identifier: "CommandKeyboardDismissButton",
@@ -435,28 +501,50 @@ struct WorkspaceView: View {
                     identifier: "CommandPasteButton",
                     width: controlSize,
                     height: controlHeight) { pasteClipboard() }
-            PhotoAttachButton(
-                isBusy: attachmentInFlight,
-                width: controlSize,
-                height: controlHeight,
-                selection: $selectedPhotoItem
-            )
+            if layout != .padLandscape {
+                attachmentActionButtons(controlSize: controlSize, identity: "deck")
+            }
         }
+    }
+
+    private var padKeyboardAttachmentControls: some View {
+        attachmentActionButtons(controlSize: 44, identity: "pad-keyboard", usesPadKeyboardStyle: true)
+    }
+
+    private func attachmentActionButtons(
+        controlSize: CGFloat,
+        identity: String,
+        usesPadKeyboardStyle: Bool = false
+    ) -> some View {
+        WorkspaceAttachmentControls(
+            coordinator: remoteFiles.attachments,
+            hostGeneration: remoteFiles.hostGeneration,
+            isEnabled: remoteFiles.capabilities.supportsChunkUploadV2,
+            controlSize: controlSize,
+            identity: identity,
+            usesPadKeyboardStyle: usesPadKeyboardStyle,
+            onStart: { composer.clearError() },
+            onPathsChanged: synchronizeAttachmentDraft(with:),
+            onImportFailure: { composer.errorMessage = $0 },
+            onPhotoFailure: { composer.failSubmit($0) },
+            onPhotoCompleted: { commandFieldFocused = true }
+        )
     }
 
     private func submitButton(layout: WorkspaceAccessoryLayout) -> some View {
         Button { submitCommand() } label: {
-            HStack(spacing: 6) {
+            Group {
                 if composer.isSending {
-                    ProgressView().tint(CmuxTheme.canvas).scaleEffect(0.7)
+                    ProgressView()
+                        .tint(CmuxTheme.canvas)
+                        .scaleEffect(0.7)
                 } else {
-                    Text("[ ENTER ]")
-                        .cmuxDisplay(12)
+                    Image(systemName: "return")
+                        .font(.system(size: 15, weight: .bold))
                 }
             }
             .foregroundStyle(CmuxTheme.canvas)
-            .padding(.horizontal, 14)
-            .frame(height: layout == .padLandscape ? 44 : 36)
+            .frame(width: 44, height: 44)
             .background(composer.isSending ? CmuxTheme.muted : CmuxTheme.accentGreen)
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
@@ -662,62 +750,14 @@ struct WorkspaceView: View {
         }
     }
 
-    private func attachPhoto(_ item: PhotosPickerItem) async {
-        attachmentInFlight = true
-        defer {
-            attachmentInFlight = false
-            selectedPhotoItem = nil
-        }
-        do {
-            guard let rawData = try await item.loadTransferable(type: Data.self) else { return }
-            let prepared = prepareImageAttachment(rawData)
-            let uploaded = try await surfaceStore.uploadFile(
-                data: prepared.data,
-                filename: prepared.filename,
-                mimeType: prepared.mimeType
-            )
-            await MainActor.run {
-                appendPathToDraft(uploaded.path)
-                commandFieldFocused = true
-                composer.clearError()
-            }
-        } catch {
-            await MainActor.run { composer.failSubmit(error) }
-        }
-    }
-
-    private func prepareImageAttachment(_ data: Data) -> (data: Data, filename: String, mimeType: String) {
-        let timestamp = Self.attachmentTimestamp()
-        if let image = UIImage(data: data) {
-            let preparedImage = image.cmuxDownscaled(maxDimension: Self.attachmentMaxDimension)
-            var fallbackJPEG: Data?
-            for quality in Self.attachmentJPEGQualities {
-                guard let jpeg = preparedImage.jpegData(compressionQuality: quality) else { continue }
-                fallbackJPEG = jpeg
-                if jpeg.count <= Self.preferredAttachmentMaxBytes {
-                    return (jpeg, "cmux-remote-image-\(timestamp).jpg", "image/jpeg")
-                }
-            }
-            if let fallbackJPEG {
-                return (fallbackJPEG, "cmux-remote-image-\(timestamp).jpg", "image/jpeg")
-            }
-        }
-        return (data, "cmux-remote-image-\(timestamp).jpg", "image/jpeg")
-    }
-
-    private func appendPathToDraft(_ path: String) {
-        if composer.draft.isEmpty || composer.draft.hasSuffix(" ") || composer.draft.hasSuffix("\n") {
-            composer.insert(path)
-        } else {
-            composer.insert(" \(path)")
-        }
-    }
-
-    private static func attachmentTimestamp() -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter.string(from: Date())
+    private func synchronizeAttachmentDraft(with paths: [String]) {
+        guard let draft = remoteFiles.attachments.mergedDraft(
+            currentDraft: composer.draft,
+            quotedPaths: paths
+        ) else { return }
+        composer.draft = draft
+        composer.clearError()
+        commandFieldFocused = true
     }
 
 
@@ -872,6 +912,18 @@ private extension View {
                         height.wrappedValue = newValue
                     }
             }
+        }
+    }
+}
+
+private enum WorkspaceSurroundStyle: String {
+    case terminalViewport = "tokyo-night-terminal-16161e"
+    case physicalBlack = "physical-black"
+
+    var color: Color {
+        switch self {
+        case .terminalViewport: CmuxTheme.terminal
+        case .physicalBlack: .black
         }
     }
 }
@@ -1064,40 +1116,6 @@ private struct IconKey: View {
     }
 }
 
-private struct PhotoAttachButton: View {
-    let isBusy: Bool
-    var width: CGFloat = 40
-    var height: CGFloat = 36
-    @Binding var selection: PhotosPickerItem?
-
-    var body: some View {
-        PhotosPicker(selection: $selection, matching: .images) {
-            Group {
-                if isBusy {
-                    ProgressView()
-                        .tint(CmuxTheme.ink)
-                        .scaleEffect(0.65)
-                } else {
-                    Image(systemName: "photo.badge.plus")
-                        .font(.system(size: 13, weight: .bold))
-                }
-            }
-            .foregroundStyle(CmuxTheme.ink)
-            .frame(width: width, height: height)
-            .background(CmuxTheme.surfaceRaised)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(CmuxTheme.divider, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isBusy)
-        .accessibilityIdentifier("CommandPhotoAttachButton")
-        .accessibilityLabel("Attach photo from device")
-    }
-}
-
 private struct KeyButton: View {
     let label: String
     var accessibilityLabel: String?
@@ -1124,21 +1142,6 @@ private struct KeyButton: View {
         .accessibilityIdentifier(accessibilityLabel ?? label.replacingOccurrences(of: "\n", with: " "))
     }
 }
-
-private extension UIImage {
-    func cmuxDownscaled(maxDimension: CGFloat) -> UIImage {
-        let longestSide = max(size.width, size.height)
-        guard longestSide > maxDimension, longestSide > 0 else { return self }
-        let scale = maxDimension / longestSide
-        let targetSize = CGSize(width: size.width * scale, height: size.height * scale)
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        return UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
-            draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-    }
-}
-
 
 private enum TerminalInputMode: Equatable {
     case command
@@ -1187,6 +1190,8 @@ private struct CommandTextFieldView: UIViewRepresentable {
         view.smartQuotesType = .no
         view.smartInsertDeleteType = .no
         view.returnKeyType = .send
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.accessibilityIdentifier = "CommandComposerField"
         view.accessibilityLabel = "Command input"
         view.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)

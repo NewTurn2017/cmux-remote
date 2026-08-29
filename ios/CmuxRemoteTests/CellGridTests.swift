@@ -34,6 +34,33 @@ final class CellGridTests: XCTestCase {
         XCTAssertEqual(grid.renderRows[0].columns, 4)
     }
 
+    func testProducerWidthOverridesViewerWidthDisagreement() {
+        var grid = CellGrid(cols: 2, rows: 1)
+        grid.replaceRow(
+            0,
+            raw: "\u{1B}[?2026;0;1;1z☀\u{1B}[?2026;1;1;1zX"
+        )
+
+        let row = grid.renderRows[0]
+        XCTAssertEqual(row.runs.map(\.text), ["☀︎", "X"])
+        XCTAssertEqual(row.runs.map(\.startColumn), [0, 1])
+        XCTAssertEqual(row.runs.map(\.columns), [1, 1])
+        XCTAssertEqual(row.plainText, "☀X")
+        XCTAssertEqual(row.columns, 2)
+    }
+
+    func testMalformedProducerWidthFallsBackWithoutLeakingState() {
+        var grid = CellGrid(cols: 3, rows: 1)
+
+        grid.replaceRow(0, raw: "\u{1B}[?2026;0;1;2z☀X")
+        XCTAssertEqual(grid.renderRows[0].runs.map(\.startColumn), [0, 2])
+        XCTAssertEqual(grid.renderRows[0].columns, 3)
+
+        grid.replaceRow(0, raw: "☀X")
+        XCTAssertEqual(grid.renderRows[0].runs.map(\.startColumn), [0, 2])
+        XCTAssertEqual(grid.renderRows[0].columns, 3)
+    }
+
     func testMaxRenderedColumnsShrinksWhenLongestRowIsReplaced() {
         var grid = CellGrid(cols: 80, rows: 2)
         grid.replaceRow(0, raw: "long")

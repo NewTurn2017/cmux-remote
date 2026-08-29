@@ -361,7 +361,7 @@ final class StoresTests: XCTestCase {
         XCTAssertEqual(store.items.count, 1)
         XCTAssertEqual(store.items.first?.id, "n-partial")
         XCTAssertEqual(store.items.first?.workspaceId, "w1")
-        XCTAssertEqual(store.items.first?.title, "cmux 알림")
+        XCTAssertEqual(store.items.first?.title, "cmux notification")
         XCTAssertEqual(store.items.first?.body, "새 알림이 도착했습니다.")
         XCTAssertEqual(store.items.first?.threadId, "workspace-w1")
     }

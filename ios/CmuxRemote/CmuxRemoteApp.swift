@@ -9,12 +9,36 @@ struct CmuxRemoteApp: App {
     @State private var surfaceStore = SurfaceStore(rpc: OfflineRPCDispatch())
     @State private var notifStore = NotificationStore()
     @State private var hostStatusStore = HostStatusStore(rpc: OfflineRPCDispatch())
+    @State private var remoteFiles: RemoteFileFeatureCoordinator
     @State private var notifPresenter = LocalNotificationPresenter()
     @State private var bootstrapped = false
     @State private var activeRPC: RPCClient?
     @State private var splashFinished = Self.shouldSkipSplash()
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
     @AppStorage("cmux.localNotificationsEnabled") private var localNotificationsEnabled: Bool = true
+
+    init() {
+        let routingRPC = OfflineRPCDispatch()
+        let attachmentStore = AttachmentStore(rpc: routingRPC)
+        let attachments = AttachmentCoordinator(
+            store: attachmentStore,
+            photoStager: FoundationAttachmentPhotoStager()
+        )
+        let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("TerminalArtifacts", isDirectory: true)
+            ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("TerminalArtifacts", isDirectory: true)
+        let terminalArtifacts = TerminalArtifactStore(
+            rpc: routingRPC,
+            cache: TerminalArtifactCache(rootURL: cacheRoot)
+        )
+        _remoteFiles = State(initialValue: RemoteFileFeatureCoordinator(
+            routingRPC: routingRPC,
+            attachments: attachments,
+            terminalArtifacts: terminalArtifacts
+        ))
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -24,10 +48,12 @@ struct CmuxRemoteApp: App {
                     surfaceStore: surfaceStore,
                     notifStore: notifStore,
                     hostStatusStore: hostStatusStore,
+                    remoteFiles: remoteFiles,
                     onDisconnect: disconnect,
                     onReconnect: reconnect,
                     onTriggerTestNotification: triggerTestNotification
                 )
+                .modifier(TerminalArtifactDebugWidthHarness())
                 .task { await bootstrapOnce() }
                 .onOpenURL(perform: handleDeepLink(_:))
                 .onChange(of: localNotificationsEnabled) { _, enabled in
@@ -60,6 +86,7 @@ struct CmuxRemoteApp: App {
     }
 
     private static func shouldUseFakeRelay(_ info: ProcessInfo) -> Bool {
+        #if DEBUG
         // Explicit opt-out wins so a sim can still smoke a real relay.
         if info.environment["CMUX_REAL_RELAY"] == "1"
             || info.arguments.contains("--cmux-real-relay")
@@ -71,8 +98,11 @@ struct CmuxRemoteApp: App {
         {
             return true
         }
-        #if targetEnvironment(simulator) && DEBUG
+        #if targetEnvironment(simulator)
         return true
+        #else
+        return false
+        #endif
         #else
         return false
         #endif
@@ -172,24 +202,48 @@ struct CmuxRemoteApp: App {
         await ws.setOnClose { _ in
             Task {
                 await rpc.failAllPending(RPCClientError.closed)
-                await MainActor.run { liveWorkspaceStore.connection = .disconnected }
+                await handleConnectionClosed(rpc: rpc, workspaceStore: liveWorkspaceStore)
             }
         }
         await ws.setOnOpen {
-            Task {
-                let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.4"
-                let hello = HelloFrame(deviceId: deviceId, appVersion: appVersion, protocolVersion: 1)
-                if let data = try? SharedKitJSON.deterministicEncoder.encode(hello),
-                   let text = String(data: data, encoding: .utf8)
-                {
-                    await ws.send(text: text)
-                }
-                await liveSurfaceStore.resubscribe()
-            }
+            await Self.runLiveOpenSequence(
+                sendHello: {
+                    let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.4"
+                    let hello = HelloFrame(deviceId: deviceId, appVersion: appVersion, protocolVersion: 1)
+                    if let data = try? SharedKitJSON.deterministicEncoder.encode(hello),
+                       let text = String(data: data, encoding: .utf8)
+                    {
+                        await ws.send(text: text)
+                    }
+                },
+                initializeRemoteFiles: {
+                    await remoteFiles.connect(
+                        rpc: rpc,
+                        hostID: host,
+                        accountScope: deviceId
+                    )
+                },
+                resubscribeSurface: { await liveSurfaceStore.resubscribe() },
+                refreshWorkspace: { await liveWorkspaceStore.refresh() },
+                refreshHost: { await liveHostStatusStore.refreshBattery() }
+            )
         }
         await ws.connect()
-        await liveWorkspaceStore.refresh()
-        await liveHostStatusStore.refreshBattery()
+    }
+
+    @MainActor
+    static func runLiveOpenSequence(
+        sendHello: @MainActor () async -> Void,
+        initializeRemoteFiles: @MainActor () async -> Void,
+        resubscribeSurface: @MainActor () async -> Void,
+        refreshWorkspace: @MainActor () async -> Void,
+        refreshHost: @MainActor () async -> Void
+    ) async {
+        await sendHello()
+        await initializeRemoteFiles()
+        await resubscribeSurface()
+        await refreshWorkspace()
+        await refreshHost()
     }
 
     @MainActor
@@ -203,7 +257,21 @@ struct CmuxRemoteApp: App {
 
     @MainActor
     private func bootstrapDemo() async {
+        let processInfo = ProcessInfo.processInfo
+        #if DEBUG
+        let fileFeatureFixtures = processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_FIXTURES"] == "1"
+        let staleFeatureGate = fileFeatureFixtures
+            && processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_STALE_GATE"] == "1"
+        let rpc = DemoRPCDispatch(
+            fileFeatureFixturesEnabled: fileFeatureFixtures,
+            staleFeatureResponseGateEnabled: staleFeatureGate,
+            attachmentScenario: processInfo.environment["CMUX_UI_TEST_ATTACHMENT_SCENARIO"],
+            artifactScenario: processInfo.environment["CMUX_UI_TEST_ARTIFACT_SCENARIO"],
+            fileFeatureCacheNamespace: processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_CACHE_NAMESPACE"]
+        )
+        #else
         let rpc = DemoRPCDispatch()
+        #endif
         let liveWorkspaceStore = WorkspaceStore(rpc: rpc)
         let liveSurfaceStore = SurfaceStore(rpc: rpc)
         let liveHostStatusStore = HostStatusStore(rpc: rpc)
@@ -211,6 +279,30 @@ struct CmuxRemoteApp: App {
         workspaceStore = liveWorkspaceStore
         surfaceStore = liveSurfaceStore
         hostStatusStore = liveHostStatusStore
+        #if DEBUG
+        remoteFiles.configureFixtureQA(
+            state: staleFeatureGate ? "arming" : nil,
+            release: staleFeatureGate ? {
+                remoteFiles.setQAState("releasing")
+                Task { @MainActor in
+                    await rpc.releaseStaleFileFeatureResponse()
+                    remoteFiles.setQAState(DemoContent.fileFeatureQAStateReleased)
+                }
+            } : nil
+        )
+        if fileFeatureFixtures {
+            await rpc.setOnFileFeatureQAState { state in
+                await MainActor.run { remoteFiles.setQAState(state) }
+            }
+        }
+        #else
+        remoteFiles.configureFixtureQA(state: nil, release: nil)
+        #endif
+        await remoteFiles.connect(
+            rpc: rpc,
+            hostID: "demo-host",
+            accountScope: "demo-account"
+        )
 
         // When the user taps a surface chip, push a corresponding screen.full
         // so the terminal mirror lights up just like the live path would.
@@ -245,6 +337,7 @@ struct CmuxRemoteApp: App {
         hostStatusStore.reset()
         bootstrapped = false
         Task { @MainActor in
+            await remoteFiles.deactivate(purgeAccountCache: false)
             await rpc?.close()
             await bootstrapOnce()
         }
@@ -253,13 +346,26 @@ struct CmuxRemoteApp: App {
     @MainActor
     private func disconnect() {
         let rpc = activeRPC
-        Task { await rpc?.close() }
         activeRPC = nil
         try? Keychain(service: "com.genie.cmuxremote").wipe()
         workspaceStore.reset()
         surfaceStore.reset()
         hostStatusStore.reset()
         bootstrapped = false
+        Task { @MainActor in
+            await remoteFiles.deactivate(purgeAccountCache: true)
+            await rpc?.close()
+        }
+    }
+
+    @MainActor
+    private func handleConnectionClosed(
+        rpc: RPCClient,
+        workspaceStore: WorkspaceStore
+    ) async {
+        guard activeRPC === rpc else { return }
+        workspaceStore.connection = .disconnected
+        await remoteFiles.deactivate(purgeAccountCache: false)
     }
 
     private func handleDeepLink(_ url: URL) {
@@ -276,9 +382,15 @@ struct CmuxRemoteApp: App {
             id: id,
             workspaceId: workspaceId,
             surfaceId: nil,
-            title: "cmux 테스트 알림",
+            title: String(
+                localized: "notification.test.title",
+                defaultValue: "cmux test notification"
+            ),
             subtitle: "Settings → SEND TEST NOTIFICATION",
-            body: "Inbox에 쌓이고 백그라운드면 iOS 배너가 떠야 합니다.",
+            body: String(
+                localized: "notification.test.body",
+                defaultValue: "This should appear in Inbox and as an iOS banner while the app is in the background."
+            ),
             ts: Int64(Date().timeIntervalSince1970),
             threadId: "workspace-\(workspaceId)"
         )
@@ -314,117 +426,5 @@ struct CmuxRemoteApp: App {
         #else
         return false
         #endif
-    }
-}
-
-public struct TestNotificationResult: Sendable {
-    public let localBannerRequested: Bool
-    public let roundTrip: Task<Void, Error>?
-}
-
-actor OfflineRPCDispatch: RPCDispatch {
-    func call(method: String, params: JSONValue) async throws -> RPCResponse {
-        throw CmuxRemoteRPCError.rpc(code: "offline", message: "Configure Mac host in Settings")
-    }
-}
-
-actor FakeRPCDispatch: RPCDispatch {
-    private var workspaces: [(id: String, title: String)] = [("WS-FAKE", "Demo Workspace")]
-    private var surfaces: [(id: String, title: String)] = [("SF-FAKE", "shell")]
-
-    func call(method: String, params: JSONValue) async throws -> RPCResponse {
-        switch method {
-        case "workspace.list":
-            return RPCResponse(id: "fake", result: .object([
-                "workspaces": .array(workspaces.enumerated().map { index, workspace in
-                    .object([
-                        "id": .string(workspace.id),
-                        "title": .string(workspace.title),
-                        "index": .int(Int64(index)),
-                    ])
-                }),
-            ]))
-        case "workspace.create":
-            let title: String
-            if case .object(let params) = params, case .string(let value)? = params["title"] {
-                title = value
-            } else if case .object(let params) = params, case .string(let value)? = params["name"] {
-                title = value
-            } else {
-                title = "Terminal \(workspaces.count + 1)"
-            }
-            let workspaceId = "WS-FAKE-\(workspaces.count + 1)"
-            workspaces.append((workspaceId, title))
-            if surfaces.isEmpty { surfaces.append(("SF-FAKE", "shell")) }
-            return RPCResponse(id: "fake", ok: true, result: .object([
-                "workspace_id": .string(workspaceId),
-                "workspace": .object([
-                    "id": .string(workspaceId),
-                    "title": .string(title),
-                    "index": .int(Int64(workspaces.count - 1)),
-                ]),
-            ]))
-        case "workspace.rename":
-            if case .object(let params) = params,
-               case .string(let workspaceId)? = params["workspace_id"],
-               case .string(let title)? = params["title"],
-               let index = workspaces.firstIndex(where: { $0.id == workspaceId })
-            {
-                workspaces[index].title = title
-            }
-            return RPCResponse(id: "fake", ok: true, result: .object([:]))
-        case "workspace.close":
-            if case .object(let params) = params,
-               case .string(let workspaceId)? = params["workspace_id"],
-               workspaces.count > 1
-            {
-                workspaces.removeAll { $0.id == workspaceId }
-            }
-            return RPCResponse(id: "fake", ok: true, result: .object([:]))
-        case "surface.list":
-            return RPCResponse(id: "fake", result: .object([
-                "surfaces": .array(surfaces.enumerated().map { index, surface in
-                    .object([
-                        "id": .string(surface.id),
-                        "title": .string(surface.title),
-                        "index": .int(Int64(index)),
-                    ])
-                }),
-            ]))
-        case "surface.create":
-            let nextIndex = surfaces.count + 1
-            let id = "SF-FAKE-\(nextIndex)"
-            surfaces.append((id, "shell \(nextIndex)"))
-            return RPCResponse(id: "fake", result: .object(["surface_id": .string(id)]))
-        case "surface.close":
-            if case .object(let params) = params,
-               case .string(let surfaceId)? = params["surface_id"],
-               surfaces.count > 1
-            {
-                surfaces.removeAll { $0.id == surfaceId }
-            }
-            return RPCResponse(id: "fake", ok: true, result: .object([:]))
-        case "surface.subscribe", "surface.unsubscribe", "surface.send_text", "surface.send_key", "surface.focus":
-            return RPCResponse(id: "fake", ok: true, result: .object([:]))
-        case "host.battery":
-            return RPCResponse(id: "fake", ok: true, result: .object([
-                "available": .bool(true),
-                "percent": .int(88),
-                "state": .string("charged"),
-                "is_charging": .bool(true),
-                "power_source": .string("AC Power"),
-            ]))
-        case "file.upload":
-            return RPCResponse(id: "fake", ok: true, result: .object([
-                "filename": .string("demo-image.jpg"),
-                "path": .string("/Users/demo/Downloads/cmux-remote/demo-image.jpg"),
-                "bytes": .int(42),
-                "mime_type": .string("image/jpeg"),
-            ]))
-        case "surface.read_text":
-            return RPCResponse(id: "fake", result: .object(["text": .string("hello from fake relay")]))
-        default:
-            return RPCResponse(id: "fake", ok: true, result: .object([:]))
-        }
     }
 }

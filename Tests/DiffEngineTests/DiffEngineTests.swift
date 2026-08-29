@@ -1,66 +1,79 @@
-import XCTest
-import NIOCore
-import NIOEmbedded
+import Testing
 import SharedKit
 @testable import RelayCore
 
-final class DiffEngineBehaviorTests: XCTestCase {
+@Suite("DiffEngineBehaviorTests")
+struct DiffEngineBehaviorTests {
     /// Static fake reader: returns a queued sequence of snapshots in order.
     private actor StaticReader: SurfaceReader {
         var snapshots: [Screen]
-        init(_ snapshots: [Screen]) { self.snapshots = snapshots }
-        func read(workspaceId: String, surfaceId: String, lines: Int) async throws -> Screen {
-            if snapshots.isEmpty { return Screen(rev: 0, rows: [], cols: 0, cursor: .init(x: 0, y: 0)) }
+
+        init(_ snapshots: [Screen]) {
+            self.snapshots = snapshots
+        }
+
+        func read(workspaceId: String, surfaceId: String, lines: Int) -> Screen {
+            if snapshots.isEmpty {
+                return Screen(rev: 0, rows: [], cols: 0, cursor: .init(x: 0, y: 0))
+            }
             return snapshots.removeFirst()
         }
     }
 
-    /// Sendable inbox for diffs the engine emits, so the test can assert from
-    /// outside the actor without sharing mutable state across hops.
-    private actor DiffInbox {
-        var batches: [[DiffOp]] = []
-        func push(_ ops: [DiffOp]) { batches.append(ops) }
-        func snapshot() -> [[DiffOp]] { batches }
-    }
-
-    func testEmitsFullSnapshotThenDiffs() async throws {
+    @Test func emitsFullSnapshotThenDiffs() async throws {
         let reader = StaticReader([
-            Screen(rev: 1, rows: ["a","b"], cols: 1, cursor: .init(x: 0, y: 0)),
-            Screen(rev: 2, rows: ["a","B"], cols: 1, cursor: .init(x: 1, y: 1)),
+            Screen(rev: 1, rows: ["a", "b"], cols: 1, cursor: .init(x: 0, y: 0)),
+            Screen(rev: 2, rows: ["a", "B"], cols: 1, cursor: .init(x: 1, y: 1)),
         ])
-        let inbox = DiffInbox()
-        let engine = DiffEngine(reader: reader, fps: 100, idleFps: 10,
-                                workspaceId: "w", surfaceId: "s", lines: 2,
-                                clock: FakeClock())
-        await engine.setOnDiff { _, ops in
-            Task { await inbox.push(ops) }
+        let engine = DiffEngine(
+            reader: reader,
+            fps: 100,
+            idleFps: 10,
+            workspaceId: "w",
+            surfaceId: "s",
+            lines: 2,
+            clock: FakeClock()
+        )
+        try await confirmation("two diff batches after subscription", expectedCount: 2) { emitted in
+            await engine.setOnDiff { _, ops in
+                if ops.contains(.clear) {
+                    #expect(ops.contains(.row(y: 0, text: "a")))
+                    #expect(ops.contains(.row(y: 1, text: "b")))
+                } else {
+                    #expect(ops == [.row(y: 1, text: "B"), .cursor(x: 1, y: 1)])
+                }
+                emitted()
+            }
+            print("diffConsumerSubscribed=true")
+
+            try await engine.tick()
+            try await engine.tick()
+            print("diffTicksTriggeredAfterSubscription=true boundedConfirmation=true")
         }
-        try await engine.tick()
-        try await engine.tick()
-        // Drain any pending Task hops queued by setOnDiff fanout.
-        try await Task.sleep(nanoseconds: 5_000_000)
-        let emitted = await inbox.snapshot()
-        XCTAssertEqual(emitted.count, 2)
-        XCTAssertTrue(emitted[0].contains(.clear))
-        XCTAssertEqual(emitted[1], [.row(y: 1, text: "B"), .cursor(x: 1, y: 1)])
     }
 
-    func testIdleAdaptationAfterNoInput() async throws {
+    @Test func idleAdaptationAfterNoInput() async throws {
         let reader = StaticReader([
             Screen(rev: 1, rows: ["a"], cols: 1, cursor: .init(x: 0, y: 0)),
             Screen(rev: 2, rows: ["a"], cols: 1, cursor: .init(x: 0, y: 0)),
         ])
         let clock = FakeClock()
-        let engine = DiffEngine(reader: reader, fps: 30, idleFps: 5,
-                                workspaceId: "w", surfaceId: "s", lines: 1,
-                                clock: clock)
+        let engine = DiffEngine(
+            reader: reader,
+            fps: 30,
+            idleFps: 5,
+            workspaceId: "w",
+            surfaceId: "s",
+            lines: 1,
+            clock: clock
+        )
+
         try await engine.tick()
-        clock.advance(by: 2.0)              // > 1.5s of no input
+        clock.advance(by: 2.0)
         try await engine.tick()
-        let fpsAfterIdle = await engine.currentFps
-        XCTAssertEqual(fpsAfterIdle, 5)
+        #expect(await engine.currentFps == 5)
+
         await engine.noteUserInput()
-        let fpsAfterInput = await engine.currentFps
-        XCTAssertEqual(fpsAfterInput, 30)
+        #expect(await engine.currentFps == 30)
     }
 }
