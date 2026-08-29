@@ -11,7 +11,9 @@
   "metadata": {
     "path": "docs/launch-assets/asc-metadata.md",
     "verified": true,
-    "verified_at": "2026-07-23",
+    "verified_at": "2026-08-02",
+    "release_copy_path": "docs/launch-assets/release-notes/1.0.9.md",
+    "rejection_review": "Guideline 5.2.5 wording audit passed; ASC-facing 1.0.9 copy uses device-neutral product language",
     "included_changes": [
       "LIVE terminal input",
       "Korean/Hangul IME protection",
@@ -23,7 +25,7 @@
       "command composer smart punctuation fix (#4)",
       "native iPad landscape layout and full-width terminal",
       "compact iPad command deck with 44-point controls",
-      "five refreshed App Store screenshots"
+      "five refreshed phone screenshots and three native tablet screenshots"
     ]
   },
   "screenshots": {
@@ -34,7 +36,17 @@
       "docs/launch-assets/screenshots/app-store-6.9/04-inbox-notifications.png",
       "docs/launch-assets/screenshots/app-store-6.9/05-settings-connection-guide.png"
     ],
-    "dimensions": "1320x2868",
+    "ipad_13": [
+      "docs/launch-assets/screenshots/app-store-ipad-13/01-ipad-terminal.png",
+      "docs/launch-assets/screenshots/app-store-ipad-13/02-ipad-workspaces.png",
+      "docs/launch-assets/screenshots/app-store-ipad-13/03-ipad-settings.png"
+    ],
+    "dimensions": {
+      "6.9": "1320x2868",
+      "ipad_13": "2752x2064"
+    },
+    "ipad_13_capture_test": "SmokeUITests.testIPadAppStoreScreenshots",
+    "ipad_13_captured_at": "2026-08-02T21:06:32+09:00",
     "verified": true
   },
   "build_upload": {
@@ -59,7 +71,7 @@
     "delivery_uuid": "5410a08a-6efe-4cab-89bb-a87ebcd178da"
   },
   "asc_input": {
-    "version_record_1_0_8_created": false,
+    "version_record_1_0_9_created": false,
     "screenshots": false,
     "metadata_en": false,
     "metadata_ko": false,
