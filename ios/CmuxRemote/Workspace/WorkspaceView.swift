@@ -44,7 +44,6 @@ struct WorkspaceView: View {
             let keyboardVisible = keyboardHeight > proxy.safeAreaInsets.bottom + 20
             let keyboardControlsActive = keyboardVisible || commandFieldFocused || liveInputFocused
             let keyboardAccessoryOffset: CGFloat = keyboardControlsActive ? -112 : 0
-            let bottomObstruction = keyboardVisible ? 0 : proxy.safeAreaInsets.bottom
             let padKeyboardDeckVisible = keyboardHeight > 20
                 && UIDevice.current.userInterfaceIdiom == .pad
             let terminalBottomInset = max(0, accessoryHeight + keyboardAccessoryOffset + 10)
@@ -79,14 +78,7 @@ struct WorkspaceView: View {
                     }
                 }
 
-                if attachmentStore.items.isEmpty {
-                    if accessoryLayout == .padLandscape {
-                        padKeyboardAttachmentControls
-                            .padding(.top, 100)
-                            .padding(.trailing, 24)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    }
-                } else {
+                if !attachmentStore.items.isEmpty {
                     AttachmentBatchView(store: attachmentStore)
                         .frame(width: max(0, proxy.size.width - 32))
                         .fixedSize(horizontal: false, vertical: true)
@@ -98,14 +90,6 @@ struct WorkspaceView: View {
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
-
-                scrollToBottomButton
-                    .padding(.trailing, 24)
-                    .padding(
-                        .bottom,
-                        bottomObstruction + keyboardAccessoryOffset + accessoryHeight + 22
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
 
                 Color.clear
                     .frame(width: 1, height: 1)
@@ -303,24 +287,15 @@ struct WorkspaceView: View {
     }
 
     private var scrollToBottomButton: some View {
-        Button {
+        IconKey(
+            systemName: "arrow.down.to.line",
+            accessibilityLabel: "Scroll terminal to bottom",
+            identifier: "TerminalScrollToBottomButton",
+            width: 44,
+            height: 44
+        ) {
             scrollToBottomRequest &+= 1
-        } label: {
-            Image(systemName: "arrow.down.to.line")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(CmuxTheme.ink)
-                .frame(width: 40, height: 40)
-                .background(CmuxTheme.surfaceRaised)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(CmuxTheme.divider, lineWidth: 1)
-                )
-                .shadow(color: CmuxTheme.hardShadow, radius: 12, x: 0, y: 6)
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("TerminalScrollToBottomButton")
-        .accessibilityLabel("Scroll terminal to bottom")
     }
 
     private func terminalAccessory(layout: WorkspaceAccessoryLayout) -> some View {
@@ -344,9 +319,10 @@ struct WorkspaceView: View {
         case .stacked:
             VStack(spacing: 10) {
                 composerInput(layout: layout)
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     utilityActionButtons(layout: layout)
-                    Spacer(minLength: 4)
+                    attachmentActionButtons(controlSize: 44, identity: "deck")
+                    scrollToBottomButton
                     submitButton(layout: layout)
                 }
                 inputFeedback(lineLimit: 2)
@@ -362,6 +338,8 @@ struct WorkspaceView: View {
                 HStack(spacing: 8) {
                     composerInput(layout: layout)
                     utilityActionButtons(layout: layout)
+                    attachmentActionButtons(controlSize: 44, identity: "pad-landscape")
+                    scrollToBottomButton
                     submitButton(layout: layout)
                 }
                 HStack(spacing: 8) {
@@ -501,14 +479,7 @@ struct WorkspaceView: View {
                     identifier: "CommandPasteButton",
                     width: controlSize,
                     height: controlHeight) { pasteClipboard() }
-            if layout != .padLandscape {
-                attachmentActionButtons(controlSize: controlSize, identity: "deck")
-            }
         }
-    }
-
-    private var padKeyboardAttachmentControls: some View {
-        attachmentActionButtons(controlSize: 44, identity: "pad-keyboard", usesPadKeyboardStyle: true)
     }
 
     private func attachmentActionButtons(
