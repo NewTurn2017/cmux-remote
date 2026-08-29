@@ -69,6 +69,64 @@ final class SmokeUITests: XCTestCase {
         add(screenshot)
     }
 
+    func testOpaqueBlackTerminalViewportVisualContract() throws {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            addTeardownBlock {
+                XCUIDevice.shared.orientation = .portrait
+            }
+            XCUIDevice.shared.orientation = .landscapeLeft
+        }
+        let app = launchFakeRelayApp()
+
+        let workspace = primaryWorkspaceButton(in: app)
+        XCTAssertTrue(workspace.waitForExistence(timeout: 5))
+        workspace.tap()
+
+        let viewport = app.scrollViews["TerminalViewport"]
+        let background = app.otherElements["TerminalCanvasBackground"]
+        XCTAssertTrue(viewport.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(background.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(background.value as? String, "opaque-black")
+
+        let submit = app.buttons["CommandSubmitButton"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertLessThanOrEqual(submit.frame.width, 46, app.debugDescription)
+        XCTAssertLessThanOrEqual(submit.frame.height, 46, app.debugDescription)
+        recordScreenshot(named: UIDevice.current.userInterfaceIdiom == .pad
+            ? "opaque-black-terminal-ipad-m5"
+            : "opaque-black-terminal-iphone-17-pro")
+    }
+
+    func testIPadAppStoreScreenshots() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("iPad-only App Store screenshots")
+        }
+        addTeardownBlock {
+            XCUIDevice.shared.orientation = .portrait
+        }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launchFakeRelayApp()
+
+        XCTAssertTrue(app.buttons["Workspaces"].waitForExistence(timeout: 5))
+        recordScreenshot(named: "02-ipad-workspaces")
+
+        let workspace = primaryWorkspaceButton(in: app)
+        XCTAssertTrue(workspace.waitForExistence(timeout: 5))
+        workspace.tap()
+        XCTAssertTrue(app.scrollViews["TerminalViewport"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["TerminalAccessoryPanel"].waitForExistence(timeout: 5))
+        recordScreenshot(named: "01-ipad-terminal")
+
+        let backButton = app.buttons["WorkspaceBackButton"]
+        XCTAssertTrue(backButton.waitForExistence(timeout: 5))
+        backButton.tap()
+        let settingsTab = app.buttons["Settings"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 5))
+        settingsTab.tap()
+        XCTAssertTrue(app.staticTexts["settings"].waitForExistence(timeout: 5))
+        recordScreenshot(named: "03-ipad-settings")
+    }
+
     func testTabsExistAfterConnect() throws {
         let app = launchFakeRelayApp()
         XCTAssertTrue(app.buttons["Workspaces"].waitForExistence(timeout: 5))
@@ -293,6 +351,13 @@ final class SmokeUITests: XCTestCase {
         app.launchArguments.append("NO")
         app.launch()
         return app
+    }
+
+    private func recordScreenshot(named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func primaryWorkspaceButton(in app: XCUIApplication) -> XCUIElement {

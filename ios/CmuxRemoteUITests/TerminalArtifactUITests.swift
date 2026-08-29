@@ -261,7 +261,9 @@ final class TerminalArtifactUITests: XCTestCase {
     }
 
     func testLiveRelayAttachmentAndArtifactMatrix() throws {
-        guard ProcessInfo.processInfo.environment["CMUX_UI_TEST_LIVE_RELAY"] == "1" else {
+        let runnerEnvironment = ProcessInfo.processInfo.environment
+        let isSimulator = runnerEnvironment["SIMULATOR_UDID"] != nil
+        guard !isSimulator || runnerEnvironment["CMUX_UI_TEST_LIVE_RELAY"] == "1" else {
             let receipt = XCTAttachment(string: "NON_LIVE_GATE_NO_OP: live relay behavior was not executed")
             receipt.name = "terminal-artifact-live-gate-no-op"
             receipt.lifetime = .keepAlways
@@ -341,12 +343,10 @@ final class TerminalArtifactUITests: XCTestCase {
             app.launchEnvironment["CMUX_UI_TEST_FILE_FEATURE_STALE_GATE"] = "1"
         } else {
             let runnerEnvironment = ProcessInfo.processInfo.environment
-            if let host = runnerEnvironment["CMUX_HOST"], !host.isEmpty {
-                app.launchEnvironment["CMUX_HOST"] = host
-            }
-            if let port = runnerEnvironment["CMUX_PORT"], !port.isEmpty {
-                app.launchEnvironment["CMUX_PORT"] = port
-            }
+            app.launchEnvironment["CMUX_HOST"] = runnerEnvironment["CMUX_HOST"]
+                .flatMap { $0.isEmpty ? nil : $0 } ?? "100.115.102.6"
+            app.launchEnvironment["CMUX_PORT"] = runnerEnvironment["CMUX_PORT"]
+                .flatMap { $0.isEmpty ? nil : $0 } ?? "4399"
             app.launchEnvironment["CMUX_REAL_RELAY"] = "1"
         }
         app.launchEnvironment["CMUX_SKIP_SPLASH"] = "1"
@@ -391,7 +391,9 @@ final class TerminalArtifactUITests: XCTestCase {
     }
 
     private func openFirstAvailableWorkspace(in app: XCUIApplication) {
-        let workspace = app.buttons.firstMatch
+        let workspace = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "WorkspaceCard-")
+        ).firstMatch
         waitFor(workspace, predicate: "exists == true AND hittable == true", timeout: 30, in: app)
         workspace.tap()
         waitFor(app.otherElements["TerminalAccessoryPanel"], predicate: "exists == true", timeout: 30, in: app)

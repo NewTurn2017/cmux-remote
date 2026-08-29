@@ -310,6 +310,7 @@ private struct WorkspaceCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("WorkspaceCard-\(workspace.id)")
             .accessibilityLabel(workspace.name)
 
             WorkspaceCardIconButton(
