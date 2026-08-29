@@ -270,6 +270,15 @@ public actor CMUXClient {
         if let resp = try? JSONDecoder().decode(RPCResponse.self, from: data) {
             if let cont = self.pending.removeValue(forKey: resp.id) {
                 cont.resume(returning: resp)
+            } else if let error = resp.error {
+                // No pending continuation to carry this back to, which is the
+                // normal shape for a failed fire-and-forget `send` (the
+                // `events.stream` subscribe). Dropping it silently hides real
+                // faults: a cmux in password mode with no password configured
+                // answers the subscribe with `auth_required`, and the only
+                // visible symptom is the supervisor logging `attached` and then
+                // `detached` on a ~30 s loop. Surface it instead.
+                logger.warning("unmatched error response for \(resp.id): \(error.code): \(error.message)")
             }
             return
         }

@@ -403,8 +403,11 @@ convention first: the fixed `/tmp/cmux-last-socket-path`, then
 back to `~/.local/state/cmux/cmux.sock`. This keeps the relay from being pinned
 to a stale socket when cmux rotates its socket name (e.g. `cmux-501.sock`) or an
 update moves it from `~/Library/Application Support/cmux` to
-`~/.local/state/cmux`. Only set `CMUX_SOCKET_PATH=/path/to/socket` when you
-deliberately need a fixed socket.
+`~/.local/state/cmux`. Only pass `./scripts/install-launchd.sh --socket
+/path/to/socket` when you deliberately need a fixed socket. The installer
+ignores an ambient `CMUX_SOCKET_PATH`, because cmux exports that variable into
+every process it starts and installing from a cmux terminal would otherwise pin
+the relay to whatever socket happened to be live at install time.
 
 > **APNs push (`apns` block).** Add an `apns` block to `relay.json` and
 > cmux notifications are delivered over APNs, reaching the app even when
@@ -484,7 +487,8 @@ Per-log fixes:
   its socket name, or an update moved it to `~/.local/state/cmux`). A current
   relay tracks the markers automatically, so re-running
   `./scripts/install-launchd.sh` fixes it. In a pinch, pin the path from
-  `cat /tmp/cmux-last-socket-path` via `CMUX_SOCKET_PATH`.
+  the current marker with
+  `./scripts/install-launchd.sh --socket "$(cat /tmp/cmux-last-socket-path)"`.
 - Health check OK but only the app can't attach — **network/address
   issue.** Confirm the iPhone and Mac share a Tailnet, the app's
   address/port (`4399`) is correct, and the device token wasn't revoked

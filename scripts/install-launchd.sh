@@ -13,17 +13,40 @@ DRY_RUN=0
 
 usage() {
   cat <<USAGE
-Usage: scripts/install-launchd.sh [--dry-run]
+Usage: scripts/install-launchd.sh [--dry-run] [--socket <path>]
 
 Options:
-  --dry-run   Print resolved paths and rendered plist without building,
-              copying, writing LaunchAgents, or invoking launchctl.
+  --dry-run        Print resolved paths and rendered plist without building,
+                   copying, writing LaunchAgents, or invoking launchctl.
+  --socket <path>  Pin cmux-relay to a fixed socket path. Omit to let the
+                   relay discover the live cmux socket at runtime.
 USAGE
 }
+
+socket_path_error() {
+  echo "--socket requires a path" >&2
+  usage >&2
+  exit 2
+}
+
+PIN_SOCKET=""
+PIN_SOCKET_SET=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --socket)
+      [ "$#" -ge 2 ] || socket_path_error
+      case "$2" in
+        ""|-*) socket_path_error ;;
+      esac
+      PIN_SOCKET="$2"; PIN_SOCKET_SET=1; shift ;;
+    --socket=*)
+      PIN_SOCKET="${1#--socket=}"
+      case "$PIN_SOCKET" in
+        ""|-*) socket_path_error ;;
+      esac
+      PIN_SOCKET_SET=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -37,12 +60,20 @@ BIN_SRC="$ROOT/.build/release/cmux-relay"
 BIN_DEST="$DEST/bin/cmux-relay"
 CONFIG="${CMUX_RELAY_CONFIG:-$DEST/relay.json}"
 LOGDIR="${CMUX_RELAY_LOGDIR:-$DEST/log}"
-# Leave CMUX_SOCKET_PATH empty by default so cmux-relay discovers the live cmux
+# Leave the socket empty by default so cmux-relay discovers the live cmux
 # socket at runtime: it follows cmux's last-socket-path markers (the fixed
 # /tmp/cmux-last-socket-path, then ~/.local/state/cmux, then the legacy
 # ~/Library/Application Support/cmux) and falls back to ~/.local/state/cmux/cmux.sock.
-# Set CMUX_SOCKET_PATH explicitly only when the operator wants to pin a fixed socket.
-SOCKET="${CMUX_SOCKET_PATH:-}"
+#
+# Pinning is opt-in through --socket. It deliberately does NOT read an ambient
+# CMUX_SOCKET_PATH: cmux exports that variable into every process it starts, so
+# installing from a cmux terminal — the normal case for this project — would
+# silently bake the current socket into the plist and leave the relay pinned to
+# a dead path the next time cmux rotates it.
+SOCKET=""
+if [ "$PIN_SOCKET_SET" -eq 1 ]; then
+  SOCKET="$PIN_SOCKET"
+fi
 DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
 # launchd starts agents with a stripped PATH; tailscale CLI on macOS lives in
 # /usr/local/bin (pkg install), /opt/homebrew/bin (brew), or the Tailscale.app
@@ -55,6 +86,12 @@ SERVICE="$TARGET/$LABEL"
 
 note() { printf '[install-launchd] %s\n' "$*"; }
 fail() { printf '[install-launchd] ERROR: %s\n' "$*" >&2; exit 1; }
+
+if [ "$PIN_SOCKET_SET" -eq 0 ] && [ -n "${CMUX_SOCKET_PATH:-}" ]; then
+  note "ignoring ambient CMUX_SOCKET_PATH=$CMUX_SOCKET_PATH"
+  note "  (cmux exports it to processes it starts; pinning would break on socket rotation)"
+  note "  pass --socket '$CMUX_SOCKET_PATH' if you really want to pin it"
+fi
 
 sed_escape() {
   # Escape replacement text for sed's s||| delimiter.
