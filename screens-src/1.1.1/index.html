@@ -768,6 +768,76 @@
       font-family: Departure, monospace;
       font-size: 19px;
     }
+    .settings-description {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.48;
+    }
+    .settings-action {
+      height: 64px;
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      color: var(--canvas);
+      background: var(--blue);
+      font-family: Departure, monospace;
+      font-size: 19px;
+    }
+    .settings-label {
+      margin-top: 20px;
+      color: var(--muted);
+      font-family: Departure, monospace;
+      font-size: 16px;
+      letter-spacing: 1px;
+    }
+    .connection-state {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+    .toggle-row {
+      margin-top: 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+    }
+    .toggle-copy { min-width: 0; flex: 1; }
+    .toggle-title {
+      color: var(--ink);
+      font-family: Departure, monospace;
+      font-size: 17px;
+      letter-spacing: 1px;
+    }
+    .toggle-description {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.45;
+    }
+    .toggle {
+      width: 78px;
+      height: 44px;
+      padding: 4px;
+      flex: none;
+      border-radius: 24px;
+      background: var(--green);
+    }
+    .toggle::after {
+      content: "";
+      display: block;
+      width: 36px;
+      height: 36px;
+      margin-left: 34px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 4px 10px rgba(0,0,0,.35);
+    }
 
     .float-card, .float-pill-row {
       position: absolute;
@@ -1143,19 +1213,51 @@
 
     function settingsScreen() {
       const ko = locale === "ko";
+      const s = ko ? {
+        step1Title: "Mac에서 cmux와 Tailscale을 실행합니다.",
+        step1Detail: "iPhone과 Mac이 같은 tailnet에 있어야 합니다.",
+        step2Title: "Mac의 터미널에서 릴레이를 실행합니다.",
+        step2Detail: "swift run cmux-relay serve --config ~/.cmuxremote/relay.json",
+        step3Title: "relay.json의 listen 주소에 접근할 수 있게 설정합니다.",
+        step3Detail: "실기기 연결은 0.0.0.0:4399 또는 Tailscale IP 바인딩이 필요합니다.",
+        demo: "Mac이나 Tailscale 없이 앱을 둘러볼 수 있습니다. 데모 워크스페이스, 터미널, 알림이 미리 채워져 있습니다. App Review 평가 경로이기도 합니다.",
+        notifications: "사용자 입력이 필요한 이벤트만 iOS 배너로 표시됩니다. Inbox 기록과 배지는 계속 유지됩니다."
+      } : {
+        step1Title: "Start cmux and Tailscale on your Mac.",
+        step1Detail: "Your iPhone and Mac must be on the same tailnet.",
+        step2Title: "Start the relay in Terminal on your Mac.",
+        step2Detail: "swift run cmux-relay serve --config ~/.cmuxremote/relay.json",
+        step3Title: "Make the listen address in relay.json reachable.",
+        step3Detail: "A physical device requires binding to 0.0.0.0:4399 or your Tailscale IP.",
+        demo: "Explore the app without a Mac or Tailscale. Demo workspaces, terminals, and notifications are preloaded. This is also the App Review evaluation path.",
+        notifications: "Only events that require your input appear as iOS banners. Inbox history and badges remain available."
+      };
       return `${statusBar()}<div class="settings-screen">
         <div class="settings-title">settings</div>
         <div class="settings-card">
-          <div class="settings-rule">════ ${ko ? "PRIVATE CONNECTION" : "PRIVATE CONNECTION"} ════</div>
-          <div class="guide-step"><div class="step-index">01</div><div class="step-copy"><h4>${ko ? "Mac에서 cmux와 Tailscale을 켭니다." : "Run cmux and Tailscale on your Mac."}</h4><p>${ko ? "두 기기는 같은 tailnet 안에서만 통신합니다." : "Both devices communicate inside your own tailnet."}</p></div></div>
-          <div class="guide-step"><div class="step-index">02</div><div class="step-copy"><h4>${ko ? "개인 릴레이에 연결합니다." : "Connect to your private relay."}</h4><p>${ko ? "외부 relay나 개발자 서버를 거치지 않습니다." : "No developer-operated or third-party relay is involved."}</p></div></div>
+          <div class="settings-rule">════ TUTORIAL ════</div>
+          <div class="guide-step"><div class="step-index">01</div><div class="step-copy"><h4>${s.step1Title}</h4><p>${s.step1Detail}</p></div></div>
+          <div class="guide-step"><div class="step-index">02</div><div class="step-copy"><h4>${s.step2Title}</h4><p>${s.step2Detail}</p></div></div>
+          <div class="guide-step"><div class="step-index">03</div><div class="step-copy"><h4>${s.step3Title}</h4><p>${s.step3Detail}</p></div></div>
+        </div>
+        <div class="settings-card">
+          <div class="settings-rule">════ DEMO MODE ════</div>
+          <div class="settings-description">${s.demo}</div>
+          <div class="settings-action">[ TRY DEMO MODE ]</div>
+        </div>
+        <div class="settings-card">
+          <div class="settings-rule">════ MAC CONNECTION ════</div>
+          <div class="settings-label">HOST</div>
           <div class="connect-field">macbook-pro.tailnet.ts.net</div>
+          <div class="connection-state"><span class="online"></span>connected</div>
           <div class="connect-button">[ SAVE &amp; RECONNECT ]</div>
         </div>
         <div class="settings-card">
-          <div class="settings-rule">════ PRIVACY ════</div>
-          <div class="guide-step"><div class="step-index">✓</div><div class="step-copy"><h4>${ko ? "분석 도구 없음" : "No analytics"}</h4><p>${ko ? "터미널 내용과 업로드 파일은 사용자 네트워크를 벗어나지 않습니다." : "Terminal content and uploads stay on your own network."}</p></div></div>
-          <div class="guide-step"><div class="step-index">✓</div><div class="step-copy"><h4>${ko ? "광고와 추적 없음" : "No ads or tracking"}</h4><p>${ko ? "연결 토큰은 iOS Keychain에만 저장됩니다." : "Connection tokens are stored only in the iOS Keychain."}</p></div></div>
+          <div class="settings-rule">════ NOTIFICATIONS ════</div>
+          <div class="toggle-row">
+            <div class="toggle-copy"><div class="toggle-title">LOCAL IOS NOTIFICATIONS</div><div class="toggle-description">${s.notifications}</div></div>
+            <div class="toggle"></div>
+          </div>
         </div>
       </div>`;
     }
