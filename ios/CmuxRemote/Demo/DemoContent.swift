@@ -42,6 +42,23 @@ enum DemoContent {
 
     static let workspaces: [DemoWorkspace] = [
         DemoWorkspace(
+            id: "WS-DEMO-SELECTION",
+            title: String(
+                localized: "demo.selection.workspace.title",
+                defaultValue: "Selection Lab"
+            ),
+            surfaces: [
+                DemoSurface(
+                    id: "SF-DEMO-SELECTION",
+                    title: String(
+                        localized: "demo.selection.surface.title",
+                        defaultValue: "Truecolor Copy"
+                    ),
+                    screen: terminalSelectionFixture
+                ),
+            ]
+        ),
+        DemoWorkspace(
             id: "WS-DEMO-1",
             title: "agent-lab",
             surfaces: [
@@ -106,7 +123,7 @@ enum DemoContent {
     static func screenFull(for surfaceId: String) -> ScreenFull? {
         guard let surface = surface(for: surfaceId) else { return nil }
         let rows = surface.screen
-        let cols = rows.map(\.count).max() ?? 80
+        let cols = rows.map(terminalColumns(in:)).max() ?? 80
         return ScreenFull(
             surfaceId: surfaceId,
             rev: 1,
@@ -154,6 +171,76 @@ enum DemoContent {
     }
 
     // MARK: - Screen content
+
+    /// Stable ANSI surface used by Demo Mode and end-to-end interaction checks.
+    /// The exact three-line copy target is initially visible; lower rows exist
+    /// only to exercise terminal-owned vertical and horizontal scrolling.
+    private static let terminalSelectionFixture: [String] = {
+        let reset = "\u{1B}[0m"
+        let greenBackground = "48;2;40;50;40"
+        let scrollRow = String(
+            localized: "demo.selection.terminal.scrollRow",
+            defaultValue: "render pass %02d · scroll lane"
+        )
+        var rows = (0..<72).map { index in
+            String(format: scrollRow, index)
+        }
+
+        rows[0] = String(
+            localized: "demo.selection.terminal.command",
+            defaultValue: "$ cmux palette --selection"
+        )
+        rows[1] = String(
+            localized: "demo.selection.terminal.subtitle",
+            defaultValue: "Truecolor, Unicode, and copy"
+        )
+        rows[2] = ""
+        rows[3] = "\u{1B}[1;38;2;241;242;248;\(greenBackground)mBOLD TRUECOLOR\(reset)"
+        rows[4] = "\u{1B}[4;38;2;158;206;106;48;2;53;47;68mUNDERLINE OLIVE\(reset)"
+        rows[5] = "\u{1B}[48;2;40;50;40m                \(reset)"
+        rows[6] = "e\u{301} · 한글界"
+        rows[7] = "left  middle  right   "
+        rows[8] = ""
+        rows[9] = String(
+            localized: "demo.selection.terminal.scrollHint",
+            defaultValue: "Scroll lanes continue below"
+        )
+        rows[10] = ""
+        rows[11] = ""
+
+        let wideRule = String(repeating: "0123456789", count: 15)
+        let wideRow = String(
+            localized: "demo.selection.terminal.wideRow",
+            defaultValue: "wide canvas %02d · %@"
+        )
+        for index in 36...56 {
+            rows[index] = String(format: wideRow, index, wideRule)
+        }
+
+        rows[57] = String(
+            localized: "demo.selection.terminal.complete",
+            defaultValue: "Palette inspection complete"
+        )
+        rows[60] = "e\u{301} · 한글界"
+        rows[61] = "\u{1B}[48;2;40;50;40m                \(reset)"
+        rows[62] = "left  middle  right   "
+        rows[63] = ""
+        rows[64] = "e\u{301} · 한글界"
+        rows[65] = "\u{1B}[48;2;40;50;40m                \(reset)"
+        rows[66] = "left  middle  right   "
+        rows[67] = ""
+        rows[68] = "\u{1B}[1;38;2;125;207;255;\(greenBackground)m ┌ TRUECOLOR COPY FIXTURE ┐ \(reset)"
+        rows[69] = "\u{1B}[38;2;125;207;255;\(greenBackground)mCOPY A  \(reset)"
+        rows[70] = "\u{1B}[38;2;255;158;100;\(greenBackground)m한글界\(reset)"
+        rows[71] = "\u{1B}[38;2;26;188;156;\(greenBackground)mCOPY B  \(reset)"
+        return rows
+    }()
+
+    private static func terminalColumns(in row: String) -> Int {
+        ANSIParser.parse(row, base: .default).reduce(into: 0) { columns, cell in
+            columns += TerminalCellWidth.columns(for: cell.character)
+        }
+    }
 
     private static let claudeCodeAgentLab: [String] = [
         "$ claude code",

@@ -1377,6 +1377,230 @@
         }
       }
     },
+    "demo.selection.surface.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Truecolor Copy"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트루컬러 복사"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.command": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "$ cmux palette --selection"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "$ cmux palette --selection"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.complete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Palette inspection complete"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "팔레트 확인 완료"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.scrollHint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scroll lanes continue below"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아래에 스크롤 영역이 이어집니다"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.scrollRow": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "render pass %02d · scroll lane"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "렌더 패스 %02d · 스크롤 영역"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.subtitle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Truecolor, Unicode, and copy"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트루컬러, 유니코드, 복사"
+          }
+        }
+      }
+    },
+    "demo.selection.terminal.wideRow": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "wide canvas %02d · %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "넓은 캔버스 %02d · %@"
+          }
+        }
+      }
+    },
+    "demo.selection.workspace.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection Lab"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택 실험실"
+          }
+        }
+      }
+    },
+    "terminal.selection.cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel terminal selection"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 선택 취소"
+          }
+        }
+      }
+    },
+    "terminal.selection.copy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy terminal selection"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택한 터미널 텍스트 복사"
+          }
+        }
+      }
+    },
+    "terminal.selection.output": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal output"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 출력"
+          }
+        }
+      }
+    },
+    "terminal.selection.select_all": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select all terminal text"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 텍스트 전체 선택"
+          }
+        }
+      }
+    },
+    "terminal.selection.summary": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld characters selected across %2$lld lines"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld줄에서 %1$lld자 선택됨"
+          }
+        }
+      }
+    },
+    "terminal.selection.viewport_background": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal viewport background"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 화면 배경"
+          }
+        }
+      }
+    },
     "workspace.live_input.placeholder": {
       "localizations": {
         "en": {

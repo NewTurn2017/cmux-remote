@@ -38,6 +38,12 @@ enum CmuxTheme {
     // still override per-cell, so red/blue/yellow remain visible.
     static let terminalText     = hex(0xF1F2F8)
 
+    // Terminal selection remains legible across ANSI backgrounds through a
+    // translucent semantic fill plus a high-contrast, non-color outline.
+    static let terminalSelectionFill = accentBlue.opacity(0.38)
+    static let terminalSelectionOutline = terminalText.opacity(0.92)
+    static let terminalSelectionControl = accentBlue
+
     // Legacy aliases used by older view code
     static let card             = surface
     static let glass            = surface.opacity(0.92)

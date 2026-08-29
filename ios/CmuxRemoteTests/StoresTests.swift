@@ -209,6 +209,57 @@ final class StoresTests: XCTestCase {
         })
     }
 
+    func testSurfaceStoreSameGeometryFullRefreshPreservesSelectionEpoch() {
+        let surfaceStore = SurfaceStore(rpc: StubRPCDispatch())
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 1,
+            rows: ["old", ""],
+            cols: 12,
+            rowsCount: 2,
+            cursor: CursorPos(x: 0, y: 0)
+        )))
+        let selectionEpochID = surfaceStore.grid.selectionEpochID
+
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 2,
+            rows: ["new", "content"],
+            cols: 12,
+            rowsCount: 2,
+            cursor: CursorPos(x: 3, y: 1)
+        )))
+
+        XCTAssertEqual(surfaceStore.grid.selectionEpochID, selectionEpochID)
+        XCTAssertEqual(surfaceStore.grid.rawRows, ["new", "content"])
+        XCTAssertEqual(surfaceStore.grid.cursor, CursorPos(x: 3, y: 1))
+        XCTAssertEqual(surfaceStore.rev, 2)
+    }
+
+    func testSurfaceStoreGeometryChangingFullRefreshAdvancesSelectionEpoch() {
+        let surfaceStore = SurfaceStore(rpc: StubRPCDispatch())
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 1,
+            rows: ["old", ""],
+            cols: 12,
+            rowsCount: 2,
+            cursor: CursorPos(x: 0, y: 0)
+        )))
+        let selectionEpochID = surfaceStore.grid.selectionEpochID
+
+        surfaceStore.ingest(.screenFull(ScreenFull(
+            surfaceId: "s1",
+            rev: 2,
+            rows: ["new", "content", "row"],
+            cols: 16,
+            rowsCount: 3,
+            cursor: CursorPos(x: 3, y: 2)
+        )))
+
+        XCTAssertNotEqual(surfaceStore.grid.selectionEpochID, selectionEpochID)
+    }
+
     func testSurfaceStoreSendsTextAndKeys() async throws {
         let rpc = StubRPCDispatch()
         let surfaceStore = SurfaceStore(rpc: rpc)
@@ -266,6 +317,27 @@ final class StoresTests: XCTestCase {
             else { return false }
             return true
         })
+    }
+
+    func testSurfaceStoreSubmitsMultilineCommandAsSingleTextThenEnter() async throws {
+        let rpc = StubRPCDispatch()
+        let surfaceStore = SurfaceStore(rpc: rpc)
+        let command = "alpha\nbeta  gamma\r\ndelta\u{0085}epsilon\u{2028}zeta\u{2029}eta"
+
+        try await surfaceStore.submitCommand(workspaceId: "w1", surfaceId: "s1", command: command)
+
+        let calls = await rpc.calls
+        XCTAssertEqual(calls.count, 2)
+        XCTAssertEqual(calls.map(\.method), ["surface.send_text", "surface.send_key"])
+        guard calls.count == 2,
+              case .object(let textParams) = calls[0].params,
+              case .string(let text) = textParams["text"],
+              case .object(let keyParams) = calls[1].params,
+              case .string("enter")? = keyParams["key"]
+        else {
+            return XCTFail("Expected one send_text call followed by one enter")
+        }
+        XCTAssertEqual(text, "alpha beta  gamma delta epsilon zeta eta")
     }
 
     func testSurfaceStoreUploadsFileAndReportsPath() async throws {
