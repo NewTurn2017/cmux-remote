@@ -26,6 +26,13 @@ final class CmuxRelayTests: XCTestCase {
                       "default config should live under ~/.cmuxremote/; got \(serve.config)")
     }
 
+    func testSelfLoginAutoAuthorizationOnlyHonorsExplicitOne() {
+        XCTAssertTrue(Serve.shouldAutoAuthorizeSelfLogin(environment: [:]))
+        XCTAssertTrue(Serve.shouldAutoAuthorizeSelfLogin(environment: ["CMUX_NO_SELF_LOGIN": ""]))
+        XCTAssertTrue(Serve.shouldAutoAuthorizeSelfLogin(environment: ["CMUX_NO_SELF_LOGIN": "0"]))
+        XCTAssertFalse(Serve.shouldAutoAuthorizeSelfLogin(environment: ["CMUX_NO_SELF_LOGIN": "1"]))
+    }
+
     func testDevicesListParses() throws {
         let cmd = try CmuxRelay.parseAsRoot(["devices", "list"])
         XCTAssertTrue(cmd is Devices.List, "expected Devices.List, got \(type(of: cmd))")

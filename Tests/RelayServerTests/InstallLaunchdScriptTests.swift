@@ -26,7 +26,22 @@ struct InstallLaunchdScriptTests {
         #expect(result.output.contains("socket override: /tmp/cmux.sock"))
     }
 
-    private func runInstaller(_ arguments: [String]) throws -> (status: Int32, output: String) {
+    @Test
+    func persistsSelfLoginOptOutInLaunchAgent() throws {
+        let result = try runInstaller(
+            ["--dry-run"],
+            environment: ["CMUX_NO_SELF_LOGIN": "1"]
+        )
+
+        #expect(result.status == 0)
+        #expect(result.output.contains("<key>CMUX_NO_SELF_LOGIN</key>"))
+        #expect(result.output.contains("<string>1</string>"))
+    }
+
+    private func runInstaller(
+        _ arguments: [String],
+        environment: [String: String] = [:]
+    ) throws -> (status: Int32, output: String) {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -38,6 +53,10 @@ struct InstallLaunchdScriptTests {
         process.arguments = [script.path] + arguments
         process.standardOutput = output
         process.standardError = output
+        process.environment = ProcessInfo.processInfo.environment.merging(
+            environment,
+            uniquingKeysWith: { _, override in override }
+        )
 
         try process.run()
         process.waitUntilExit()

@@ -87,24 +87,30 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     }
 }
 
-/// Holds the current `relay.json` snapshot and reloads it on demand.
-///
-/// `@unchecked Sendable` is acceptable here because reads of `current` are
-/// stable references to a value type and writes happen only inside `reload()`.
-/// M3 task 11 (HTTPServer) wires `DispatchSource.makeFileSystemObjectSource`
-/// + SIGHUP to call `reload()`; if multiple writers ever race, swap to an
-/// actor at that point.
+/// Thread-safe holder for the current `relay.json` snapshot. Reads happen on
+/// NIO and APNs queues while SIGHUP reloads from a signal queue, so the value
+/// crosses threads even though each snapshot is immutable.
 public final class ConfigStore: @unchecked Sendable {
     public let url: URL
-    public private(set) var current: RelayConfig
+    private let lock = NSLock()
+    private var snapshot: RelayConfig
+
+    public var current: RelayConfig {
+        lock.lock()
+        defer { lock.unlock() }
+        return snapshot
+    }
 
     public init(url: URL) {
         self.url = url
-        self.current = .defaults
+        snapshot = .defaults
     }
 
     public func reload() throws {
         let data = try Data(contentsOf: url)
-        self.current = try JSONDecoder().decode(RelayConfig.self, from: data)
+        let decoded = try JSONDecoder().decode(RelayConfig.self, from: data)
+        lock.lock()
+        snapshot = decoded
+        lock.unlock()
     }
 }

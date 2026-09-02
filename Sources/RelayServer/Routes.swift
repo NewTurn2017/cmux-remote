@@ -4,6 +4,7 @@ import NIOHTTP1
 import Crypto
 import RelayCore
 import SharedKit
+import Logging
 
 /// Lightweight response envelope. The HTTP layer in M3.11 will translate
 /// this into NIOHTTP1 head + body chunks; keeping it small here makes
@@ -11,8 +12,16 @@ import SharedKit
 public struct HTTPResponseLite: Sendable {
     public var status: HTTPResponseStatus
     public var body: Data?
-    public init(_ status: HTTPResponseStatus, body: Data? = nil) {
-        self.status = status; self.body = body
+    public var headers: [(String, String)]
+
+    public init(
+        _ status: HTTPResponseStatus,
+        body: Data? = nil,
+        headers: [(String, String)] = []
+    ) {
+        self.status = status
+        self.body = body
+        self.headers = headers
     }
 }
 
@@ -24,19 +33,54 @@ public struct HTTPResponseLite: Sendable {
 /// thread-safe, so this layer just sequences the request handling.
 public actor Routes {
     private let deviceStore: DeviceStore
-    private let config: RelayConfig
+    private let config: @Sendable () -> RelayConfig
     private let auth: AuthService
+    private let registrationAuthorizer: RegistrationAuthorizer
     private let allowLocalhost: Bool
+    private let logger = Logger(label: "cmux-relay.registration")
 
-    public init(deviceStore: DeviceStore,
-                config: RelayConfig,
-                auth: AuthService,
-                allowLocalhost: Bool = Routes.defaultAllowLocalhost())
-    {
+    public init(
+        deviceStore: DeviceStore,
+        config: @escaping @Sendable () -> RelayConfig,
+        auth: AuthService,
+        allowSelfLogin: Bool = true,
+        allowLocalhost: Bool = Routes.defaultAllowLocalhost(),
+        clock: any Clock = SystemClock(),
+        selfLoginCacheDuration: TimeInterval = 5
+    ) {
         self.deviceStore = deviceStore
         self.config = config
         self.auth = auth
         self.allowLocalhost = allowLocalhost
+        registrationAuthorizer = RegistrationAuthorizer(
+            auth: auth,
+            config: config,
+            allowSelfLogin: allowSelfLogin,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
+    }
+
+    public init(
+        deviceStore: DeviceStore,
+        config: RelayConfig,
+        auth: AuthService,
+        allowSelfLogin: Bool = true,
+        allowLocalhost: Bool = Routes.defaultAllowLocalhost(),
+        clock: any Clock = SystemClock(),
+        selfLoginCacheDuration: TimeInterval = 5
+    ) {
+        self.deviceStore = deviceStore
+        self.config = { config }
+        self.auth = auth
+        self.allowLocalhost = allowLocalhost
+        registrationAuthorizer = RegistrationAuthorizer(
+            auth: auth,
+            config: { config },
+            allowSelfLogin: allowSelfLogin,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
     }
 
     /// Reads `CMUX_DEV_ALLOW_LOCALHOST=1` from the environment. When true,
@@ -95,7 +139,11 @@ public actor Routes {
                 case snippets, defaultFps = "default_fps"
             }
         }
-        let s = State(snippets: config.snippets, defaultFps: config.defaultFps)
+        let currentConfig = config()
+        let s = State(
+            snippets: currentConfig.snippets,
+            defaultFps: currentConfig.defaultFps
+        )
         let body = (try? JSONEncoder().encode(s)) ?? Data()
         return .init(.ok, body: body)
     }
@@ -135,7 +183,9 @@ public actor Routes {
 
     private func registerNew(remoteAddr: String) async -> HTTPResponseLite {
         let peer: PeerIdentity
-        if allowLocalhost, Self.isLoopback(remoteAddr), let login = config.allowLogin.first {
+        let currentConfig = config()
+        if allowLocalhost, Self.isLoopback(remoteAddr),
+           let login = currentConfig.allowLogin.first {
             // Dev bypass — see `defaultAllowLocalhost()`. The peer identity
             // is fabricated from the first allow_login so the simulator can
             // pair without traversing tailscaled. nodeKey is a stable
@@ -149,17 +199,23 @@ public actor Routes {
         } else {
             do {
                 peer = try await auth.whois(remoteAddr: remoteAddr)
-            } catch RelayError.unauthorized {
-                // tailscaled didn't recognize the peer at all — treat as
-                // forbidden so the phone shows a clear "not on tailnet" UI
-                // rather than a 5xx that suggests a relay bug.
+            } catch TailnetIdentityError.peerNotFound {
+                logger.warning("registration denied: Tailscale peer not found")
                 return .init(.forbidden)
             } catch {
-                return .init(.internalServerError)
+                logger.warning("registration deferred: Tailscale peer lookup unavailable")
+                return Self.identityUnavailableResponse()
             }
 
-            guard config.allowLogin.contains(peer.loginName) else {
+            switch await registrationAuthorizer.decision(for: peer.loginName) {
+            case .allowed:
+                break
+            case .denied:
+                logger.warning("registration denied: Tailscale login is outside policy")
                 return .init(.forbidden)
+            case .identityUnavailable:
+                logger.warning("registration deferred: Mac Tailscale identity unavailable")
+                return Self.identityUnavailableResponse()
             }
         }
 
@@ -189,6 +245,17 @@ private func sha256Hex(_ s: String) -> String {
 }
 
 extension Routes {
+    private static func identityUnavailableResponse() -> HTTPResponseLite {
+        .init(
+            .serviceUnavailable,
+            body: Data(#"{"error":"tailscale_identity_unavailable","retry_after_seconds":5}"#.utf8),
+            headers: [
+                ("Content-Type", "application/json"),
+                ("Retry-After", "5"),
+            ]
+        )
+    }
+
     static func isLoopback(_ addr: String) -> Bool {
         addr == "127.0.0.1" || addr == "::1" || addr == "0:0:0:0:0:0:0:1"
     }

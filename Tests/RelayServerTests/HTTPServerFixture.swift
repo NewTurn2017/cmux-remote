@@ -50,18 +50,25 @@ final class HTTPServerFixture: @unchecked Sendable {
         self.serverChannel = serverChannel
     }
 
-    static func make(allowLogin: [String] = ["a@b"],
-                     peers: [String: PeerIdentity] = [
-                         "127.0.0.1": .init(loginName: "a@b",
-                                            hostname: "iPhone",
-                                            os: "ios",
-                                            nodeKey: "nk-fixture")
-                     ],
-                     screens: [Screen] = []) async throws -> HTTPServerFixture
-    {
+    static func make(
+        allowLogin: [String] = ["a@b"],
+        peers: [String: PeerIdentity] = [
+            "127.0.0.1": .init(loginName: "a@b",
+                               hostname: "iPhone",
+                               os: "ios",
+                               nodeKey: "nk-fixture")
+        ],
+        selfLogin: String? = nil,
+        selfLoginError: TailnetIdentityError? = nil,
+        screens: [Screen] = []
+    ) async throws -> HTTPServerFixture {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let store = try DeviceStore.empty()
-        let auth = MockAuthService(peers: peers)
+        let auth = MockAuthService(
+            peers: peers,
+            selfLogin: selfLogin,
+            selfLoginError: selfLoginError
+        )
         let reader = FixtureSurfaceReader(screens: screens)
         let manager = SessionManager(reader: reader, defaultFps: 15, idleFps: 5)
         let cmux = FixtureCMUXFacade()

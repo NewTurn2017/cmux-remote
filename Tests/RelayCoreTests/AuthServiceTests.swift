@@ -33,8 +33,8 @@ final class AuthServiceTests: XCTestCase {
         do {
             _ = try await auth.whois(remoteAddr: "1.2.3.4")
             XCTFail("expected unauthorized")
-        } catch RelayError.unauthorized {
-            // ok
+        } catch TailnetIdentityError.peerNotFound {
+            // expected
         }
     }
 

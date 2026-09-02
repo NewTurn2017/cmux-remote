@@ -12,9 +12,20 @@ final class HTTPServerTests: XCTestCase {
     /// to the group across tests.
     private func withFixture(
         allowLogin: [String] = ["a@b"],
+        peers: [String: PeerIdentity] = [
+            "127.0.0.1": .init(loginName: "a@b", hostname: "iPhone",
+                                os: "ios", nodeKey: "nk-fixture")
+        ],
+        selfLogin: String? = nil,
+        selfLoginError: TailnetIdentityError? = nil,
         _ body: (HTTPServerFixture) async throws -> Void
     ) async throws {
-        let fx = try await HTTPServerFixture.make(allowLogin: allowLogin)
+        let fx = try await HTTPServerFixture.make(
+            allowLogin: allowLogin,
+            peers: peers,
+            selfLogin: selfLogin,
+            selfLoginError: selfLoginError
+        )
         do {
             try await body(fx)
             await fx.shutdown()
@@ -53,6 +64,22 @@ final class HTTPServerTests: XCTestCase {
             XCTAssertFalse(r.token.isEmpty)
             XCTAssertNotNil(fx.deviceStore.lookup(deviceId: r.deviceId))
             XCTAssertTrue(fx.deviceStore.validate(deviceId: r.deviceId, token: r.token))
+        }
+    }
+
+    func testRegisterReturnsRetryableIdentityUnavailableResponse() async throws {
+        try await withFixture(
+            allowLogin: [],
+            selfLoginError: .serviceUnavailable
+        ) { fx in
+            let response = try await fx.rawRequest(
+                "POST /v1/devices/me/register HTTP/1.1\r\nHost: \(fx.host)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+
+            XCTAssertEqual(response.statusCode, 503)
+            XCTAssertEqual(response.headers["retry-after"], "5")
+            XCTAssertEqual(response.headers["content-type"], "application/json")
+            XCTAssertTrue(response.bodyString.contains("tailscale_identity_unavailable"))
         }
     }
 
