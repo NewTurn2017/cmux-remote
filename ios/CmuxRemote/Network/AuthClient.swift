@@ -228,6 +228,7 @@ public enum AuthError: Error, Equatable {
     case invalidURL
     case invalidHTTPResponse
     case invalidRelayResponse
+    case missingHost
     case disallowedHost
     case missingBearer
     case invalidAPNsToken

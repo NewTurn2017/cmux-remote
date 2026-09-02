@@ -201,7 +201,11 @@ struct WorkspaceListView: View {
         switch store.connection {
         case .connected:   return "relay connected"
         case .connecting:  return "connecting…"
-        case .recovering:  return "retrying relay…"
+        case .recovering:
+            return String(
+                localized: "connection.state.recovering_short",
+                defaultValue: "retrying relay…"
+            )
         case .disconnected: return "offline"
         case .error:       return "needs attention"
         }
