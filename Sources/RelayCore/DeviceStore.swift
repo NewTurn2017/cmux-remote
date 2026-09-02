@@ -1,4 +1,5 @@
 import Crypto
+import Darwin
 import Foundation
 import Security
 
@@ -128,14 +129,21 @@ public final class DeviceStore: @unchecked Sendable {
         _ url: URL
     ) throws {
         let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+        let directory = url.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let temporary = directory.appendingPathComponent(".devices-\(UUID().uuidString).tmp")
+        defer { try? fileManager.removeItem(at: temporary) }
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(devices).write(to: url, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try encoder.encode(devices).write(to: temporary)
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: temporary.path
+        )
+        guard rename(temporary.path, url.path) == 0 else {
+            throw DeviceStoreError.persistence(errno)
+        }
     }
 
     private func randomToken() throws -> String {
@@ -163,6 +171,7 @@ public final class DeviceStore: @unchecked Sendable {
 
 public enum DeviceStoreError: Error, Equatable {
     case invalidState(String)
+    case persistence(Int32)
     case secureRandom(OSStatus)
 }
 
