@@ -1,45 +1,59 @@
-import Foundation
 import Crypto
+import Foundation
 import Security
 
-/// Persisted device registration. The device's bearer token is never stored
-/// in plaintext — only the SHA-256 hex of the 32-byte random token issued at
-/// `register()` time. Validation hashes the presented token and compares in
-/// constant time.
+/// Persisted device registration. The bearer itself never reaches disk.
 public struct Device: Codable, Equatable, Sendable {
     public var deviceId: String
     public var loginName: String
     public var hostname: String
     public var registeredAt: Int64
-    public var tokenHash: String       // SHA256-hex of the raw bearer
+    public var tokenHash: String
     public var apnsToken: String?
     public var apnsEnv: String?
 
     enum CodingKeys: String, CodingKey {
-        case deviceId = "device_id", loginName = "login_name", hostname,
-             registeredAt = "registered_at", tokenHash = "token_hash",
-             apnsToken = "apns_token", apnsEnv = "apns_env"
+        case deviceId = "device_id"
+        case loginName = "login_name"
+        case hostname
+        case registeredAt = "registered_at"
+        case tokenHash = "token_hash"
+        case apnsToken = "apns_token"
+        case apnsEnv = "apns_env"
     }
 }
 
-/// Atomic on-disk device registry. Spec section 7.1 / 7.2.
-///
-/// Lives at `~/.cmuxremote/devices.json` so the relay never rewrites the
-/// user's hand-edited `relay.json`. Mutations serialize through a private
-/// `DispatchQueue`; reads use `queue.sync`. `@unchecked Sendable` is sound
-/// because every access goes through the queue.
+/// Atomic on-disk device registry. Mutations persist a candidate snapshot
+/// before publishing it in memory, so a disk error cannot leave the process
+/// accepting credentials that disappear after restart.
 public final class DeviceStore: @unchecked Sendable {
+    public typealias Persist = @Sendable ([String: Device], URL) throws -> Void
+
     public let url: URL
-    private var devices: [String: Device] = [:]
+    private var devices: [String: Device]
+    private let persistSnapshot: Persist
     private let queue = DispatchQueue(label: "DeviceStore")
 
-    public init(url: URL) throws {
+    public convenience init(url: URL) throws {
+        try self.init(url: url) { devices, destination in
+            try Self.persistToDisk(devices, destination)
+        }
+    }
+
+    public init(url: URL, persist: @escaping Persist) throws {
         self.url = url
-        if let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode([String: Device].self, from: data) {
-            self.devices = decoded
+        persistSnapshot = persist
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: url.path) {
+            let data = try Data(contentsOf: url)
+            do {
+                devices = try JSONDecoder().decode([String: Device].self, from: data)
+            } catch {
+                throw DeviceStoreError.invalidState(url.path)
+            }
         } else {
-            try persist()
+            devices = [:]
+            try persistSnapshot(devices, url)
         }
     }
 
@@ -51,73 +65,86 @@ public final class DeviceStore: @unchecked Sendable {
         queue.sync { Array(devices.values) }
     }
 
-    public func register(deviceId: String, loginName: String,
-                         hostname: String, apnsToken: String?) throws -> String
-    {
-        let raw = randomToken()
-        let device = Device(deviceId: deviceId, loginName: loginName,
-                            hostname: hostname,
-                            registeredAt: Int64(Date().timeIntervalSince1970),
-                            tokenHash: hash(raw),
-                            apnsToken: apnsToken, apnsEnv: nil)
-        try queue.sync {
-            devices[deviceId] = device
-            try persist()
-        }
-        return raw
+    public func register(
+        deviceId: String,
+        loginName: String,
+        hostname: String,
+        apnsToken: String?
+    ) throws -> String {
+        let token = try randomToken()
+        let device = Device(
+            deviceId: deviceId,
+            loginName: loginName,
+            hostname: hostname,
+            registeredAt: Int64(Date().timeIntervalSince1970),
+            tokenHash: hash(token),
+            apnsToken: apnsToken,
+            apnsEnv: nil
+        )
+        try mutate { $0[deviceId] = device }
+        return token
     }
 
     public func validate(deviceId: String, token: String) -> Bool {
-        guard let dev = lookup(deviceId: deviceId) else { return false }
-        return constantTimeEqual(dev.tokenHash, hash(token))
+        guard let device = lookup(deviceId: deviceId) else { return false }
+        return constantTimeEqual(device.tokenHash, hash(token))
     }
 
     public func revoke(deviceId: String) throws {
-        try queue.sync {
-            devices.removeValue(forKey: deviceId)
-            try persist()
-        }
+        try mutate { $0.removeValue(forKey: deviceId) }
     }
 
     public func setAPNsToken(deviceId: String, token: String, env: String) throws {
-        try queue.sync {
-            guard var dev = devices[deviceId] else { throw RelayError.unknownDevice(deviceId) }
-            dev.apnsToken = token
-            dev.apnsEnv = env
-            devices[deviceId] = dev
-            try persist()
+        try mutate { candidate in
+            guard var device = candidate[deviceId] else {
+                throw RelayError.unknownDevice(deviceId)
+            }
+            device.apnsToken = token
+            device.apnsEnv = env
+            candidate[deviceId] = device
         }
     }
 
     public func clearAPNsToken(deviceId: String) throws {
+        try mutate { candidate in
+            guard var device = candidate[deviceId] else { return }
+            device.apnsToken = nil
+            device.apnsEnv = nil
+            candidate[deviceId] = device
+        }
+    }
+
+    private func mutate(_ body: (inout [String: Device]) throws -> Void) throws {
         try queue.sync {
-            guard var dev = devices[deviceId] else { return }
-            dev.apnsToken = nil; dev.apnsEnv = nil
-            devices[deviceId] = dev
-            try persist()
+            var candidate = devices
+            try body(&candidate)
+            try persistSnapshot(candidate, url)
+            devices = candidate
         }
     }
 
-    private func persist() throws {
-        let tmp = url.appendingPathExtension("tmp")
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try enc.encode(devices)
-        try data.write(to: tmp, options: .atomic)
-        // replaceItemAt is no-op if the destination doesn't exist; on first
-        // write fall through to a plain move.
-        if FileManager.default.fileExists(atPath: url.path) {
-            _ = try? FileManager.default.replaceItemAt(url, withItemAt: tmp)
-        } else {
-            try FileManager.default.moveItem(at: tmp, to: url)
-        }
+    public static func persistToDisk(
+        _ devices: [String: Device],
+        _ url: URL
+    ) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(devices).write(to: url, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    private func randomToken() -> String {
+    private func randomToken() throws -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
-        _ = bytes.withUnsafeMutableBufferPointer {
+        let status = bytes.withUnsafeMutableBufferPointer {
             SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!)
+        }
+        guard status == errSecSuccess else {
+            throw DeviceStoreError.secureRandom(status)
         }
         return bytes.map { String(format: "%02x", $0) }.joined()
     }
@@ -128,10 +155,15 @@ public final class DeviceStore: @unchecked Sendable {
 
     private func constantTimeEqual(_ a: String, _ b: String) -> Bool {
         guard a.count == b.count else { return false }
-        var diff: UInt8 = 0
-        for (x, y) in zip(a.utf8, b.utf8) { diff |= x ^ y }
-        return diff == 0
+        var difference: UInt8 = 0
+        for (left, right) in zip(a.utf8, b.utf8) { difference |= left ^ right }
+        return difference == 0
     }
+}
+
+public enum DeviceStoreError: Error, Equatable {
+    case invalidState(String)
+    case secureRandom(OSStatus)
 }
 
 public enum RelayError: Error, Equatable {

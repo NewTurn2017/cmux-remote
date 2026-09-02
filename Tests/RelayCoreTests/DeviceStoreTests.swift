@@ -33,6 +33,37 @@ final class DeviceStoreTests: XCTestCase {
         XCTAssertNil(store.lookup(deviceId: "d"))
     }
 
+    func testMalformedRegistryFailsLoudly() throws {
+        let url = tempURL()
+        try Data("not-json".utf8).write(to: url)
+
+        XCTAssertThrowsError(try DeviceStore(url: url)) { error in
+            XCTAssertEqual(error as? DeviceStoreError, .invalidState(url.path))
+        }
+        XCTAssertEqual(try Data(contentsOf: url), Data("not-json".utf8))
+    }
+
+    func testRegistryFileUsesOwnerOnlyPermissions() throws {
+        let url = tempURL()
+        _ = try DeviceStore(url: url)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let permissions = attributes[.posixPermissions] as? NSNumber
+        XCTAssertEqual(permissions?.intValue, 0o600)
+    }
+
+    func testFailedWriteLeavesInMemoryRegistrationUnchanged() throws {
+        let url = tempURL()
+        try DeviceStore.persistToDisk([:], url)
+        let store = try DeviceStore(url: url) { _, _ in
+            throw PersistenceFailure.write
+        }
+
+        XCTAssertThrowsError(try store.register(
+            deviceId: "d", loginName: "a", hostname: "h", apnsToken: nil
+        ))
+        XCTAssertNil(store.lookup(deviceId: "d"))
+    }
+
     func testApnsTokenUpdate() throws {
         let store = try DeviceStore(url: tempURL())
         _ = try store.register(deviceId: "d", loginName: "a", hostname: "h", apnsToken: nil)
@@ -40,4 +71,8 @@ final class DeviceStoreTests: XCTestCase {
         XCTAssertEqual(store.lookup(deviceId: "d")?.apnsToken, "apns-1")
         XCTAssertEqual(store.lookup(deviceId: "d")?.apnsEnv, "prod")
     }
+}
+
+private enum PersistenceFailure: Error {
+    case write
 }
