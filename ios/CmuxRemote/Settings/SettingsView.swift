@@ -87,7 +87,7 @@ struct SettingsView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 12, weight: .bold))
-                                Text("[ SAVE & RECONNECT ]")
+                                Text("[ SAVE AND RECONNECT ]")
                                     .cmuxDisplay(12)
                             }
                             .foregroundStyle(CmuxTheme.canvas)
@@ -247,7 +247,7 @@ struct SettingsView: View {
                 GuideStep(number: 5,
                           title: String(
                               localized: "settings.guide.step5.title",
-                              defaultValue: "Select Save & Reconnect."
+                              defaultValue: "Select Save and Reconnect."
                           ),
                           detail: String(
                               localized: "settings.guide.step5.detail",
@@ -267,7 +267,7 @@ struct SettingsView: View {
     private func color(for state: ConnectionState) -> Color {
         switch state {
         case .connected:    return CmuxTheme.accentGreen
-        case .connecting:   return CmuxTheme.accentYellow
+        case .connecting, .recovering: return CmuxTheme.accentYellow
         case .error:        return CmuxTheme.accentRed
         case .disconnected: return CmuxTheme.muted
         }
@@ -277,6 +277,11 @@ struct SettingsView: View {
         switch state {
         case .connected: return "connected"
         case .connecting: return "connecting…"
+        case .recovering:
+            return String(
+                localized: "connection.state.recovering",
+                defaultValue: "waiting for relay; retrying automatically"
+            )
         case .error(let message): return "error: \(message)"
         case .disconnected: return "disconnected"
         }
@@ -322,7 +327,7 @@ private enum TestNotificationStatus: Equatable {
         case .sent:
             return String(
                 localized: "settings.notifications.test_sent",
-                defaultValue: "sent — arriving in Inbox shortly"
+                defaultValue: "sent, arriving in Inbox shortly"
             )
         case .failed(let message): return "failed: \(message)"
         }

@@ -75,6 +75,10 @@ public actor RPCClient: RPCDispatch {
         pending.removeAll()
     }
 
+    func sendRaw(text: String) async {
+        await transport.send(text: text)
+    }
+
     public func close() async {
         failAllPending(RPCClientError.closed)
         await transport.close()

@@ -258,6 +258,7 @@ struct TerminalArtifactControlSlot: View {
         switch connection {
         case .disconnected: return "disconnected"
         case .connecting: return "connecting"
+        case .recovering: return "recovering"
         case .connected: return "connected"
         case .error: return "error"
         }

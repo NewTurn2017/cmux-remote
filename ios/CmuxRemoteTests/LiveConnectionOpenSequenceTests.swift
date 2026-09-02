@@ -7,7 +7,7 @@ struct LiveConnectionOpenSequenceTests {
     func immediateOpenCompletesInitializationBeforeInitialRefreshes() async {
         var events: [String] = []
 
-        await CmuxRemoteApp.runLiveOpenSequence(
+        await LiveRelaySession.runOpenSequence(
             sendHello: { events.append("hello") },
             initializeRemoteFiles: { events.append("remote-files") },
             resubscribeSurface: { events.append("surface-resubscribe") },
@@ -31,7 +31,7 @@ struct LiveConnectionOpenSequenceTests {
         var surfaceResubscribeCount = 0
 
         for _ in 0..<2 {
-            await CmuxRemoteApp.runLiveOpenSequence(
+            await LiveRelaySession.runOpenSequence(
                 sendHello: {},
                 initializeRemoteFiles: {},
                 resubscribeSurface: { surfaceResubscribeCount += 1 },
