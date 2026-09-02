@@ -128,8 +128,13 @@ public actor Routes {
 
         case (.DELETE, "/v1/devices/me"):
             guard let did = deviceId else { return .init(.unauthorized) }
-            try? deviceStore.revoke(deviceId: did)
-            return .init(.noContent)
+            do {
+                try deviceStore.revoke(deviceId: did)
+                return .init(.noContent)
+            } catch {
+                logger.error("device revoke failed: registry persistence error")
+                return .init(.internalServerError)
+            }
 
         default:
             return .init(.notFound)
@@ -166,12 +171,16 @@ public actor Routes {
             }
         }
         let currentConfig = config()
-        let s = State(
+        let state = State(
             snippets: currentConfig.snippets,
             defaultFps: currentConfig.defaultFps
         )
-        let body = (try? JSONEncoder().encode(s)) ?? Data()
-        return .init(.ok, body: body)
+        do {
+            return .init(.ok, body: try JSONEncoder().encode(state))
+        } catch {
+            logger.error("state response failed to encode")
+            return .init(.internalServerError)
+        }
     }
 
     // MARK: - POST /v1/devices/me/apns
@@ -192,9 +201,17 @@ public actor Routes {
         guard p.env == "prod" || p.env == "sandbox" else {
             return .init(.badRequest)
         }
-        try? deviceStore.setAPNsToken(deviceId: deviceId,
-                                      token: p.apnsToken, env: p.env)
-        return .init(.noContent)
+        do {
+            try deviceStore.setAPNsToken(
+                deviceId: deviceId,
+                token: p.apnsToken,
+                env: p.env
+            )
+            return .init(.noContent)
+        } catch {
+            logger.error("APNs token update failed: registry persistence error")
+            return .init(.internalServerError)
+        }
     }
 
     private static func isAPNsToken(_ token: String) -> Bool {
@@ -246,9 +263,9 @@ public actor Routes {
         }
 
         let deviceId = sha256Hex(peer.nodeKey)
-        // Idempotent: rebinding the same node rotates the bearer so the
-        // previous token (which may have leaked) is no longer valid.
-        try? deviceStore.revoke(deviceId: deviceId)
+        // Register atomically replaces the same node's bearer. A separate
+        // revoke write would create an outage window if the replacement write
+        // failed after the old credential had already been removed.
         do {
             let token = try deviceStore.register(deviceId: deviceId,
                                                  loginName: peer.loginName,
@@ -261,6 +278,7 @@ public actor Routes {
             let body = try JSONEncoder().encode(R(device_id: deviceId, token: token))
             return .init(.ok, body: body)
         } catch {
+            logger.error("device registration failed: registry persistence error")
             return .init(.internalServerError)
         }
     }
