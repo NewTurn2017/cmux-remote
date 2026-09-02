@@ -83,6 +83,36 @@ final class HTTPServerTests: XCTestCase {
         }
     }
 
+    func testCredentialPreflightAcceptsActiveBearer() async throws {
+        try await withFixture { fx in
+            let token = try fx.deviceStore.register(
+                deviceId: "d-status", loginName: "a@b",
+                hostname: "iPhone", apnsToken: nil
+            )
+            let response = try await fx.rawRequest(
+                "GET /v1/devices/me HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer \(token)\r\nConnection: close\r\n\r\n"
+            )
+
+            XCTAssertEqual(response.statusCode, 200)
+            XCTAssertTrue(response.bodyString.contains("d-status"))
+        }
+    }
+
+    func testCredentialPreflightRejectsRevokedBearer() async throws {
+        try await withFixture { fx in
+            let token = try fx.deviceStore.register(
+                deviceId: "d-status", loginName: "a@b",
+                hostname: "iPhone", apnsToken: nil
+            )
+            try fx.deviceStore.revoke(deviceId: "d-status")
+            let response = try await fx.rawRequest(
+                "GET /v1/devices/me HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer \(token)\r\nConnection: close\r\n\r\n"
+            )
+
+            XCTAssertEqual(response.statusCode, 401)
+        }
+    }
+
     func testApnsWithoutBearerReturns401() async throws {
         try await withFixture { fx in
             let body = #"{"apns_token":"abcdef1234","env":"prod"}"#

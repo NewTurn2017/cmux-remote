@@ -112,6 +112,13 @@ public actor Routes {
         case (.POST, "/v1/devices/me/register"):
             return await registerNew(remoteAddr: remoteAddr)
 
+        case (.GET, "/v1/devices/me"):
+            guard let did = deviceId,
+                  let device = deviceStore.lookup(deviceId: did) else {
+                return .init(.unauthorized)
+            }
+            return deviceStatus(device)
+
         case (.POST, "/v1/devices/me/apns"):
             guard let did = deviceId,
                   deviceStore.lookup(deviceId: did) != nil else {
@@ -126,6 +133,25 @@ public actor Routes {
 
         default:
             return .init(.notFound)
+        }
+    }
+
+    // MARK: - GET /v1/devices/me
+
+    private func deviceStatus(_ device: Device) -> HTTPResponseLite {
+        struct Response: Encodable {
+            let deviceId: String
+            enum CodingKeys: String, CodingKey { case deviceId = "device_id" }
+        }
+        do {
+            let body = try JSONEncoder().encode(Response(deviceId: device.deviceId))
+            return .init(
+                .ok,
+                body: body,
+                headers: [("Content-Type", "application/json")]
+            )
+        } catch {
+            return .init(.internalServerError)
         }
     }
 
