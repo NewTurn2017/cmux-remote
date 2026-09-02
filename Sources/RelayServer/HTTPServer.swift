@@ -292,6 +292,9 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
         var headers = HTTPHeaders()
         headers.add(name: "Content-Length", value: "\(resp.body?.count ?? 0)")
         headers.add(name: "Connection", value: "close")
+        for (name, value) in resp.headers {
+            headers.replaceOrAdd(name: name, value: value)
+        }
         let head = HTTPResponseHead(version: .http1_1,
                                     status: resp.status,
                                     headers: headers)

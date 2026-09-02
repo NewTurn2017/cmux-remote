@@ -15,30 +15,55 @@ public struct PeerIdentity: Equatable, Sendable {
     }
 }
 
+/// Failures from the local Tailscale identity service. Callers must keep
+/// `peerNotFound` separate from service failures: the first is an authorization
+/// denial, while the others can recover after Tailscale finishes starting.
+public enum TailnetIdentityError: Error, Equatable, Sendable {
+    case peerNotFound
+    case serviceUnavailable
+    case invalidResponse
+}
+
 /// Resolves a connecting peer's tailnet identity. Spec section 7.1.
 public protocol AuthService: Sendable {
     func whois(remoteAddr: String) async throws -> PeerIdentity
 
-    /// The relay host's own tailnet login, if it has one — used to
-    /// auto-authorise the operator's own devices for pairing. Returns nil for
-    /// tagged/headless nodes (no user) or when tailscaled can't be reached.
-    func selfLogin() async -> String?
+    /// The relay host's current tailnet login. A tagged node returns nil.
+    /// Tailscale transport or decoding failures throw so callers can expose a
+    /// retryable state instead of misreporting a permanent policy denial.
+    func selfLogin() async throws -> String?
 }
 
 public extension AuthService {
-    func selfLogin() async -> String? { nil }
+    func selfLogin() async throws -> String? { nil }
 }
 
-/// Test fake — keyed by IP (port stripped).
+/// Test fake, keyed by IP after any port is stripped.
 public final class MockAuthService: AuthService, @unchecked Sendable {
     public var peers: [String: PeerIdentity]
-    public init(peers: [String: PeerIdentity]) { self.peers = peers }
+    public var selfLoginValue: String?
+    public var selfLoginError: TailnetIdentityError?
+
+    public init(
+        peers: [String: PeerIdentity],
+        selfLogin: String? = nil,
+        selfLoginError: TailnetIdentityError? = nil
+    ) {
+        self.peers = peers
+        self.selfLoginValue = selfLogin
+        self.selfLoginError = selfLoginError
+    }
 
     public func whois(remoteAddr: String) async throws -> PeerIdentity {
-        guard let p = peers[stripPort(remoteAddr)] else {
-            throw RelayError.unauthorized(remoteAddr)
+        guard let peer = peers[stripPort(remoteAddr)] else {
+            throw TailnetIdentityError.peerNotFound
         }
-        return p
+        return peer
+    }
+
+    public func selfLogin() async throws -> String? {
+        if let selfLoginError { throw selfLoginError }
+        return selfLoginValue
     }
 }
 
@@ -81,17 +106,20 @@ public final class TailscaledLocalAuth: AuthService {
         if FileManager.default.fileExists(atPath: socketPath) {
             do {
                 return try await whoisViaLocalAPI(addr: addr)
+            } catch TailnetIdentityError.peerNotFound {
+                throw TailnetIdentityError.peerNotFound
             } catch {
-                // Some macOS Tailscale distributions do not expose a
-                // tailscaled Unix socket even though `tailscale whois --json`
-                // works. Fall through to the CLI path so operator-side smoke
-                // tests work across both open-source and App Store installs.
+                // App Store and standalone macOS variants can expose a socket
+                // that is temporarily unavailable while their network
+                // extension restarts. The CLI reaches the GUI/XPC path.
             }
         }
         do {
             return try Self.parseWhoisResponse(try await cliWhois(addr))
+        } catch let error as TailnetIdentityError {
+            throw error
         } catch {
-            throw RelayError.unauthorized(remoteAddr)
+            throw TailnetIdentityError.serviceUnavailable
         }
     }
 
@@ -100,45 +128,45 @@ public final class TailscaledLocalAuth: AuthService {
         var req = HTTPClientRequest(url: url)
         req.headers.add(name: "Sec-Tailscale", value: "localapi")
         let resp = try await httpClient.execute(req, timeout: .seconds(2))
-        guard resp.status == .ok else { throw RelayError.unauthorized(addr) }
+        if resp.status == .notFound { throw TailnetIdentityError.peerNotFound }
+        guard resp.status == .ok else { throw TailnetIdentityError.serviceUnavailable }
         let body = try await resp.body.collect(upTo: 1 << 20)
-        return try Self.parseWhoisResponse(Data(buffer: body))
+        do {
+            return try Self.parseWhoisResponse(Data(buffer: body))
+        } catch {
+            throw TailnetIdentityError.invalidResponse
+        }
     }
 
     private static func runTailscaleWhoisCLI(addr: String) async throws -> Data {
         try await Task.detached {
-            let process = try tailscaleProcess(arguments: ["whois", "--json", addr])
-
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-
-            try process.run()
-            process.waitUntilExit()
-
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            if process.terminationStatus == 0 {
-                return data
+            let output = try runTailscaleCLI(arguments: ["whois", "--json", addr])
+            if output.terminationStatus == 0 {
+                return output.stdout
             }
-            throw RelayError.unauthorized(addr)
+            let errorText = String(decoding: output.stderr, as: UTF8.self)
+            if errorText.contains("peer not found") {
+                throw TailnetIdentityError.peerNotFound
+            }
+            throw TailnetIdentityError.serviceUnavailable
         }.value
     }
 
     /// The relay host's own tailnet login (e.g. `you@example.com`), resolved
     /// from `tailscale status`. nil for tagged/headless nodes or if tailscaled
     /// is unreachable. Mirrors `whois`: LocalAPI socket first, CLI fallback.
-    public func selfLogin() async -> String? {
+    public func selfLogin() async throws -> String? {
         let data: Data
-        if FileManager.default.fileExists(atPath: socketPath),
-           let viaAPI = try? await statusViaLocalAPI() {
-            data = viaAPI
-        } else if let viaCLI = try? await Self.runTailscaleStatusCLI() {
-            data = viaCLI
+        if FileManager.default.fileExists(atPath: socketPath) {
+            do {
+                data = try await statusViaLocalAPI()
+            } catch {
+                data = try await Self.runTailscaleStatusCLI()
+            }
         } else {
-            return nil
+            data = try await Self.runTailscaleStatusCLI()
         }
-        return Self.parseSelfLogin(data)
+        return try Self.parseSelfLogin(data)
     }
 
     private func statusViaLocalAPI() async throws -> Data {
@@ -146,29 +174,18 @@ public final class TailscaledLocalAuth: AuthService {
         var req = HTTPClientRequest(url: url)
         req.headers.add(name: "Sec-Tailscale", value: "localapi")
         let resp = try await httpClient.execute(req, timeout: .seconds(2))
-        guard resp.status == .ok else { throw RelayError.unauthorized("status") }
+        guard resp.status == .ok else { throw TailnetIdentityError.serviceUnavailable }
         let body = try await resp.body.collect(upTo: 8 << 20)
         return Data(buffer: body)
     }
 
     private static func runTailscaleStatusCLI() async throws -> Data {
         try await Task.detached {
-            let process = try tailscaleProcess(arguments: ["status", "--json"])
-
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-
-            try process.run()
-            // `status --json` can exceed the 64KB pipe buffer, so drain before
-            // waiting to avoid a deadlock (the tiny `whois` payload can't).
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                return data
+            let output = try runTailscaleCLI(arguments: ["status", "--json"])
+            guard output.terminationStatus == 0 else {
+                throw TailnetIdentityError.serviceUnavailable
             }
-            throw RelayError.unauthorized("status")
+            return output.stdout
         }.value
     }
 
@@ -190,39 +207,60 @@ public final class TailscaledLocalAuth: AuthService {
             : nil
     }
 
-    private static func tailscaleProcess(arguments: [String]) throws -> Process {
+    private static func runTailscaleCLI(
+        arguments: [String]
+    ) throws -> TailscaleCLIProcessOutput {
         guard let executablePath = resolveTailscaleCLI() else {
-            throw RelayError.unauthorized("tailscale CLI unavailable")
+            throw TailnetIdentityError.serviceUnavailable
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-        process.environment = ProcessInfo.processInfo.environment.merging(
+        let environment = ProcessInfo.processInfo.environment.merging(
             ["TAILSCALE_BE_CLI": "1"],
             uniquingKeysWith: { _, forcedValue in forcedValue }
         )
-        return process
+        do {
+            return try TailscaleCLIProcessRunner.run(
+                executableURL: URL(fileURLWithPath: executablePath),
+                arguments: arguments,
+                environment: environment
+            )
+        } catch {
+            throw TailnetIdentityError.serviceUnavailable
+        }
     }
 
     /// Extracts the host's own login from a `tailscale status --json` /
     /// LocalAPI `/v0/status` payload: `Self.UserID` indexes the `User` map.
     /// Returns nil for tagged nodes (UserID 0 / no matching user) or malformed
     /// output. Visible to tests.
-    public static func parseSelfLogin(_ data: Data) -> String? {
+    public static func parseSelfLogin(_ data: Data) throws -> String? {
         struct Status: Decodable {
             struct SelfNode: Decodable { let UserID: Int64? }
             struct UserProfile: Decodable { let LoginName: String? }
+            let backendState: String?
             let selfNode: SelfNode?
             let users: [String: UserProfile]?
             enum CodingKeys: String, CodingKey {
+                case backendState = "BackendState"
                 case selfNode = "Self"
                 case users = "User"
             }
         }
-        guard let s = try? JSONDecoder().decode(Status.self, from: data),
-              let uid = s.selfNode?.UserID, uid != 0,
-              let login = s.users?[String(uid)]?.LoginName,
-              !login.isEmpty else { return nil }
+        let status: Status
+        do {
+            status = try JSONDecoder().decode(Status.self, from: data)
+        } catch {
+            throw TailnetIdentityError.invalidResponse
+        }
+        if let backendState = status.backendState, backendState != "Running" {
+            throw TailnetIdentityError.serviceUnavailable
+        }
+        guard let uid = status.selfNode?.UserID else {
+            throw TailnetIdentityError.invalidResponse
+        }
+        guard uid != 0 else { return nil }
+        guard let login = status.users?[String(uid)]?.LoginName, !login.isEmpty else {
+            throw TailnetIdentityError.invalidResponse
+        }
         return login
     }
 

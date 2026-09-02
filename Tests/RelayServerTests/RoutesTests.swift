@@ -60,6 +60,106 @@ final class RoutesTests: XCTestCase {
         XCTAssertEqual(resp.status, .forbidden)
     }
 
+    func testRegisterAcceptsLiveOwnerWhenAllowListIsEmpty() async throws {
+        let store = try DeviceStore.empty()
+        let auth = ControllableAuthService()
+        let routes = Routes(
+            deviceStore: store,
+            config: .testValue.authorizingOnly([]),
+            auth: auth
+        )
+
+        let response = await register(routes)
+
+        XCTAssertEqual(response.status, .ok)
+        XCTAssertEqual(auth.selfLoginCallCount(), 1)
+    }
+
+    func testRegisterRecoversAfterCachedIdentityFailureExpires() async throws {
+        let store = try DeviceStore.empty()
+        let clock = FakeClock()
+        let auth = ControllableAuthService(
+            selfLogin: .failure(TailnetIdentityError.serviceUnavailable)
+        )
+        let routes = Routes(
+            deviceStore: store,
+            config: .testValue.authorizingOnly([]),
+            auth: auth,
+            clock: clock,
+            selfLoginCacheDuration: 5
+        )
+
+        let first = await register(routes)
+        let cachedFailure = await register(routes)
+        XCTAssertEqual(first.status, .serviceUnavailable)
+        XCTAssertEqual(cachedFailure.status, .serviceUnavailable)
+        XCTAssertEqual(auth.selfLoginCallCount(), 1, "negative result must be cached")
+
+        auth.setSelfLogin(.success("owner@example.com"))
+        clock.advance(by: 5)
+        let recovered = await register(routes)
+        XCTAssertEqual(recovered.status, .ok)
+        XCTAssertEqual(auth.selfLoginCallCount(), 2)
+    }
+
+    func testSelfLoginOptOutPreservesExplicitAllowList() async throws {
+        let store = try DeviceStore.empty()
+        let auth = ControllableAuthService()
+        let routes = Routes(
+            deviceStore: store,
+            config: .testValue.authorizingOnly(["owner@example.com"]),
+            auth: auth,
+            allowSelfLogin: false
+        )
+
+        let response = await register(routes)
+        XCTAssertEqual(response.status, .ok)
+        XCTAssertEqual(auth.selfLoginCallCount(), 0)
+    }
+
+    func testSelfLoginOptOutRejectsOwnerOutsideExplicitAllowList() async throws {
+        let store = try DeviceStore.empty()
+        let auth = ControllableAuthService()
+        let routes = Routes(
+            deviceStore: store,
+            config: .testValue.authorizingOnly([]),
+            auth: auth,
+            allowSelfLogin: false
+        )
+
+        let response = await register(routes)
+        XCTAssertEqual(response.status, .forbidden)
+        XCTAssertEqual(auth.selfLoginCallCount(), 0)
+    }
+
+    func testRegisterReadsReloadedAllowList() async throws {
+        let store = try DeviceStore.empty()
+        let auth = ControllableAuthService(selfLogin: .success(nil))
+        let mutableConfig = MutableRelayConfig(.testValue.authorizingOnly([]))
+        let routes = Routes(
+            deviceStore: store,
+            config: { mutableConfig.snapshot() },
+            auth: auth,
+            allowSelfLogin: false
+        )
+
+        let before = await register(routes)
+        XCTAssertEqual(before.status, .forbidden)
+        mutableConfig.setAllowLogin(["owner@example.com"])
+        let after = await register(routes)
+        XCTAssertEqual(after.status, .ok)
+    }
+
+    private func register(_ routes: Routes) async -> HTTPResponseLite {
+        await routes.handle(
+            method: .POST,
+            path: "/v1/devices/me/register",
+            body: nil,
+            deviceId: nil,
+            remoteAddr: "100.64.0.5:1"
+        )
+    }
+
     func testRegisterRejectsUnknownPeer() async throws {
         // peer table empty → MockAuthService.whois throws unauthorized
         let resp = await makeRoutes(try DeviceStore.empty(), peers: [:])
