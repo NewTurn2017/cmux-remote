@@ -1728,6 +1728,38 @@
           }
         }
       }
+    },
+    "connection.error.missing_host": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the Mac Tailscale address in Settings."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정에서 Mac의 Tailscale 주소를 입력하세요."
+          }
+        }
+      }
+    },
+    "connection.state.recovering_short": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "retrying relay…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "릴레이 다시 연결 중…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

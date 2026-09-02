@@ -314,7 +314,10 @@ public actor WSClient {
     }
 
     private static func preflightFailureCode(for error: Error) -> Int {
-        if case AuthError.pairingRemoved = error { return 4401 }
-        return -2
+        switch error {
+        case AuthError.pairingRemoved: return 4401
+        case AuthError.registrationDenied: return 4403
+        default: return 4500
+        }
     }
 }

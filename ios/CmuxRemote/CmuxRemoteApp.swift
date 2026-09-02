@@ -150,7 +150,10 @@ struct CmuxRemoteApp: App {
             port = defaultsPort == 0 ? 4399 : defaultsPort
         }
         os_log("cmux bootstrap host=%{public}@ port=%{public}d", host, port)
-        guard !host.isEmpty else { return }
+        guard !host.isEmpty else {
+            workspaceStore.connection = .error(Self.connectionMessage(for: .missingHost))
+            return
+        }
         guard EndpointPolicy.isAllowedRelayHost(host) else {
             workspaceStore.connection = .error("Tailscale host or 100.64.0.0/10 address required")
             return
@@ -176,9 +179,22 @@ struct CmuxRemoteApp: App {
             },
             onClosed: { rpc, code in
                 guard activeRPC === rpc else { return }
-                workspaceStore.connection = code == 4401
-                    ? .error(Self.connectionMessage(for: .pairingRemoved))
-                    : .disconnected
+                switch code {
+                case 4401:
+                    workspaceStore.connection = .error(
+                        Self.connectionMessage(for: .pairingRemoved)
+                    )
+                case 4403:
+                    workspaceStore.connection = .error(
+                        Self.connectionMessage(for: .registrationDenied)
+                    )
+                case 4500:
+                    workspaceStore.connection = .error(
+                        Self.connectionMessage(for: .invalidRelayResponse)
+                    )
+                default:
+                    workspaceStore.connection = .disconnected
+                }
                 await remoteFiles.deactivate(purgeAccountCache: false)
             },
             onRetryWaiting: { _ in
@@ -293,41 +309,6 @@ struct CmuxRemoteApp: App {
         Task { @MainActor in
             await remoteFiles.deactivate(purgeAccountCache: true)
             await session?.close()
-        }
-    }
-
-    private static func connectionMessage(for error: AuthError) -> String {
-        switch error {
-        case .pairingRemoved:
-            return String(
-                localized: "connection.error.pairing_removed",
-                defaultValue: "Pairing was removed on the Mac. Select Unpair This Device, then reconnect."
-            )
-        case .registrationDenied:
-            return String(
-                localized: "connection.error.registration_denied",
-                defaultValue: "This Tailscale account is not allowed by the Mac relay."
-            )
-        case .relayUnavailable:
-            return String(
-                localized: "connection.error.relay_unavailable",
-                defaultValue: "The Mac relay is waiting for Tailscale and will retry automatically."
-            )
-        case .disallowedHost:
-            return String(
-                localized: "connection.error.disallowed_host",
-                defaultValue: "Enter a Tailscale IP or tailnet DNS name."
-            )
-        case .transport:
-            return String(
-                localized: "connection.error.transport",
-                defaultValue: "The Mac relay is unreachable."
-            )
-        default:
-            return String(
-                localized: "connection.error.generic",
-                defaultValue: "The relay returned an invalid response."
-            )
         }
     }
 

@@ -16,7 +16,6 @@ final class LiveRelaySession {
     private let notificationStore: NotificationStore
     private let notificationRegistrar: RemoteNotificationRegistrar
     private let credentialRetrier: RelayCredentialRetrier
-    private var onRetryWaiting: (@MainActor (TimeInterval) -> Void)?
     private var generation: UInt64 = 0
     private var preparationTask: Task<Void, Never>?
     private(set) var rpc: RPCClient?
@@ -51,7 +50,6 @@ final class LiveRelaySession {
         onRetryWaiting: @escaping @MainActor (TimeInterval) -> Void,
         onFailure: @escaping @MainActor (AuthError) -> Void
     ) {
-        self.onRetryWaiting = onRetryWaiting
         generation &+= 1
         let currentGeneration = generation
         preparationTask?.cancel()
@@ -64,8 +62,8 @@ final class LiveRelaySession {
                         guard let self else { return false }
                         return !Task.isCancelled && self.generation == currentGeneration
                     },
-                    onWaiting: { [weak self] seconds in
-                        self?.onRetryWaiting?(seconds)
+                    onWaiting: { seconds in
+                        onRetryWaiting(seconds)
                     }
                 )
                 guard generation == currentGeneration, !Task.isCancelled else { return }
