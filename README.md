@@ -302,12 +302,13 @@ iPhone에서 cmux Remote 열기:
 2. 위에서 확인한 Tailscale IP 또는 MagicDNS 이름 입력, 포트는 `4399`
 3. **Add** — relay가 Tailscale 신원을 확인하고 페어링합니다
 
-relay는 자기 Mac의 tailnet 로그인을 자동으로 허용하므로, iPhone이 같은
-Tailscale 계정이면 보통 추가 설정 없이 바로 붙습니다. 다른 계정이거나
-relay가 태그 노드로 도는 경우에만 아래 **설정**의 `allow_login`에 본인
-로그인을 직접 추가하세요(그 외 로그인은 `403 Forbidden`). 페어링 시
-디바이스별 토큰이 발급되며
-`~/.cmuxremote/bin/cmux-relay devices revoke <id>`로 언제든 해지할 수 있습니다.
+relay는 iPhone이 등록을 시도할 때 Mac의 현재 Tailscale 로그인을 확인합니다.
+iPhone이 같은 Tailscale 계정이면 보통 추가 설정 없이 바로 붙습니다.
+Tailscale이 아직 시작 중이면 relay가 재시도 가능한 응답을 보내고 앱이 자동으로
+다시 시도합니다. 다른 계정이거나 relay가 태그 노드로 도는 경우에만 아래
+**설정**의 `allow_login`에 로그인을 직접 추가하세요. 페어링 시 디바이스별
+토큰이 발급되며 `~/.cmuxremote/bin/cmux-relay devices revoke <id>`로
+언제든 해지할 수 있습니다.
 
 ### 4. 사용
 
@@ -339,11 +340,12 @@ Relay는 `~/.cmuxremote/relay.json`을 읽습니다. 파일이 없으면
 레이어에서 차단됩니다. 개발 중 localhost를 허용하려면
 `CMUX_DEV_ALLOW_LOCALHOST=1` 환경 변수로 install 스크립트를 돌리세요.
 
-생략한 키는 위 기본값으로 채워지므로 위 3줄짜리 설정만으로도 relay는
-정상 부팅합니다. 페어링은 `allow_login`에 등록된 tailnet 로그인의 기기만
-허용하지만(나머지는 `403 Forbidden`), relay가 **자기 Mac의 로그인을 자동으로
-추가**하므로 같은 Tailscale 계정의 iPhone은 보통 비워둬도 붙습니다. 자동
-허용을 끄려면 `CMUX_NO_SELF_LOGIN=1`로 install 스크립트를 돌리세요.
+생략한 키는 위 기본값으로 채워집니다. 페어링은 `allow_login`에 등록된
+로그인을 허용합니다. 또한 등록 시점에 iPhone 로그인과 Mac의 현재 Tailscale
+로그인을 비교하므로, relay가 Tailscale보다 먼저 시작해도 재시작 없이
+복구됩니다. 명시적인 `allow_login`만 사용하려면
+`CMUX_NO_SELF_LOGIN=1`로 설치하세요. 설치 스크립트가 이 값을 LaunchAgent에
+저장합니다.
 
 다른 계정의 기기를 붙이거나 relay가 태그 노드로 도는 경우에만 로그인을 직접
 추가합니다. 본인 로그인 값은 Tailscale 관리 콘솔, 또는
@@ -466,9 +468,16 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
   마커를 자동 추적하니 `./scripts/install-launchd.sh`로 재설치하면 해결.
   급하면 현재 마커의 경로를
   `./scripts/install-launchd.sh --socket "$(cat /tmp/cmux-last-socket-path)"`로 핀.
-- 헬스 체크는 OK인데 앱만 못 붙음 — **네트워크/주소 문제.** iPhone과
-  Mac이 같은 Tailnet인지, 앱 주소·포트(`4399`)가 맞는지, 디바이스 토큰이
-  revoke되지 않았는지(`.build/release/cmux-relay devices list`) 확인.
+- 헬스 체크는 OK인데 앱에 **릴레이 다시 연결 중**이 표시되면, Mac의
+  Tailscale 신원이 아직 준비 중입니다. 앱이 자동으로 다시 시도합니다.
+  상태가 계속되면 `tailscale status`를 확인하세요.
+- 앱에 **Mac에서 페어링이 해제되었습니다**가 표시되면 저장된 토큰이 제거된
+  상태입니다. **이 기기 페어링 해제**를 선택한 다음 다시 연결하세요.
+- relay 로그에 `registration denied`가 보이면 iPhone의 Tailscale 로그인이
+  Mac 로그인과 `allow_login` 정책에 포함되지 않습니다. 의도한 로그인을
+  `relay.json`에 추가한 다음 SIGHUP을 보내거나 relay를 재시작하세요.
+- 헬스 체크는 OK인데 앱이 relay에 닿지 않으면 iPhone과 Mac이 같은
+  Tailnet인지, 앱에 현재 IP와 포트 `4399`가 입력됐는지 확인하세요.
 
 > cmux를 자주 재시작한다면, 소켓 회전 후 relay를 다시 붙이는 가장 빠른
 > 방법은 `launchctl kickstart -k "$SERVICE"` 입니다.
@@ -560,13 +569,11 @@ xcodebuild test -project CmuxRemote.xcodeproj \
 SMOKE_EPHEMERAL=1 ./scripts/smoke-relay.sh
 ```
 
-스모크 스크립트는 임시 Tailscale 노드 + 격리된 config 디렉토리를
-띄우고, 가짜 디바이스를 등록한 뒤 문서화된 모든 relay 엔드포인트
-(`/v1/health`, `/v1/devices/me/register`, `/v1/state`,
-`/v1/devices/me/apns`, WebSocket hello, `workspace.list`,
-`surface.list`, `surface.subscribe`, `screen.diff`,
-`screen.checksum`)를 차례로 두드립니다. relay 와이어 포맷을
-건드릴 때 유용.
+스모크 스크립트는 격리된 relay 상태에서 실제 Tailscale 호출자를 등록한 뒤
+문서화된 relay 엔드포인트(`/v1/health`, `/v1/devices/me/register`,
+`/v1/devices/me`, `/v1/state`, `/v1/devices/me/apns`, WebSocket upgrade)를
+검증합니다. 기존 cmux 소켓 암호는 격리된 프로세스에만 전달하고 테스트
+디렉토리에는 쓰지 않습니다. 준비 확인의 전체 제한 시간은 15초입니다.
 
 iOS 앱은 `FAKE_RPC=1` (DEBUG 빌드 기본값) 또는 시뮬레이터에서
 `FakeRPCDispatch`를 사용해 relay 없이도 빌드 + UI 테스트가
@@ -595,7 +602,11 @@ discussion을 열거나 `docs/specs/`에 디자인 문서를 먼저 올려주세
 - Relay는 tailnet 인터페이스만 받아들입니다 — 비-Tailscale 소스 주소는
   애플리케이션 레이어에서 거부 (개발용 localhost 허용은
   `CMUX_DEV_ALLOW_LOCALHOST=1`로만).
-- iOS 기기마다 페어링 시 발급된 토큰을 가집니다. 메뉴바에서 개별 revoke.
+- bearer는 등록한 Tailscale 노드 키에 연결됩니다. 인증된 HTTP와 WebSocket
+  요청은 현재 호출자의 신원을 다시 확인합니다.
+- 디바이스별 토큰은 relay CLI에서 개별 해지할 수 있습니다.
+- 등록과 호출자 신원 조회는 성공과 일시적 실패를 짧게 캐시하고 동시 요청을
+  하나로 합쳐 로컬 Tailscale 프로세스 부하를 제한합니다.
 - 알림 페이로드에는 터미널 내용이 포함되지 않습니다 — workspace/surface
   id + 짧은 title만.
 - 텔레메트리 / 분석 / 서드파티 네트워크 호출 없음.

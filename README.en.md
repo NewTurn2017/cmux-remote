@@ -333,12 +333,13 @@ Open cmux Remote on the iPhone:
 2. Enter the Tailscale IP or MagicDNS name from above, port `4399`
 3. **Add** — the relay resolves your Tailscale identity and pairs
 
-The relay auto-authorises its own Mac's tailnet login, so an iPhone on the
-same Tailscale account usually pairs with no extra setup. Only for a
-different account, or when the relay runs on a tagged node, add your login
-to `allow_login` under **Configuration** below (any other login gets
-`403 Forbidden`). Pairing exchanges a per-device token; revoke any device
-anytime with `~/.cmuxremote/bin/cmux-relay devices revoke <id>`.
+The relay resolves its own Mac tailnet login when a phone registers, so
+an iPhone on the same Tailscale account usually pairs with no extra setup.
+If Tailscale is still starting, the relay returns a retryable response and
+the app keeps trying automatically. Only for a different account, or when
+the relay runs on a tagged node, add the login to `allow_login` under
+**Configuration** below. Pairing exchanges a per-device token; revoke any
+device anytime with `~/.cmuxremote/bin/cmux-relay devices revoke <id>`.
 
 ### 4. Use it
 
@@ -372,11 +373,11 @@ at the application layer regardless. To allow localhost in dev, run
 the installer with `CMUX_DEV_ALLOW_LOCALHOST=1`.
 
 Omitted keys fall back to the defaults above, so the three-line config
-boots the relay fine. Pairing only accepts devices whose tailnet login is
-listed in `allow_login` (everyone else gets `403 Forbidden`), but the relay
-**auto-adds its own Mac's login**, so an iPhone on the same Tailscale
-account usually pairs with `allow_login` left empty. Disable that by running
-the installer with `CMUX_NO_SELF_LOGIN=1`.
+boots the relay fine. Pairing accepts logins listed in `allow_login`. It also
+compares the phone login with the Mac's current Tailscale login at registration
+time, so a relay that starts before Tailscale recovers without a restart.
+Run the installer with `CMUX_NO_SELF_LOGIN=1` to require only explicit
+`allow_login` entries; the installer persists that setting in the LaunchAgent.
 
 Only for a different account, or a tagged-node relay, add the login by hand.
 Find yours in the Tailscale admin console, or via the `User[…].LoginName`
@@ -489,10 +490,17 @@ Per-log fixes:
   `./scripts/install-launchd.sh` fixes it. In a pinch, pin the path from
   the current marker with
   `./scripts/install-launchd.sh --socket "$(cat /tmp/cmux-last-socket-path)"`.
-- Health check OK but only the app can't attach — **network/address
-  issue.** Confirm the iPhone and Mac share a Tailnet, the app's
-  address/port (`4399`) is correct, and the device token wasn't revoked
-  (`.build/release/cmux-relay devices list`).
+- Health check OK but the app shows **waiting for relay**: the relay can
+  reach the phone but the Mac Tailscale identity is still starting. The app
+  retries automatically. Check `tailscale status` if it persists.
+- The app says **Pairing was removed on the Mac**: the saved bearer was
+  revoked or removed. Select **Unpair This Device**, then reconnect to pair
+  through Tailscale again.
+- `registration denied` in the relay log: the phone's Tailscale login is
+  outside the Mac login and `allow_login` policy. Add the intended login to
+  `relay.json`, then send `SIGHUP` or restart the relay.
+- Health check OK but the app cannot reach the relay: confirm the iPhone and
+  Mac share a tailnet and the app uses the current IP plus port `4399`.
 
 The startup log should print `starting cmux-relay on 0.0.0.0:4399` →
 `listening …` → `cmux event stream attached`. If you restart cmux often,
@@ -588,12 +596,12 @@ xcodebuild test -project CmuxRemote.xcodeproj \
 SMOKE_EPHEMERAL=1 ./scripts/smoke-relay.sh
 ```
 
-The smoke script spins up an ephemeral Tailscale node and an isolated
-config dir, registers a fake device, and exercises every documented
-relay endpoint (`/v1/health`, `/v1/devices/me/register`, `/v1/state`,
-`/v1/devices/me/apns`, WebSocket hello, `workspace.list`,
-`surface.list`, `surface.subscribe`, `screen.diff`,
-`screen.checksum`). Run it any time you change the relay wire format.
+The smoke script uses isolated relay state, registers the live Tailscale
+caller, and exercises every documented relay endpoint (`/v1/health`,
+`/v1/devices/me/register`, `/v1/devices/me`, `/v1/state`,
+`/v1/devices/me/apns`, and the WebSocket upgrade). It carries the existing
+cmux socket password into the isolated process without writing that secret to
+the test directory. The readiness phase has one 15-second deadline.
 
 The iOS app uses `FakeRPCDispatch` (default in DEBUG simulator builds,
 or `FAKE_RPC=1`), so the project builds, runs, and passes UI tests
@@ -623,8 +631,11 @@ open a discussion or drop a design doc under `docs/specs/` first.
 - The relay binds to the tailnet interface only — non-Tailscale source
   addresses are refused at the application layer (the only escape
   hatch is `CMUX_DEV_ALLOW_LOCALHOST=1` for dev).
-- Each iOS device is issued a per-device token at pairing time. Tokens can
-  be revoked individually from the relay's menu bar.
+- Every bearer is bound to the Tailscale node key that registered it.
+  Authenticated HTTP and WebSocket requests re-check the live caller identity.
+- Per-device tokens can be revoked individually from the relay CLI.
+- Registration and caller identity lookups are coalesced and briefly cached,
+  including unavailable results, to bound local Tailscale process load.
 - Notification payloads never contain terminal contents — only a
   workspace/surface id and a short title.
 - No telemetry. No analytics. No third-party network calls.

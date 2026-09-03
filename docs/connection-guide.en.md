@@ -226,12 +226,19 @@ tailscale ip -4
 
 ### Still stuck?
 
-A previously paired device token may have been revoked.
+The app now distinguishes the remaining authorization states:
+
+- **Waiting for relay; retrying automatically**: Tailscale identity on the
+  Mac is still starting. Leave the app open; it retries with bounded backoff.
+- **Pairing was removed on the Mac**: the saved device token was revoked or
+  removed. Select **Unpair This Device**, then reconnect to pair again.
+- `registration denied` in the Mac relay log: add the intended tailnet login
+  to `allow_login`, then restart the relay or send it SIGHUP.
+
+Inspect active registrations with:
 
 ```bash
-.build/release/cmux-relay devices list     # see registered devices
-# If needed, remove a device and re-pair from the app:
-# .build/release/cmux-relay devices revoke <device-id>
+.build/release/cmux-relay devices list
 ```
 
 ---
