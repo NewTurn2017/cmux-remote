@@ -14,6 +14,13 @@ extension DeviceStore {
 }
 
 extension RelayConfig {
+    /// Test helper: replace only the pairing allow-list.
+    func authorizingOnly(_ logins: [String]) -> RelayConfig {
+        var copy = self
+        copy.allowLogin = logins
+        return copy
+    }
+
     /// Test helper — minimal valid config. Concrete values matter only for
     /// the Routes path that touches them: `allowLogin` (register gate),
     /// `snippets` + `defaultFps` (state body).

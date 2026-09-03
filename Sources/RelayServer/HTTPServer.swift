@@ -91,6 +91,10 @@ public final class HTTPServer: @unchecked Sendable {
         let store = self.deviceStore
         let manager = self.sessionManager
         let cmux = self.cmux
+        let sourceAuthorizer = BearerSourceAuthorizer(
+            deviceStore: store,
+            peerResolver: routes.registrationPeerResolver
+        )
         let uploadService = self.uploadService
         let artifactService = self.artifactService
 
@@ -101,43 +105,58 @@ public final class HTTPServer: @unchecked Sendable {
             .childChannelInitializer { channel in
                 let upgrader = NIOWebSocketServerUpgrader(
                     maxFrameSize: HTTPServer.maxWebSocketFrameBytes,
-                    shouldUpgrade: { @Sendable ch, head in
+                    shouldUpgrade: { @Sendable channel, head in
                         let path = head.uri.split(separator: "?").first.map(String.init) ?? head.uri
                         guard path == "/v1/ws",
-                              HTTPServer.deviceIdFromWSHeaders(head.headers, store: store) != nil
-                        else {
-                            return ch.eventLoop.makeSucceededFuture(nil)
+                              let remote = channel.remoteAddress?.ipAddress else {
+                            return channel.eventLoop.makeSucceededFuture(nil)
                         }
-                        // URLSessionWebSocketTask validates the negotiated
-                        // `Sec-WebSocket-Protocol` against the *first*
-                        // entry it offered (Apple's implementation is
-                        // stricter than RFC 6455 here). Echo that exact
-                        // first offered token so the iOS handshake closes
-                        // cleanly instead of `NSURLErrorBadServerResponse`.
-                        let offered = (head.headers.first(name: "Sec-WebSocket-Protocol") ?? "")
-                            .split(separator: ",")
-                            .map { $0.trimmingCharacters(in: .whitespaces) }
-                            .filter { !$0.isEmpty }
-                        var responseHeaders = HTTPHeaders()
-                        if let echoed = offered.first {
-                            responseHeaders.add(name: "Sec-WebSocket-Protocol", value: echoed)
+                        return channel.eventLoop.makeFutureWithTask {
+                            guard case .authorized = await sourceAuthorizer.authorize(
+                                headers: head.headers,
+                                remoteAddress: remote
+                            ) else { return nil }
+                            let offered = (head.headers.first(name: "Sec-WebSocket-Protocol") ?? "")
+                                .split(separator: ",")
+                                .map { $0.trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty }
+                            var responseHeaders = HTTPHeaders()
+                            if let echoed = offered.first {
+                                responseHeaders.add(
+                                    name: "Sec-WebSocket-Protocol",
+                                    value: echoed
+                                )
+                            }
+                            return responseHeaders
                         }
-                        return ch.eventLoop.makeSucceededFuture(responseHeaders)
                     },
-                    upgradePipelineHandler: { @Sendable ch, head in
-                        let did = HTTPServer.deviceIdFromWSHeaders(head.headers, store: store) ?? ""
-                        let handler = WebSocketHandler(
-                            deviceId: did,
-                            deviceStore: store,
-                            sessionManager: manager,
-                            cmuxClient: cmux,
-                            uploadService: uploadService,
-                            artifactService: artifactService
-                        )
-                        return ch.pipeline.addHandler(handler)
+                    upgradePipelineHandler: { @Sendable channel, head in
+                        let remote = channel.remoteAddress?.ipAddress ?? ""
+                        return channel.eventLoop.makeFutureWithTask {
+                            guard case let .authorized(deviceID) = await sourceAuthorizer.authorize(
+                                headers: head.headers,
+                                remoteAddress: remote
+                            ) else {
+                                throw RelayError.unauthorized(remote)
+                            }
+                            return deviceID
+                        }.flatMap { deviceID in
+                            let handler = WebSocketHandler(
+                                deviceId: deviceID,
+                                deviceStore: store,
+                                sessionManager: manager,
+                                cmuxClient: cmux,
+                                uploadService: uploadService,
+                                artifactService: artifactService
+                            )
+                            return channel.pipeline.addHandler(handler)
+                        }
                     }
                 )
-                let httpHandler = HTTPHandler(routes: routes, deviceStore: store)
+                let httpHandler = HTTPHandler(
+                    routes: routes,
+                    sourceAuthorizer: sourceAuthorizer
+                )
                 let upgradeConfig: NIOHTTPServerUpgradeConfiguration = (
                     upgraders: [upgrader],
                     completionHandler: { _ in
@@ -159,68 +178,6 @@ public final class HTTPServer: @unchecked Sendable {
         try await chan.closeFuture.get()
     }
 
-    // MARK: - Bearer extraction
-
-    /// Resolve `Authorization: Bearer <token>` against the device store.
-    /// Returns `nil` if the header is missing, malformed, or no device
-    /// validates the token. `nil` is passed to `Routes.handle` so each
-    /// endpoint can choose between rejecting (401) or proceeding
-    /// anonymously (e.g. `/v1/health`, `/v1/devices/me/register`).
-    static func deviceIdFromAuthHeader(_ headers: HTTPHeaders,
-                                       store: DeviceStore) -> String?
-    {
-        guard let value = headers.first(name: "Authorization") else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        let prefix = "Bearer "
-        guard trimmed.lowercased().hasPrefix(prefix.lowercased()) else { return nil }
-        let token = String(trimmed.dropFirst(prefix.count))
-            .trimmingCharacters(in: .whitespaces)
-        if token.isEmpty { return nil }
-        for d in store.allDevices() where store.validate(deviceId: d.deviceId, token: token) {
-            return d.deviceId
-        }
-        return nil
-    }
-
-    /// Resolve `Sec-WebSocket-Protocol: cmuxremote.v1, bearer.<token>` for
-    /// WS upgrade requests. Same validation contract as
-    /// `deviceIdFromAuthHeader` but pulls the token from the WS subprotocol
-    /// list because browsers don't let JS set `Authorization` on WS opens.
-    static func deviceIdFromWSHeaders(_ headers: HTTPHeaders,
-                                      store: DeviceStore) -> String?
-    {
-        // Native iOS clients can ride the bearer on the standard
-        // `Authorization: Bearer <token>` header — URLSessionWebSocketTask
-        // strips custom values from `Sec-WebSocket-Protocol`. Browsers
-        // that can't set Authorization continue to use the legacy
-        // subprotocol form `bearer.<token>`.
-        let candidates: [String] = {
-            var tokens: [String] = []
-            if let auth = headers.first(name: "Authorization"),
-               auth.hasPrefix("Bearer ")
-            {
-                let trimmed = String(auth.dropFirst("Bearer ".count))
-                    .trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty { tokens.append(trimmed) }
-            }
-            if let proto = headers.first(name: "Sec-WebSocket-Protocol") {
-                let parts = proto.split(separator: ",").map {
-                    $0.trimmingCharacters(in: .whitespaces)
-                }
-                for part in parts where part.hasPrefix("bearer.") {
-                    let token = String(part.dropFirst("bearer.".count))
-                    if !token.isEmpty { tokens.append(token) }
-                }
-            }
-            return tokens
-        }()
-        for token in candidates {
-            for d in store.allDevices() where store.validate(deviceId: d.deviceId, token: token) {
-                return d.deviceId
-            }
-        }
-        return nil
-    }
 }
 
 // MARK: - HTTP request handler
@@ -240,14 +197,13 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
     typealias OutboundOut = HTTPServerResponsePart
 
     private let routes: Routes
-    private let deviceStore: DeviceStore
+    private let sourceAuthorizer: BearerSourceAuthorizer
     private var pendingHead: HTTPRequestHead?
     private var bodyBuffer = ByteBuffer()
-    private var deviceId: String?
 
-    init(routes: Routes, deviceStore: DeviceStore) {
+    init(routes: Routes, sourceAuthorizer: BearerSourceAuthorizer) {
         self.routes = routes
-        self.deviceStore = deviceStore
+        self.sourceAuthorizer = sourceAuthorizer
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -255,7 +211,6 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
         case .head(let head):
             pendingHead = head
             bodyBuffer.clear()
-            deviceId = HTTPServer.deviceIdFromAuthHeader(head.headers, store: deviceStore)
 
         case .body(var buf):
             bodyBuffer.writeBuffer(&buf)
@@ -266,43 +221,48 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
                 ? bodyBuffer.getData(at: bodyBuffer.readerIndex,
                                      length: bodyBuffer.readableBytes)
                 : nil
-            let did = deviceId
-            // `description` formats as `[IPv4]127.0.0.1/127.0.0.1:54321`
-            // which doesn't survive `stripPort`. The whois layer wants the
-            // bare IP — ipAddress gives just that.
             let remote = context.remoteAddress?.ipAddress ?? ""
             let routes = self.routes
-            let loop = context.eventLoop
-            Task { [weak self] in
-                let resp = await routes.handle(method: head.method,
-                                               path: head.uri,
-                                               body: body,
-                                               deviceId: did,
-                                               remoteAddr: remote)
-                loop.execute {
-                    self?.respond(context: context, resp: resp)
+            let sourceAuthorizer = self.sourceAuthorizer
+            let responder = HTTPChannelResponder(context: context)
+            Task {
+                let path = head.uri.split(separator: "?").first.map(String.init) ?? head.uri
+                let deviceID: String?
+                let authorizationUnavailable: Bool
+                if path == "/v1/health" || path == "/v1/devices/me/register" {
+                    deviceID = nil
+                    authorizationUnavailable = false
+                } else {
+                    switch await sourceAuthorizer.authorize(
+                        headers: head.headers,
+                        remoteAddress: remote
+                    ) {
+                    case .authorized(let authorizedDeviceID):
+                        deviceID = authorizedDeviceID
+                        authorizationUnavailable = false
+                    case .rejected:
+                        deviceID = nil
+                        authorizationUnavailable = false
+                    case .identityUnavailable:
+                        deviceID = nil
+                        authorizationUnavailable = true
+                    }
                 }
+                let response: HTTPResponseLite
+                if authorizationUnavailable {
+                    response = Routes.identityUnavailableResponse()
+                } else {
+                    response = await routes.handle(
+                        method: head.method,
+                        path: head.uri,
+                        body: body,
+                        deviceId: deviceID,
+                        remoteAddr: remote
+                    )
+                }
+                responder.send(response)
             }
             pendingHead = nil
-            deviceId = nil
-        }
-    }
-
-    private func respond(context: ChannelHandlerContext, resp: HTTPResponseLite) {
-        var headers = HTTPHeaders()
-        headers.add(name: "Content-Length", value: "\(resp.body?.count ?? 0)")
-        headers.add(name: "Connection", value: "close")
-        let head = HTTPResponseHead(version: .http1_1,
-                                    status: resp.status,
-                                    headers: headers)
-        context.write(wrapOutboundOut(.head(head)), promise: nil)
-        if let body = resp.body, !body.isEmpty {
-            var buf = context.channel.allocator.buffer(capacity: body.count)
-            buf.writeBytes(body)
-            context.write(wrapOutboundOut(.body(.byteBuffer(buf))), promise: nil)
-        }
-        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
-            context.close(promise: nil)
         }
     }
 }

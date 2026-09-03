@@ -630,13 +630,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Select Save & Reconnect."
+            "value": "Select Save and Reconnect."
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Save & Reconnect를 선택합니다."
+            "value": "저장 후 다시 연결을 선택합니다."
           }
         }
       }
@@ -678,13 +678,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "sent — arriving in Inbox shortly"
+            "value": "sent, arriving in Inbox shortly"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전송됨 — 곧 Inbox에 도착합니다"
+            "value": "전송됨, 곧 Inbox에 도착합니다"
           }
         }
       }
@@ -1613,6 +1613,182 @@
           "stringUnit": {
             "state": "translated",
             "value": "입력 내용이 즉시 전송됩니다…"
+          }
+        }
+      }
+    },
+    "connection.error.pairing_removed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing was removed on the Mac. Select Unpair This Device, then reconnect."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 페어링이 해제되었습니다. 이 기기 페어링 해제를 선택한 다음 다시 연결하세요."
+          }
+        }
+      }
+    },
+    "connection.error.registration_denied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Tailscale account is not allowed by the Mac relay."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 Tailscale 계정은 Mac 릴레이에서 허용되지 않습니다."
+          }
+        }
+      }
+    },
+    "connection.error.relay_unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Mac relay is waiting for Tailscale and will retry automatically."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 릴레이가 Tailscale을 기다리는 중이며 자동으로 다시 시도합니다."
+          }
+        }
+      }
+    },
+    "connection.error.disallowed_host": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a Tailscale IP or tailnet DNS name."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale IP 또는 테일넷 DNS 이름을 입력하세요."
+          }
+        }
+      }
+    },
+    "connection.error.transport": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Mac relay is unreachable."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 릴레이에 연결할 수 없습니다."
+          }
+        }
+      }
+    },
+    "connection.error.generic": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The relay returned an invalid response."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "릴레이가 올바르지 않은 응답을 반환했습니다."
+          }
+        }
+      }
+    },
+    "connection.state.recovering": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for relay; retrying automatically"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "릴레이를 기다리는 중이며 자동으로 다시 시도합니다"
+          }
+        }
+      }
+    },
+    "connection.error.missing_host": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the Mac Tailscale address in Settings."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정에서 Mac의 Tailscale 주소를 입력하세요."
+          }
+        }
+      }
+    },
+    "connection.state.recovering_short": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "retrying relay…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "릴레이 다시 연결 중…"
+          }
+        }
+      }
+    },
+    "Terminal selection started": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal selection started"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 선택을 시작했습니다"
+          }
+        }
+      }
+    },
+    "Terminal selection copied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal selection copied"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 선택 항목을 복사했습니다"
           }
         }
       }

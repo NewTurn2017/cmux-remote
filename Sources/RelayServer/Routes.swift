@@ -4,6 +4,7 @@ import NIOHTTP1
 import Crypto
 import RelayCore
 import SharedKit
+import Logging
 
 /// Lightweight response envelope. The HTTP layer in M3.11 will translate
 /// this into NIOHTTP1 head + body chunks; keeping it small here makes
@@ -11,8 +12,16 @@ import SharedKit
 public struct HTTPResponseLite: Sendable {
     public var status: HTTPResponseStatus
     public var body: Data?
-    public init(_ status: HTTPResponseStatus, body: Data? = nil) {
-        self.status = status; self.body = body
+    public var headers: [(String, String)]
+
+    public init(
+        _ status: HTTPResponseStatus,
+        body: Data? = nil,
+        headers: [(String, String)] = []
+    ) {
+        self.status = status
+        self.body = body
+        self.headers = headers
     }
 }
 
@@ -24,19 +33,65 @@ public struct HTTPResponseLite: Sendable {
 /// thread-safe, so this layer just sequences the request handling.
 public actor Routes {
     private let deviceStore: DeviceStore
-    private let config: RelayConfig
+    private let config: @Sendable () -> RelayConfig
     private let auth: AuthService
+    private let registrationAuthorizer: RegistrationAuthorizer
+    let registrationPeerResolver: RegistrationPeerResolver
     private let allowLocalhost: Bool
+    private let logger = Logger(label: "cmux-relay.registration")
 
-    public init(deviceStore: DeviceStore,
-                config: RelayConfig,
-                auth: AuthService,
-                allowLocalhost: Bool = Routes.defaultAllowLocalhost())
-    {
+    public init(
+        deviceStore: DeviceStore,
+        config: @escaping @Sendable () -> RelayConfig,
+        auth: AuthService,
+        allowSelfLogin: Bool = true,
+        allowLocalhost: Bool = Routes.defaultAllowLocalhost(),
+        clock: any Clock = SystemClock(),
+        selfLoginCacheDuration: TimeInterval = 5
+    ) {
         self.deviceStore = deviceStore
         self.config = config
         self.auth = auth
         self.allowLocalhost = allowLocalhost
+        registrationAuthorizer = RegistrationAuthorizer(
+            auth: auth,
+            config: config,
+            allowSelfLogin: allowSelfLogin,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
+        registrationPeerResolver = RegistrationPeerResolver(
+            auth: auth,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
+    }
+
+    public init(
+        deviceStore: DeviceStore,
+        config: RelayConfig,
+        auth: AuthService,
+        allowSelfLogin: Bool = true,
+        allowLocalhost: Bool = Routes.defaultAllowLocalhost(),
+        clock: any Clock = SystemClock(),
+        selfLoginCacheDuration: TimeInterval = 5
+    ) {
+        self.deviceStore = deviceStore
+        self.config = { config }
+        self.auth = auth
+        self.allowLocalhost = allowLocalhost
+        registrationAuthorizer = RegistrationAuthorizer(
+            auth: auth,
+            config: { config },
+            allowSelfLogin: allowSelfLogin,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
+        registrationPeerResolver = RegistrationPeerResolver(
+            auth: auth,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
     }
 
     /// Reads `CMUX_DEV_ALLOW_LOCALHOST=1` from the environment. When true,
@@ -63,10 +118,18 @@ public actor Routes {
             return .init(.ok, body: Data(#"{"ok":true}"#.utf8))
 
         case (.GET, "/v1/state"):
+            guard deviceId != nil else { return .init(.unauthorized) }
             return state()
 
         case (.POST, "/v1/devices/me/register"):
             return await registerNew(remoteAddr: remoteAddr)
+
+        case (.GET, "/v1/devices/me"):
+            guard let did = deviceId,
+                  let device = deviceStore.lookup(deviceId: did) else {
+                return .init(.unauthorized)
+            }
+            return deviceStatus(device)
 
         case (.POST, "/v1/devices/me/apns"):
             guard let did = deviceId,
@@ -77,11 +140,35 @@ public actor Routes {
 
         case (.DELETE, "/v1/devices/me"):
             guard let did = deviceId else { return .init(.unauthorized) }
-            try? deviceStore.revoke(deviceId: did)
-            return .init(.noContent)
+            do {
+                try deviceStore.revoke(deviceId: did)
+                return .init(.noContent)
+            } catch {
+                logger.error("device revoke failed: registry persistence error")
+                return .init(.internalServerError)
+            }
 
         default:
             return .init(.notFound)
+        }
+    }
+
+    // MARK: - GET /v1/devices/me
+
+    private func deviceStatus(_ device: Device) -> HTTPResponseLite {
+        struct Response: Encodable {
+            let deviceId: String
+            enum CodingKeys: String, CodingKey { case deviceId = "device_id" }
+        }
+        do {
+            let body = try JSONEncoder().encode(Response(deviceId: device.deviceId))
+            return .init(
+                .ok,
+                body: body,
+                headers: [("Content-Type", "application/json")]
+            )
+        } catch {
+            return .init(.internalServerError)
         }
     }
 
@@ -95,9 +182,17 @@ public actor Routes {
                 case snippets, defaultFps = "default_fps"
             }
         }
-        let s = State(snippets: config.snippets, defaultFps: config.defaultFps)
-        let body = (try? JSONEncoder().encode(s)) ?? Data()
-        return .init(.ok, body: body)
+        let currentConfig = config()
+        let state = State(
+            snippets: currentConfig.snippets,
+            defaultFps: currentConfig.defaultFps
+        )
+        do {
+            return .init(.ok, body: try JSONEncoder().encode(state))
+        } catch {
+            logger.error("state response failed to encode")
+            return .init(.internalServerError)
+        }
     }
 
     // MARK: - POST /v1/devices/me/apns
@@ -118,9 +213,17 @@ public actor Routes {
         guard p.env == "prod" || p.env == "sandbox" else {
             return .init(.badRequest)
         }
-        try? deviceStore.setAPNsToken(deviceId: deviceId,
-                                      token: p.apnsToken, env: p.env)
-        return .init(.noContent)
+        do {
+            try deviceStore.setAPNsToken(
+                deviceId: deviceId,
+                token: p.apnsToken,
+                env: p.env
+            )
+            return .init(.noContent)
+        } catch {
+            logger.error("APNs token update failed: registry persistence error")
+            return .init(.internalServerError)
+        }
     }
 
     private static func isAPNsToken(_ token: String) -> Bool {
@@ -135,7 +238,9 @@ public actor Routes {
 
     private func registerNew(remoteAddr: String) async -> HTTPResponseLite {
         let peer: PeerIdentity
-        if allowLocalhost, Self.isLoopback(remoteAddr), let login = config.allowLogin.first {
+        let currentConfig = config()
+        if allowLocalhost, Self.isLoopback(remoteAddr),
+           let login = currentConfig.allowLogin.first {
             // Dev bypass — see `defaultAllowLocalhost()`. The peer identity
             // is fabricated from the first allow_login so the simulator can
             // pair without traversing tailscaled. nodeKey is a stable
@@ -147,26 +252,33 @@ public actor Routes {
                 nodeKey: "cmux-dev-localhost:\(login)"
             )
         } else {
-            do {
-                peer = try await auth.whois(remoteAddr: remoteAddr)
-            } catch RelayError.unauthorized {
-                // tailscaled didn't recognize the peer at all — treat as
-                // forbidden so the phone shows a clear "not on tailnet" UI
-                // rather than a 5xx that suggests a relay bug.
+            switch await registrationPeerResolver.resolve(remoteAddress: remoteAddr) {
+            case .peer(let resolved):
+                peer = resolved
+            case .peerNotFound:
+                logger.warning("registration denied: Tailscale peer not found")
                 return .init(.forbidden)
-            } catch {
-                return .init(.internalServerError)
+            case .unavailable:
+                logger.warning("registration deferred: Tailscale peer lookup unavailable")
+                return Self.identityUnavailableResponse()
             }
 
-            guard config.allowLogin.contains(peer.loginName) else {
+            switch await registrationAuthorizer.decision(for: peer.loginName) {
+            case .allowed:
+                break
+            case .denied:
+                logger.warning("registration denied: Tailscale login is outside policy")
                 return .init(.forbidden)
+            case .identityUnavailable:
+                logger.warning("registration deferred: Mac Tailscale identity unavailable")
+                return Self.identityUnavailableResponse()
             }
         }
 
-        let deviceId = sha256Hex(peer.nodeKey)
-        // Idempotent: rebinding the same node rotates the bearer so the
-        // previous token (which may have leaked) is no longer valid.
-        try? deviceStore.revoke(deviceId: deviceId)
+        let deviceId = BearerSourceAuthorizer.deviceID(for: peer.nodeKey)
+        // Register atomically replaces the same node's bearer. A separate
+        // revoke write would create an outage window if the replacement write
+        // failed after the old credential had already been removed.
         do {
             let token = try deviceStore.register(deviceId: deviceId,
                                                  loginName: peer.loginName,
@@ -179,16 +291,24 @@ public actor Routes {
             let body = try JSONEncoder().encode(R(device_id: deviceId, token: token))
             return .init(.ok, body: body)
         } catch {
+            logger.error("device registration failed: registry persistence error")
             return .init(.internalServerError)
         }
     }
 }
 
-private func sha256Hex(_ s: String) -> String {
-    SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
-}
-
 extension Routes {
+    static func identityUnavailableResponse() -> HTTPResponseLite {
+        .init(
+            .serviceUnavailable,
+            body: Data(#"{"error":"tailscale_identity_unavailable","retry_after_seconds":5}"#.utf8),
+            headers: [
+                ("Content-Type", "application/json"),
+                ("Retry-After", "5"),
+            ]
+        )
+    }
+
     static func isLoopback(_ addr: String) -> Bool {
         addr == "127.0.0.1" || addr == "::1" || addr == "0:0:0:0:0:0:0:1"
     }

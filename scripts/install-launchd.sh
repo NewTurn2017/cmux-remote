@@ -74,6 +74,7 @@ SOCKET=""
 if [ "$PIN_SOCKET_SET" -eq 1 ]; then
   SOCKET="$PIN_SOCKET"
 fi
+SELF_LOGIN_OPT_OUT="${CMUX_NO_SELF_LOGIN:-0}"
 DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
 # launchd starts agents with a stripped PATH; tailscale CLI on macOS lives in
 # /usr/local/bin (pkg install), /opt/homebrew/bin (brew), or the Tailscale.app
@@ -114,6 +115,7 @@ render_plist() {
     -e "s|__SOCKET__|$(render_token "$SOCKET")|g" \
     -e "s|__LOGDIR__|$(render_token "$LOGDIR")|g" \
     -e "s|__DEV_ALLOW_LOCALHOST__|$(render_token "$DEV_ALLOW_LOCALHOST")|g" \
+    -e "s|__NO_SELF_LOGIN__|$(render_token "$SELF_LOGIN_OPT_OUT")|g" \
     -e "s|__RELAY_PATH__|$(render_token "$RELAY_PATH")|g" \
     "$TEMPLATE"
 }

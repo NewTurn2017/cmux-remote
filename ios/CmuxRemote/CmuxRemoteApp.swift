@@ -12,6 +12,7 @@ struct CmuxRemoteApp: App {
     @State private var remoteFiles: RemoteFileFeatureCoordinator
     @State private var notifPresenter = LocalNotificationPresenter()
     @State private var bootstrapped = false
+    @State private var activeSession: LiveRelaySession?
     @State private var activeRPC: RPCClient?
     @State private var splashFinished = Self.shouldSkipSplash()
     @AppStorage("cmux.demoMode") private var demoMode: Bool = false
@@ -149,110 +150,61 @@ struct CmuxRemoteApp: App {
             port = defaultsPort == 0 ? 4399 : defaultsPort
         }
         os_log("cmux bootstrap host=%{public}@ port=%{public}d", host, port)
-        guard !host.isEmpty else { return }
+        guard !host.isEmpty else {
+            workspaceStore.connection = .error(Self.connectionMessage(for: .missingHost))
+            return
+        }
         guard EndpointPolicy.isAllowedRelayHost(host) else {
             workspaceStore.connection = .error("Tailscale host or 100.64.0.0/10 address required")
             return
         }
 
-        let auth = AuthClient(host: host, port: port, keychain: keychain, http: URLSessionHTTP(), scheme: "http")
-        os_log("cmux register start host=%{public}@", host)
-        do {
-            try await auth.registerIfNeeded()
-            os_log("cmux register ok")
-            remoteNotifications.configure(authClient: auth)
-            if localNotificationsEnabled {
-                Task { @MainActor in
-                    guard await presenter.requestAuthorizationIfNeeded() else { return }
-                    await remoteNotifications.registerForRemoteNotifications()
-                }
-            }
-        } catch {
-            os_log("cmux register FAILED: %{public}@", String(describing: error))
-            workspaceStore.connection = .error(String(describing: error))
-            return
-        }
-        guard let token = try? keychain.get("bearer"),
-              let deviceId = try? keychain.get("device_id"),
-              let url = URL(string: "ws://\(host):\(port)/v1/ws")
-        else { return }
-
-        let ws = WSClient(url: url, headers: [
-            "Sec-WebSocket-Protocol": "cmuxremote.v1",
-            "Authorization": "Bearer \(token)",
-        ])
-        let rpc = RPCClient(transport: ws)
-        let liveWorkspaceStore = WorkspaceStore(rpc: rpc)
-        let liveSurfaceStore = SurfaceStore(rpc: rpc)
-        let liveHostStatusStore = HostStatusStore(rpc: rpc)
-        await MainActor.run {
-            liveWorkspaceStore.onWorkspaceAlert = { notifStore.append($0, deliveryPolicy: .userInputRequired) }
-            workspaceStore = liveWorkspaceStore
-            surfaceStore = liveSurfaceStore
-            hostStatusStore = liveHostStatusStore
-            activeRPC = rpc
-        }
-        await rpc.onPush { frame in
-            Task { @MainActor in
-                liveSurfaceStore.ingest(frame)
-                notifStore.ingest(frame)
-            }
-        }
-        await ws.setOnText { text in Task { await rpc.handleIncoming(text: text) } }
-        await ws.setOnClose { _ in
-            Task {
-                await rpc.failAllPending(RPCClientError.closed)
-                await handleConnectionClosed(rpc: rpc, workspaceStore: liveWorkspaceStore)
-            }
-        }
-        await ws.setOnOpen {
-            await Self.runLiveOpenSequence(
-                sendHello: {
-                    let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.4"
-                    let hello = HelloFrame(deviceId: deviceId, appVersion: appVersion, protocolVersion: 1)
-                    if let data = try? SharedKitJSON.deterministicEncoder.encode(hello),
-                       let text = String(data: data, encoding: .utf8)
-                    {
-                        await ws.send(text: text)
-                    }
-                },
-                initializeRemoteFiles: {
-                    await remoteFiles.connect(
-                        rpc: rpc,
-                        hostID: host,
-                        accountScope: deviceId
+        let session = LiveRelaySession(
+            host: host,
+            port: port,
+            keychain: keychain,
+            remoteFiles: remoteFiles,
+            notificationStore: notifStore,
+            notificationRegistrar: remoteNotifications
+        )
+        activeSession = session
+        workspaceStore.connection = .connecting
+        session.connect(
+            localNotificationsEnabled: localNotificationsEnabled,
+            onStoresReady: { stores, rpc in
+                workspaceStore = stores.workspace
+                surfaceStore = stores.surface
+                hostStatusStore = stores.hostStatus
+                activeRPC = rpc
+            },
+            onClosed: { rpc, code in
+                guard activeRPC === rpc else { return }
+                switch code {
+                case 4401:
+                    workspaceStore.connection = .error(
+                        Self.connectionMessage(for: .pairingRemoved)
                     )
-                },
-                resubscribeSurface: { await liveSurfaceStore.resubscribe() },
-                refreshWorkspace: { await liveWorkspaceStore.refresh() },
-                refreshHost: { await liveHostStatusStore.refreshBattery() }
-            )
-        }
-        await ws.connect()
-    }
-
-    @MainActor
-    static func runLiveOpenSequence(
-        sendHello: @MainActor () async -> Void,
-        initializeRemoteFiles: @MainActor () async -> Void,
-        resubscribeSurface: @MainActor () async -> Void,
-        refreshWorkspace: @MainActor () async -> Void,
-        refreshHost: @MainActor () async -> Void
-    ) async {
-        await sendHello()
-        await initializeRemoteFiles()
-        await resubscribeSurface()
-        await refreshWorkspace()
-        await refreshHost()
-    }
-
-    @MainActor
-    private func bootstrap(rpc: any RPCDispatch) async {
-        workspaceStore = WorkspaceStore(rpc: rpc)
-        surfaceStore = SurfaceStore(rpc: rpc)
-        hostStatusStore = HostStatusStore(rpc: rpc)
-        await workspaceStore.refresh()
-        await hostStatusStore.refreshBattery()
+                case 4403:
+                    workspaceStore.connection = .error(
+                        Self.connectionMessage(for: .registrationDenied)
+                    )
+                case 4500:
+                    workspaceStore.connection = .error(
+                        Self.connectionMessage(for: .invalidRelayResponse)
+                    )
+                default:
+                    workspaceStore.connection = .disconnected
+                }
+                await remoteFiles.deactivate(purgeAccountCache: false)
+            },
+            onRetryWaiting: { _ in
+                workspaceStore.connection = .recovering
+            },
+            onFailure: { error in
+                guard activeSession === session else { return }
+                workspaceStore.connection = .error(Self.connectionMessage(for: error))
+            }
+        )
     }
 
     @MainActor
@@ -330,7 +282,8 @@ struct CmuxRemoteApp: App {
 
     @MainActor
     private func reconnect() {
-        let rpc = activeRPC
+        let session = activeSession
+        activeSession = nil
         activeRPC = nil
         workspaceStore.reset()
         surfaceStore.reset()
@@ -338,14 +291,15 @@ struct CmuxRemoteApp: App {
         bootstrapped = false
         Task { @MainActor in
             await remoteFiles.deactivate(purgeAccountCache: false)
-            await rpc?.close()
+            await session?.close()
             await bootstrapOnce()
         }
     }
 
     @MainActor
     private func disconnect() {
-        let rpc = activeRPC
+        let session = activeSession
+        activeSession = nil
         activeRPC = nil
         try? Keychain(service: "com.genie.cmuxremote").wipe()
         workspaceStore.reset()
@@ -354,18 +308,8 @@ struct CmuxRemoteApp: App {
         bootstrapped = false
         Task { @MainActor in
             await remoteFiles.deactivate(purgeAccountCache: true)
-            await rpc?.close()
+            await session?.close()
         }
-    }
-
-    @MainActor
-    private func handleConnectionClosed(
-        rpc: RPCClient,
-        workspaceStore: WorkspaceStore
-    ) async {
-        guard activeRPC === rpc else { return }
-        workspaceStore.connection = .disconnected
-        await remoteFiles.deactivate(purgeAccountCache: false)
     }
 
     private func handleDeepLink(_ url: URL) {

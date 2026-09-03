@@ -71,7 +71,7 @@ struct WorkspaceListView: View {
                         Text("[ no workspaces ]")
                             .cmuxDisplay(13)
                             .foregroundStyle(CmuxTheme.muted)
-                        Text("pull to refresh — check relay connection")
+                        Text("pull to refresh; check relay connection")
                             .cmuxMono(11)
                             .foregroundStyle(CmuxTheme.muted)
                     }
@@ -201,6 +201,11 @@ struct WorkspaceListView: View {
         switch store.connection {
         case .connected:   return "relay connected"
         case .connecting:  return "connecting…"
+        case .recovering:
+            return String(
+                localized: "connection.state.recovering_short",
+                defaultValue: "retrying relay…"
+            )
         case .disconnected: return "offline"
         case .error:       return "needs attention"
         }
@@ -209,7 +214,7 @@ struct WorkspaceListView: View {
     private var connectionColor: Color {
         switch store.connection {
         case .connected:    return CmuxTheme.accentGreen
-        case .connecting:   return CmuxTheme.accentYellow
+        case .connecting, .recovering: return CmuxTheme.accentYellow
         case .disconnected: return CmuxTheme.muted
         case .error:        return CmuxTheme.accentRed
         }

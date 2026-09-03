@@ -12,6 +12,7 @@ public actor WSClient {
     private var task: (any WSClientConnection)?
     private let connectionFactory: any WSClientConnectionFactory
     private let reconnectDelay: @Sendable (TimeInterval) async throws -> Void
+    private let beforeReconnect: @Sendable () async throws -> Void
     private var generation: UInt64 = 0
     private var openGeneration: UInt64?
     private var flushingGeneration: UInt64?
@@ -23,7 +24,11 @@ public actor WSClient {
     private var shouldReconnect = true
     private let log = Logger(subsystem: "com.genie.cmuxremote", category: "ws")
 
-    public init(url: URL, headers: [String: String]) {
+    public init(
+        url: URL,
+        headers: [String: String],
+        beforeReconnect: @escaping @Sendable () async throws -> Void = {}
+    ) {
         self.url = url
         self.headers = headers
         connectionFactory = URLSessionWebSocketConnectionFactory()
@@ -31,18 +36,21 @@ public actor WSClient {
             // Reconnect backoff is an intended bounded delay; injection keeps tests event-driven.
             try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
+        self.beforeReconnect = beforeReconnect
     }
 
     init(
         url: URL,
         headers: [String: String],
         connectionFactory: any WSClientConnectionFactory,
-        reconnectDelay: @escaping @Sendable (TimeInterval) async throws -> Void
+        reconnectDelay: @escaping @Sendable (TimeInterval) async throws -> Void,
+        beforeReconnect: @escaping @Sendable () async throws -> Void = {}
     ) {
         self.url = url
         self.headers = headers
         self.connectionFactory = connectionFactory
         self.reconnectDelay = reconnectDelay
+        self.beforeReconnect = beforeReconnect
     }
 
     public func setOnText(_ handler: (@Sendable (String) -> Void)?) {
@@ -275,7 +283,41 @@ public actor WSClient {
     private func performReconnect(generation reconnectGeneration: UInt64, completedDelay: TimeInterval) async {
         guard shouldReconnect, generation == reconnectGeneration else { return }
         reconnectTask = nil
+        do {
+            try await beforeReconnect()
+        } catch {
+            guard shouldReconnect, generation == reconnectGeneration else { return }
+            log.error("websocket reconnect preflight failed: \(error.localizedDescription, privacy: .public)")
+            if Self.isRetryablePreflightError(error) {
+                backoff = min(Self.retryDelay(for: error) ?? completedDelay * 2, 30)
+                scheduleReconnect(generation: reconnectGeneration)
+            } else {
+                shouldReconnect = false
+                onClose?(Self.preflightFailureCode(for: error))
+            }
+            return
+        }
+        guard shouldReconnect, generation == reconnectGeneration else { return }
         backoff = min(completedDelay * 2, 30)
         await startConnection(clearPending: false)
+    }
+
+    private static func isRetryablePreflightError(_ error: Error) -> Bool {
+        RelayCredentialRetrier.isRetryable(error)
+    }
+
+    private static func retryDelay(for error: Error) -> TimeInterval? {
+        guard case let AuthError.relayUnavailable(_, retryAfter) = error else {
+            return nil
+        }
+        return retryAfter
+    }
+
+    private static func preflightFailureCode(for error: Error) -> Int {
+        switch error {
+        case AuthError.pairingRemoved: return 4401
+        case AuthError.registrationDenied: return 4403
+        default: return 4500
+        }
     }
 }

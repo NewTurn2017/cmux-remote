@@ -136,6 +136,7 @@ public final class WorkspaceStore {
 public enum ConnectionState: Equatable {
     case disconnected
     case connecting
+    case recovering
     case connected
     case error(String)
 }
