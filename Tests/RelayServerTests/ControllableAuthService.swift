@@ -6,6 +6,7 @@ final class ControllableAuthService: AuthService, @unchecked Sendable {
     private var peerResult: Result<PeerIdentity, Error>
     private var ownerResult: Result<String?, Error>
     private var ownerCalls = 0
+    private var peerCalls = 0
 
     init(
         peer: PeerIdentity = .init(
@@ -21,7 +22,10 @@ final class ControllableAuthService: AuthService, @unchecked Sendable {
     }
 
     func whois(remoteAddr: String) async throws -> PeerIdentity {
-        try lock.withLock { try peerResult.get() }
+        try lock.withLock {
+            peerCalls += 1
+            return try peerResult.get()
+        }
     }
 
     func selfLogin() async throws -> String? {
@@ -37,6 +41,10 @@ final class ControllableAuthService: AuthService, @unchecked Sendable {
 
     func selfLoginCallCount() -> Int {
         lock.withLock { ownerCalls }
+    }
+
+    func peerCallCount() -> Int {
+        lock.withLock { peerCalls }
     }
 }
 

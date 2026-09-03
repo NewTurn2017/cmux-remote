@@ -75,6 +75,30 @@ final class RoutesTests: XCTestCase {
         XCTAssertEqual(auth.selfLoginCallCount(), 1)
     }
 
+    func testPeerLookupIsCachedDuringRetryWindow() async throws {
+        let store = try DeviceStore.empty()
+        let clock = FakeClock()
+        let auth = ControllableAuthService()
+        let routes = Routes(
+            deviceStore: store,
+            config: .testValue.authorizingOnly(["owner@example.com"]),
+            auth: auth,
+            clock: clock,
+            selfLoginCacheDuration: 5
+        )
+
+        let first = await register(routes)
+        let cached = await register(routes)
+        XCTAssertEqual(first.status, .ok)
+        XCTAssertEqual(cached.status, .ok)
+        XCTAssertEqual(auth.peerCallCount(), 1)
+
+        clock.advance(by: 5)
+        let refreshed = await register(routes)
+        XCTAssertEqual(refreshed.status, .ok)
+        XCTAssertEqual(auth.peerCallCount(), 2)
+    }
+
     func testRegisterRecoversAfterCachedIdentityFailureExpires() async throws {
         let store = try DeviceStore.empty()
         let clock = FakeClock()
@@ -228,7 +252,7 @@ final class RoutesTests: XCTestCase {
     func testStateReturnsConfigSnapshot() async throws {
         let resp = await makeRoutes(try DeviceStore.empty())
             .handle(method: .GET, path: "/v1/state",
-                    body: nil, deviceId: nil, remoteAddr: "100.64.0.5:1")
+                    body: nil, deviceId: "authorized", remoteAddr: "100.64.0.5:1")
         XCTAssertEqual(resp.status, .ok)
         struct S: Decodable {
             let defaultFps: Int
@@ -236,6 +260,13 @@ final class RoutesTests: XCTestCase {
         }
         let s = try JSONDecoder().decode(S.self, from: resp.body ?? Data())
         XCTAssertEqual(s.defaultFps, 15)
+    }
+
+    func testStateRequiresAuth() async throws {
+        let response = await makeRoutes(try DeviceStore.empty())
+            .handle(method: .GET, path: "/v1/state",
+                    body: nil, deviceId: nil, remoteAddr: "100.64.0.5:1")
+        XCTAssertEqual(response.status, .unauthorized)
     }
 
     func testRevokeRequiresAuth() async throws {

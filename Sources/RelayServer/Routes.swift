@@ -36,6 +36,7 @@ public actor Routes {
     private let config: @Sendable () -> RelayConfig
     private let auth: AuthService
     private let registrationAuthorizer: RegistrationAuthorizer
+    let registrationPeerResolver: RegistrationPeerResolver
     private let allowLocalhost: Bool
     private let logger = Logger(label: "cmux-relay.registration")
 
@@ -59,6 +60,11 @@ public actor Routes {
             clock: clock,
             cacheDuration: selfLoginCacheDuration
         )
+        registrationPeerResolver = RegistrationPeerResolver(
+            auth: auth,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
     }
 
     public init(
@@ -78,6 +84,11 @@ public actor Routes {
             auth: auth,
             config: { config },
             allowSelfLogin: allowSelfLogin,
+            clock: clock,
+            cacheDuration: selfLoginCacheDuration
+        )
+        registrationPeerResolver = RegistrationPeerResolver(
+            auth: auth,
             clock: clock,
             cacheDuration: selfLoginCacheDuration
         )
@@ -107,6 +118,7 @@ public actor Routes {
             return .init(.ok, body: Data(#"{"ok":true}"#.utf8))
 
         case (.GET, "/v1/state"):
+            guard deviceId != nil else { return .init(.unauthorized) }
             return state()
 
         case (.POST, "/v1/devices/me/register"):
@@ -240,12 +252,13 @@ public actor Routes {
                 nodeKey: "cmux-dev-localhost:\(login)"
             )
         } else {
-            do {
-                peer = try await auth.whois(remoteAddr: remoteAddr)
-            } catch TailnetIdentityError.peerNotFound {
+            switch await registrationPeerResolver.resolve(remoteAddress: remoteAddr) {
+            case .peer(let resolved):
+                peer = resolved
+            case .peerNotFound:
                 logger.warning("registration denied: Tailscale peer not found")
                 return .init(.forbidden)
-            } catch {
+            case .unavailable:
                 logger.warning("registration deferred: Tailscale peer lookup unavailable")
                 return Self.identityUnavailableResponse()
             }
@@ -262,7 +275,7 @@ public actor Routes {
             }
         }
 
-        let deviceId = sha256Hex(peer.nodeKey)
+        let deviceId = BearerSourceAuthorizer.deviceID(for: peer.nodeKey)
         // Register atomically replaces the same node's bearer. A separate
         // revoke write would create an outage window if the replacement write
         // failed after the old credential had already been removed.
@@ -282,10 +295,6 @@ public actor Routes {
             return .init(.internalServerError)
         }
     }
-}
-
-private func sha256Hex(_ s: String) -> String {
-    SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
 }
 
 extension Routes {
