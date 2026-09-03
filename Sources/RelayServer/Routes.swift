@@ -298,7 +298,7 @@ public actor Routes {
 }
 
 extension Routes {
-    private static func identityUnavailableResponse() -> HTTPResponseLite {
+    static func identityUnavailableResponse() -> HTTPResponseLite {
         .init(
             .serviceUnavailable,
             body: Data(#"{"error":"tailscale_identity_unavailable","retry_after_seconds":5}"#.utf8),

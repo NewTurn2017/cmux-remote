@@ -41,20 +41,24 @@ public extension AuthService {
 /// Test fake, keyed by IP after any port is stripped.
 public final class MockAuthService: AuthService, @unchecked Sendable {
     public var peers: [String: PeerIdentity]
+    public var whoisError: TailnetIdentityError?
     public var selfLoginValue: String?
     public var selfLoginError: TailnetIdentityError?
 
     public init(
         peers: [String: PeerIdentity],
+        whoisError: TailnetIdentityError? = nil,
         selfLogin: String? = nil,
         selfLoginError: TailnetIdentityError? = nil
     ) {
         self.peers = peers
+        self.whoisError = whoisError
         self.selfLoginValue = selfLogin
         self.selfLoginError = selfLoginError
     }
 
     public func whois(remoteAddr: String) async throws -> PeerIdentity {
+        if let whoisError { throw whoisError }
         guard let peer = peers[stripPort(remoteAddr)] else {
             throw TailnetIdentityError.peerNotFound
         }

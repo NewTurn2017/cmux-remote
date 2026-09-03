@@ -18,13 +18,15 @@ final class HTTPServerTests: XCTestCase {
         ],
         selfLogin: String? = nil,
         selfLoginError: TailnetIdentityError? = nil,
+        whoisError: TailnetIdentityError? = nil,
         _ body: (HTTPServerFixture) async throws -> Void
     ) async throws {
         let fx = try await HTTPServerFixture.make(
             allowLogin: allowLogin,
             peers: peers,
             selfLogin: selfLogin,
-            selfLoginError: selfLoginError
+            selfLoginError: selfLoginError,
+            whoisError: whoisError
         )
         do {
             try await body(fx)
@@ -112,6 +114,29 @@ final class HTTPServerTests: XCTestCase {
             )
 
             XCTAssertEqual(response.statusCode, 401)
+        }
+    }
+
+    func testCredentialPreflightReturns503WhenWhoisIsUnavailable() async throws {
+        let peer = PeerIdentity(
+            loginName: "a@b", hostname: "iPhone",
+            os: "iOS", nodeKey: "nk-fixture"
+        )
+        try await withFixture(
+            peers: ["127.0.0.1": peer],
+            whoisError: .serviceUnavailable
+        ) { fx in
+            let deviceID = BearerSourceAuthorizer.deviceID(for: peer.nodeKey)
+            let token = try fx.deviceStore.register(
+                deviceId: deviceID, loginName: "a@b",
+                hostname: "iPhone", apnsToken: nil
+            )
+            let response = try await fx.rawRequest(
+                "GET /v1/devices/me HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer \(token)\r\nConnection: close\r\n\r\n"
+            )
+
+            XCTAssertEqual(response.statusCode, 503)
+            XCTAssertEqual(response.headers["retry-after"], "5")
         }
     }
 

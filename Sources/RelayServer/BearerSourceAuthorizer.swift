@@ -4,6 +4,12 @@ import NIOHTTP1
 import RelayCore
 
 struct BearerSourceAuthorizer: Sendable {
+    enum Decision: Equatable, Sendable {
+        case authorized(deviceID: String)
+        case rejected
+        case identityUnavailable
+    }
+
     private let deviceStore: DeviceStore
     private let peerResolver: RegistrationPeerResolver
 
@@ -15,18 +21,21 @@ struct BearerSourceAuthorizer: Sendable {
     func authorize(
         headers: HTTPHeaders,
         remoteAddress: String
-    ) async -> String? {
+    ) async -> Decision {
         guard let token = Self.bearerToken(from: headers),
               let device = deviceStore.device(matching: token) else {
-            return nil
+            return .rejected
         }
         switch await peerResolver.resolve(remoteAddress: remoteAddress) {
         case .peer(let peer):
-            return Self.deviceID(for: peer.nodeKey) == device.deviceId
-                ? device.deviceId
-                : nil
-        case .peerNotFound, .unavailable:
-            return nil
+            guard Self.deviceID(for: peer.nodeKey) == device.deviceId else {
+                return .rejected
+            }
+            return .authorized(deviceID: device.deviceId)
+        case .peerNotFound:
+            return .rejected
+        case .unavailable:
+            return .identityUnavailable
         }
     }
 

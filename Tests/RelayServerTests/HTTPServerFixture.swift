@@ -60,12 +60,14 @@ final class HTTPServerFixture: @unchecked Sendable {
         ],
         selfLogin: String? = nil,
         selfLoginError: TailnetIdentityError? = nil,
+        whoisError: TailnetIdentityError? = nil,
         screens: [Screen] = []
     ) async throws -> HTTPServerFixture {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let store = try DeviceStore.empty()
         let auth = MockAuthService(
             peers: peers,
+            whoisError: whoisError,
             selfLogin: selfLogin,
             selfLoginError: selfLoginError
         )
