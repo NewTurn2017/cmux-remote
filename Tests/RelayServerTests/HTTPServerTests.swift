@@ -85,8 +85,9 @@ final class HTTPServerTests: XCTestCase {
 
     func testCredentialPreflightAcceptsActiveBearer() async throws {
         try await withFixture { fx in
+            let deviceID = BearerSourceAuthorizer.deviceID(for: "nk-fixture")
             let token = try fx.deviceStore.register(
-                deviceId: "d-status", loginName: "a@b",
+                deviceId: deviceID, loginName: "a@b",
                 hostname: "iPhone", apnsToken: nil
             )
             let response = try await fx.rawRequest(
@@ -94,21 +95,63 @@ final class HTTPServerTests: XCTestCase {
             )
 
             XCTAssertEqual(response.statusCode, 200)
-            XCTAssertTrue(response.bodyString.contains("d-status"))
+            XCTAssertTrue(response.bodyString.contains(deviceID))
         }
     }
 
     func testCredentialPreflightRejectsRevokedBearer() async throws {
         try await withFixture { fx in
+            let deviceID = BearerSourceAuthorizer.deviceID(for: "nk-fixture")
             let token = try fx.deviceStore.register(
-                deviceId: "d-status", loginName: "a@b",
+                deviceId: deviceID, loginName: "a@b",
                 hostname: "iPhone", apnsToken: nil
             )
-            try fx.deviceStore.revoke(deviceId: "d-status")
+            try fx.deviceStore.revoke(deviceId: deviceID)
             let response = try await fx.rawRequest(
                 "GET /v1/devices/me HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer \(token)\r\nConnection: close\r\n\r\n"
             )
 
+            XCTAssertEqual(response.statusCode, 401)
+        }
+    }
+
+    func testCredentialPreflightRejectsBearerFromDifferentTailnetNode() async throws {
+        try await withFixture { fx in
+            let stolenToken = try fx.deviceStore.register(
+                deviceId: BearerSourceAuthorizer.deviceID(for: "nodekey:other"),
+                loginName: "a@b",
+                hostname: "Other iPhone",
+                apnsToken: nil
+            )
+            let response = try await fx.rawRequest(
+                "GET /v1/devices/me HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer \(stolenToken)\r\nConnection: close\r\n\r\n"
+            )
+
+            XCTAssertEqual(response.statusCode, 401)
+        }
+    }
+
+    func testWebSocketRejectsBearerFromDifferentTailnetNode() async throws {
+        try await withFixture { fx in
+            let stolenToken = try fx.deviceStore.register(
+                deviceId: BearerSourceAuthorizer.deviceID(for: "nodekey:other"),
+                loginName: "a@b",
+                hostname: "Other iPhone",
+                apnsToken: nil
+            )
+            let response = try await fx.rawRequest(
+                "GET /v1/ws HTTP/1.1\r\nHost: \(fx.host)\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: cmuxremote.v1, bearer.\(stolenToken)\r\n\r\n"
+            )
+
+            XCTAssertNotEqual(response.statusCode, 101)
+        }
+    }
+
+    func testStateWithoutBearerReturns401() async throws {
+        try await withFixture { fx in
+            let response = try await fx.rawRequest(
+                "GET /v1/state HTTP/1.1\r\nHost: \(fx.host)\r\nConnection: close\r\n\r\n"
+            )
             XCTAssertEqual(response.statusCode, 401)
         }
     }
@@ -125,7 +168,8 @@ final class HTTPServerTests: XCTestCase {
 
     func testApnsWithValidBearerPersists() async throws {
         try await withFixture { fx in
-            let token = try fx.deviceStore.register(deviceId: "d-apns",
+            let deviceID = BearerSourceAuthorizer.deviceID(for: "nk-fixture")
+            let token = try fx.deviceStore.register(deviceId: deviceID,
                                                     loginName: "a@b",
                                                     hostname: "iPhone",
                                                     apnsToken: nil)
@@ -134,9 +178,9 @@ final class HTTPServerTests: XCTestCase {
                 "POST /v1/devices/me/apns HTTP/1.1\r\nHost: \(fx.host)\r\nAuthorization: Bearer \(token)\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
             )
             XCTAssertEqual(resp.statusCode, 204, "body=\(resp.bodyString)")
-            XCTAssertEqual(fx.deviceStore.lookup(deviceId: "d-apns")?.apnsToken,
+            XCTAssertEqual(fx.deviceStore.lookup(deviceId: deviceID)?.apnsToken,
                            "abcdef1234")
-            XCTAssertEqual(fx.deviceStore.lookup(deviceId: "d-apns")?.apnsEnv, "prod")
+            XCTAssertEqual(fx.deviceStore.lookup(deviceId: deviceID)?.apnsEnv, "prod")
         }
     }
 
@@ -154,7 +198,8 @@ final class HTTPServerTests: XCTestCase {
 
     func testWebSocketUpgradeWithValidBearerReturns101() async throws {
         try await withFixture { fx in
-            let token = try fx.deviceStore.register(deviceId: "d-ws",
+            let deviceID = BearerSourceAuthorizer.deviceID(for: "nk-fixture")
+            let token = try fx.deviceStore.register(deviceId: deviceID,
                                                     loginName: "a@b",
                                                     hostname: "iPhone",
                                                     apnsToken: nil)

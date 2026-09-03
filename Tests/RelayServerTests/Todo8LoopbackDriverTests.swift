@@ -14,8 +14,9 @@ struct Todo8LoopbackDriverTests {
             Screen(rev: 0, rows: [styledSecond], cols: 6, cursor: CursorPos(x: 6, y: 0)),
         ])
         do {
+            let deviceID = BearerSourceAuthorizer.deviceID(for: "nk-fixture")
             let token = try fixture.deviceStore.register(
-                deviceId: "loopback-device",
+                deviceId: deviceID,
                 loginName: "a@b",
                 hostname: "iPhone",
                 apnsToken: nil
@@ -26,7 +27,7 @@ struct Todo8LoopbackDriverTests {
                 port: fixture.port,
                 token: token
             )
-            let hello = #"{"deviceId":"loopback-device","appVersion":"1","protocolVersion":1}"#
+            let hello = "{\"deviceId\":\"\(deviceID)\",\"appVersion\":\"1\",\"protocolVersion\":1}"
             try await first.sendText(hello)
             print("loopback.stage=first-hello")
             let second = try await LoopbackWebSocketClient.connect(
@@ -144,11 +145,11 @@ struct Todo8LoopbackDriverTests {
                 let firstEvent = first.prepareNextText()
                 let secondEvent = first.prepareNextText()
                 await fixture.sessionManager.broadcastToDevice(
-                    deviceId: "loopback-device",
+                    deviceId: deviceID,
                     frame: .event(EventFrame(category: .system, name: "event-a", payload: .null))
                 )
                 await fixture.sessionManager.broadcastToDevice(
-                    deviceId: "loopback-device",
+                    deviceId: deviceID,
                     frame: .event(EventFrame(category: .system, name: "event-b", payload: .null))
                 )
                 let eventFrames = [

@@ -91,6 +91,12 @@ public final class DeviceStore: @unchecked Sendable {
         return constantTimeEqual(device.tokenHash, hash(token))
     }
 
+    public func device(matching token: String) -> Device? {
+        queue.sync {
+            devices.values.first { constantTimeEqual($0.tokenHash, hash(token)) }
+        }
+    }
+
     public func revoke(deviceId: String) throws {
         try mutate { $0.removeValue(forKey: deviceId) }
     }
