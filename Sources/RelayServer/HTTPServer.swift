@@ -112,10 +112,10 @@ public final class HTTPServer: @unchecked Sendable {
                             return channel.eventLoop.makeSucceededFuture(nil)
                         }
                         return channel.eventLoop.makeFutureWithTask {
-                            guard await sourceAuthorizer.authorize(
+                            guard case .authorized = await sourceAuthorizer.authorize(
                                 headers: head.headers,
                                 remoteAddress: remote
-                            ) != nil else { return nil }
+                            ) else { return nil }
                             let offered = (head.headers.first(name: "Sec-WebSocket-Protocol") ?? "")
                                 .split(separator: ",")
                                 .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -133,7 +133,7 @@ public final class HTTPServer: @unchecked Sendable {
                     upgradePipelineHandler: { @Sendable channel, head in
                         let remote = channel.remoteAddress?.ipAddress ?? ""
                         return channel.eventLoop.makeFutureWithTask {
-                            guard let deviceID = await sourceAuthorizer.authorize(
+                            guard case let .authorized(deviceID) = await sourceAuthorizer.authorize(
                                 headers: head.headers,
                                 remoteAddress: remote
                             ) else {
@@ -228,21 +228,38 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
             Task {
                 let path = head.uri.split(separator: "?").first.map(String.init) ?? head.uri
                 let deviceID: String?
+                let authorizationUnavailable: Bool
                 if path == "/v1/health" || path == "/v1/devices/me/register" {
                     deviceID = nil
+                    authorizationUnavailable = false
                 } else {
-                    deviceID = await sourceAuthorizer.authorize(
+                    switch await sourceAuthorizer.authorize(
                         headers: head.headers,
                         remoteAddress: remote
+                    ) {
+                    case .authorized(let authorizedDeviceID):
+                        deviceID = authorizedDeviceID
+                        authorizationUnavailable = false
+                    case .rejected:
+                        deviceID = nil
+                        authorizationUnavailable = false
+                    case .identityUnavailable:
+                        deviceID = nil
+                        authorizationUnavailable = true
+                    }
+                }
+                let response: HTTPResponseLite
+                if authorizationUnavailable {
+                    response = Routes.identityUnavailableResponse()
+                } else {
+                    response = await routes.handle(
+                        method: head.method,
+                        path: head.uri,
+                        body: body,
+                        deviceId: deviceID,
+                        remoteAddr: remote
                     )
                 }
-                let response = await routes.handle(
-                    method: head.method,
-                    path: head.uri,
-                    body: body,
-                    deviceId: deviceID,
-                    remoteAddr: remote
-                )
                 responder.send(response)
             }
             pendingHead = nil

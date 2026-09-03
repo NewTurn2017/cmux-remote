@@ -26,12 +26,15 @@ final class BearerSourceAuthorizerTests: XCTestCase {
         var headers = HTTPHeaders()
         headers.add(name: "Authorization", value: "Bearer \(token)")
 
-        let deviceID = await authorizer.authorize(
+        let decision = await authorizer.authorize(
             headers: headers,
             remoteAddress: "100.64.0.5"
         )
 
-        XCTAssertEqual(deviceID, BearerSourceAuthorizer.deviceID(for: peer.nodeKey))
+        XCTAssertEqual(
+            decision,
+            .authorized(deviceID: BearerSourceAuthorizer.deviceID(for: peer.nodeKey))
+        )
     }
 
     func testAuthorizationRejectsBearerFromAnotherLiveNode() async throws {
@@ -56,20 +59,28 @@ final class BearerSourceAuthorizerTests: XCTestCase {
         var headers = HTTPHeaders()
         headers.add(name: "Sec-WebSocket-Protocol", value: "cmuxremote.v1, bearer.\(token)")
 
-        let deviceID = await authorizer.authorize(
+        let decision = await authorizer.authorize(
             headers: headers,
             remoteAddress: "100.64.0.6"
         )
-        XCTAssertNil(deviceID)
+        XCTAssertEqual(decision, .rejected)
     }
 
     func testAuthorizationFailsClosedWhenWhoisIsUnavailable() async throws {
         let store = try DeviceStore.empty()
+        let deviceID = BearerSourceAuthorizer.deviceID(for: "nodekey:owner")
         let token = try store.register(
-            deviceId: BearerSourceAuthorizer.deviceID(for: "nodekey:owner"),
+            deviceId: deviceID,
             loginName: "owner@example.com", hostname: "Owner", apnsToken: nil
         )
-        let resolver = RegistrationPeerResolver(auth: MockAuthService(peers: [:]))
+        let auth = ControllableAuthService(
+            peer: .init(
+                loginName: "owner@example.com", hostname: "Owner",
+                os: "iOS", nodeKey: "nodekey:owner"
+            )
+        )
+        auth.setPeer(.failure(TailnetIdentityError.serviceUnavailable))
+        let resolver = RegistrationPeerResolver(auth: auth)
         let authorizer = BearerSourceAuthorizer(
             deviceStore: store,
             peerResolver: resolver
@@ -77,10 +88,10 @@ final class BearerSourceAuthorizerTests: XCTestCase {
         var headers = HTTPHeaders()
         headers.add(name: "Authorization", value: "Bearer \(token)")
 
-        let deviceID = await authorizer.authorize(
+        let decision = await authorizer.authorize(
             headers: headers,
             remoteAddress: "100.64.0.7"
         )
-        XCTAssertNil(deviceID)
+        XCTAssertEqual(decision, .identityUnavailable)
     }
 }

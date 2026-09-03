@@ -39,6 +39,10 @@ final class ControllableAuthService: AuthService, @unchecked Sendable {
         lock.withLock { ownerResult = result }
     }
 
+    func setPeer(_ result: Result<PeerIdentity, Error>) {
+        lock.withLock { peerResult = result }
+    }
+
     func selfLoginCallCount() -> Int {
         lock.withLock { ownerCalls }
     }
