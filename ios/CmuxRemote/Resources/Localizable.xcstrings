@@ -1760,6 +1760,38 @@
           }
         }
       }
+    },
+    "Terminal selection started": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal selection started"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 선택을 시작했습니다"
+          }
+        }
+      }
+    },
+    "Terminal selection copied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal selection copied"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 선택 항목을 복사했습니다"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

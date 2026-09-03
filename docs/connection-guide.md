@@ -225,12 +225,19 @@ tailscale ip -4
 
 ### 그래도 안 되면
 
-이전에 페어링했던 기기 토큰이 막혀 있을 수 있습니다.
+앱은 남은 인증 상태를 다음과 같이 구분합니다.
+
+- **릴레이를 기다리는 중이며 자동으로 다시 시도합니다**: Mac의 Tailscale
+  신원이 아직 준비 중입니다. 앱을 열어 두면 제한된 백오프로 다시 시도합니다.
+- **Mac에서 페어링이 해제되었습니다**: 저장된 디바이스 토큰이 해지되거나
+  제거되었습니다. **이 기기 페어링 해제**를 선택한 다음 다시 연결하세요.
+- Mac relay 로그의 `registration denied`: 의도한 tailnet 로그인을
+  `allow_login`에 추가한 다음 relay를 재시작하거나 SIGHUP을 보내세요.
+
+현재 등록된 기기는 다음 명령으로 확인합니다.
 
 ```bash
-.build/release/cmux-relay devices list     # 등록된 기기 확인
-# 필요하면 해당 기기 제거 후 앱에서 다시 페어링:
-# .build/release/cmux-relay devices revoke <device-id>
+.build/release/cmux-relay devices list
 ```
 
 ---
