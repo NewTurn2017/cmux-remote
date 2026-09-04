@@ -1,0 +1,46 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>cmux 원격</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<link rel="stylesheet" href="/app.css">
+
+<div id="bar">
+  <button id="back" hidden>‹ 목록</button>
+  <span id="title">cmux 원격</span>
+  <span id="status">연결 중…</span>
+  <!-- 키 바는 화면을 꽤 먹으므로 접을 수 있어야 한다. 접어도 이 버튼은 남는다. -->
+  <button id="togglekeys" hidden>⌨</button>
+</div>
+
+<div id="list"></div>
+
+<div id="screen" hidden>
+  <div id="viewport"><div id="term"></div></div>
+  <div id="keys">
+    <button data-key="esc">Esc</button>
+    <button data-key="tab">Tab</button>
+    <button data-key="up">↑</button>
+    <button data-key="down">↓</button>
+    <button data-key="left">←</button>
+    <button data-key="right">→</button>
+    <button data-key="enter">Enter</button>
+    <button data-key="ctrl+c">Ctrl+C</button>
+    <span class="spacer"></span>
+    <button id="zoomout">–</button>
+    <button id="zoomlabel">100%</button>
+    <button id="zoomin">+</button>
+    <button id="pause">일시정지</button>
+  </div>
+  <form id="input">
+    <textarea id="text" rows="1" placeholder="지시할 내용을 쓰고 보내기" autocapitalize="off" autocomplete="off"></textarea>
+    <button type="submit">보내기</button>
+  </form>
+</div>
+
+<div id="logbox" hidden>
+  <pre id="log"></pre>
+  <button id="logclose">✕</button>
+</div>
+
+<script src="/vendor/xterm.js"></script>
+<script src="/app.js"></script>
