@@ -11,8 +11,23 @@ import SharedKit
 public struct HTTPResponseLite: Sendable {
     public var status: HTTPResponseStatus
     public var body: Data?
-    public init(_ status: HTTPResponseStatus, body: Data? = nil) {
+    /// Emitted as `Content-Type` when non-nil. The JSON API leaves it nil —
+    /// its clients decode by contract, and adding the header there would be a
+    /// behaviour change to the shipped iOS app. Static files must set it or
+    /// the browser refuses to run the script it just downloaded.
+    public var contentType: String?
+    /// Emitted as `Cache-Control` when non-nil. Static files set it because a
+    /// browser left to its own devices will keep serving a stale `index.html`
+    /// after the file on disk changed — which reads as "my fix didn't deploy"
+    /// and costs a debugging round trip.
+    public var cacheControl: String?
+    public init(_ status: HTTPResponseStatus,
+                body: Data? = nil,
+                contentType: String? = nil,
+                cacheControl: String? = nil)
+    {
         self.status = status; self.body = body
+        self.contentType = contentType; self.cacheControl = cacheControl
     }
 }
 
@@ -27,16 +42,22 @@ public actor Routes {
     private let config: RelayConfig
     private let auth: AuthService
     private let allowLocalhost: Bool
+    /// Serves the browser client when configured. `nil` keeps the relay
+    /// API-only, which is what every existing deployment (and the iOS app)
+    /// expects, so unknown paths stay 404.
+    private let staticFiles: StaticFileServer?
 
     public init(deviceStore: DeviceStore,
                 config: RelayConfig,
                 auth: AuthService,
-                allowLocalhost: Bool = Routes.defaultAllowLocalhost())
+                allowLocalhost: Bool = Routes.defaultAllowLocalhost(),
+                webRoot: URL? = nil)
     {
         self.deviceStore = deviceStore
         self.config = config
         self.auth = auth
         self.allowLocalhost = allowLocalhost
+        self.staticFiles = webRoot.map(StaticFileServer.init(root:))
     }
 
     /// Reads `CMUX_DEV_ALLOW_LOCALHOST=1` from the environment. When true,
@@ -81,6 +102,13 @@ public actor Routes {
             return .init(.noContent)
 
         default:
+            // The browser client is the only thing served outside `/v1`, and
+            // only for GET. Holding the API namespace back means a typo'd
+            // endpoint stays a 404 instead of quietly serving a file that
+            // happens to sit at that name.
+            if method == .GET, !path.hasPrefix("/v1/"), let staticFiles {
+                return staticFiles.response(for: path)
+            }
             return .init(.notFound)
         }
     }

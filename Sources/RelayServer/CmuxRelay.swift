@@ -106,9 +106,16 @@ struct Serve: AsyncParsableCommand {
             effectiveConfig = effectiveConfig.authorizing(login: selfLogin)
         }
 
+        let webRoot = Serve.resolvedWebRoot(configured: effectiveConfig.webRoot)
+        if let webRoot {
+            logger.info("serving browser client from \(webRoot.path)")
+        } else {
+            logger.info("no browser client directory; serving API only")
+        }
         let routes = Routes(deviceStore: deviceStore,
                             config: effectiveConfig,
-                            auth: auth)
+                            auth: auth,
+                            webRoot: webRoot)
         let uploadRoot = ProcessInfo.processInfo.environment["CMUX_RELAY_UPLOAD_ROOT"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
         let uploadService = uploadRoot.map { ChunkedFileUploadService(rootURL: $0) }
@@ -149,6 +156,25 @@ struct Serve: AsyncParsableCommand {
 
         logger.info("starting cmux-relay on \(host):\(port)")
         try await server.run(host: host, port: port)
+    }
+
+    /// Decide which directory (if any) the browser client is served from.
+    ///
+    /// `configured` is `relay.json`'s `web_root`; empty means "use the
+    /// default", `~/.cmuxremote/web`. Either way the directory has to already
+    /// exist — returning nil for a missing one keeps an API-only relay exactly
+    /// as it is today rather than answering every unknown path from a folder
+    /// nobody created.
+    static func resolvedWebRoot(configured: String) -> URL? {
+        let path = configured.isEmpty
+            ? "\(NSHomeDirectory())/.cmuxremote/web"
+            : NSString(string: configured).expandingTildeInPath
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return nil
+        }
+        return URL(fileURLWithPath: path, isDirectory: true)
     }
 }
 
