@@ -92,19 +92,12 @@ struct Serve: AsyncParsableCommand {
         }
         let auth = TailscaledLocalAuth()
 
-        // Foolproof pairing: a fresh relay.json has an empty allow_login, which
-        // would 403 every phone. The relay runs on the operator's own Mac, so its
-        // own tailnet login is the same account their phone signs in with —
-        // authorise it automatically. Tagged/headless nodes resolve to nil and we
-        // fall back to whatever allow_login lists. Opt out with CMUX_NO_SELF_LOGIN=1.
-        var effectiveConfig = store.current
-        if ProcessInfo.processInfo.environment["CMUX_NO_SELF_LOGIN"] == nil,
-           let selfLogin = await auth.selfLogin() {
-            if !effectiveConfig.allowLogin.contains(selfLogin) {
-                logger.info("auto-authorising this Mac's tailnet login for pairing: \(selfLogin)")
-            }
-            effectiveConfig = effectiveConfig.authorizing(login: selfLogin)
-        }
+        // Pairing authorisation (this Mac's own tailnet login on top of
+        // allow_login) is resolved per request inside `Routes` — see
+        // `Routes.isAuthorised`. Doing it here instead meant a relay that lost
+        // the boot race with tailscaled kept an empty allow-list for its whole
+        // lifetime and 403'd every device until restarted by hand.
+        let effectiveConfig = store.current
 
         let webRoot = Serve.resolvedWebRoot(configured: effectiveConfig.webRoot)
         if let webRoot {
@@ -115,7 +108,8 @@ struct Serve: AsyncParsableCommand {
         let routes = Routes(deviceStore: deviceStore,
                             config: effectiveConfig,
                             auth: auth,
-                            webRoot: webRoot)
+                            webRoot: webRoot,
+                            logger: logger)
         let uploadRoot = ProcessInfo.processInfo.environment["CMUX_RELAY_UPLOAD_ROOT"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
         let uploadService = uploadRoot.map { ChunkedFileUploadService(rootURL: $0) }

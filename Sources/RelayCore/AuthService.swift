@@ -32,13 +32,28 @@ public extension AuthService {
 /// Test fake — keyed by IP (port stripped).
 public final class MockAuthService: AuthService, @unchecked Sendable {
     public var peers: [String: PeerIdentity]
-    public init(peers: [String: PeerIdentity]) { self.peers = peers }
+    /// What `selfLogin()` answers. Mutable so a test can model tailscaled
+    /// coming up late: nil on the first call, a login on the next.
+    public var selfLoginValue: String?
+    /// How many times `selfLogin()` was actually asked — lets a test prove a
+    /// resolved value is memoised rather than re-queried on every request.
+    public private(set) var selfLoginCallCount = 0
+
+    public init(peers: [String: PeerIdentity], selfLogin: String? = nil) {
+        self.peers = peers
+        self.selfLoginValue = selfLogin
+    }
 
     public func whois(remoteAddr: String) async throws -> PeerIdentity {
         guard let p = peers[stripPort(remoteAddr)] else {
             throw RelayError.unauthorized(remoteAddr)
         }
         return p
+    }
+
+    public func selfLogin() async -> String? {
+        selfLoginCallCount += 1
+        return selfLoginValue
     }
 }
 
