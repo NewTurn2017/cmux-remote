@@ -244,6 +244,11 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
     private var pendingHead: HTTPRequestHead?
     private var bodyBuffer = ByteBuffer()
     private var deviceId: String?
+    /// One line per request. The relay is normally debugged from a phone with
+    /// no devtools, where "did my reload actually reach the server?" is
+    /// otherwise unanswerable — and the answer decides whether you're chasing
+    /// a server bug or a stale cache. Volume is low: WS carries the traffic.
+    private let logger = Logger(label: "http")
 
     init(routes: Routes, deviceStore: DeviceStore) {
         self.routes = routes
@@ -273,12 +278,14 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
             let remote = context.remoteAddress?.ipAddress ?? ""
             let routes = self.routes
             let loop = context.eventLoop
+            let logger = self.logger
             Task { [weak self] in
                 let resp = await routes.handle(method: head.method,
                                                path: head.uri,
                                                body: body,
                                                deviceId: did,
                                                remoteAddr: remote)
+                logger.info("\(head.method) \(head.uri) -> \(resp.status.code) from \(remote)")
                 loop.execute {
                     self?.respond(context: context, resp: resp)
                 }
@@ -292,6 +299,12 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
         var headers = HTTPHeaders()
         headers.add(name: "Content-Length", value: "\(resp.body?.count ?? 0)")
         headers.add(name: "Connection", value: "close")
+        if let contentType = resp.contentType {
+            headers.add(name: "Content-Type", value: contentType)
+        }
+        if let cacheControl = resp.cacheControl {
+            headers.add(name: "Cache-Control", value: cacheControl)
+        }
         let head = HTTPResponseHead(version: .http1_1,
                                     status: resp.status,
                                     headers: headers)

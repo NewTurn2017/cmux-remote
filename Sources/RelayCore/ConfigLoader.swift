@@ -29,17 +29,25 @@ public struct RelayConfig: Codable, Equatable, Sendable {
     public var snippets: [Snippet]
     public var defaultFps: Int
     public var idleFps: Int
+    /// Directory the relay serves the browser client from. Empty means "use
+    /// the built-in default" (`~/.cmuxremote/web`), which is also what a
+    /// config written before this key existed decodes to. A leading `~` is
+    /// expanded by the caller — see `Serve.resolvedWebRoot`.
+    public var webRoot: String
 
     enum CodingKeys: String, CodingKey {
         case listen, allowLogin = "allow_login", apns, snippets,
-             defaultFps = "default_fps", idleFps = "idle_fps"
+             defaultFps = "default_fps", idleFps = "idle_fps",
+             webRoot = "web_root"
     }
 
     public init(listen: String, allowLogin: [String], apns: APNs,
-                snippets: [Snippet], defaultFps: Int, idleFps: Int)
+                snippets: [Snippet], defaultFps: Int, idleFps: Int,
+                webRoot: String = "")
     {
         self.listen = listen; self.allowLogin = allowLogin; self.apns = apns
         self.snippets = snippets; self.defaultFps = defaultFps; self.idleFps = idleFps
+        self.webRoot = webRoot
     }
 
     /// Baseline config used to fill any key omitted from `relay.json`. The
@@ -55,7 +63,8 @@ public struct RelayConfig: Codable, Equatable, Sendable {
         apns: .init(keyPath: "", keyId: "", teamId: "", topic: "", env: "sandbox"),
         snippets: [],
         defaultFps: 15,
-        idleFps: 5
+        idleFps: 5,
+        webRoot: ""
     )
 
     /// Tolerant decoder: present keys are decoded normally (a malformed value
@@ -70,6 +79,7 @@ public struct RelayConfig: Codable, Equatable, Sendable {
         self.snippets   = try c.decodeIfPresent([Snippet].self, forKey: .snippets)   ?? d.snippets
         self.defaultFps = try c.decodeIfPresent(Int.self,       forKey: .defaultFps) ?? d.defaultFps
         self.idleFps    = try c.decodeIfPresent(Int.self,       forKey: .idleFps)    ?? d.idleFps
+        self.webRoot    = try c.decodeIfPresent(String.self,    forKey: .webRoot)    ?? d.webRoot
     }
 
     public static func decode(jsonString: String) throws -> RelayConfig {

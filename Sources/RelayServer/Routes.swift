@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 import NIOCore
 import NIOHTTP1
 import Crypto
@@ -11,8 +12,23 @@ import SharedKit
 public struct HTTPResponseLite: Sendable {
     public var status: HTTPResponseStatus
     public var body: Data?
-    public init(_ status: HTTPResponseStatus, body: Data? = nil) {
+    /// Emitted as `Content-Type` when non-nil. The JSON API leaves it nil —
+    /// its clients decode by contract, and adding the header there would be a
+    /// behaviour change to the shipped iOS app. Static files must set it or
+    /// the browser refuses to run the script it just downloaded.
+    public var contentType: String?
+    /// Emitted as `Cache-Control` when non-nil. Static files set it because a
+    /// browser left to its own devices will keep serving a stale `index.html`
+    /// after the file on disk changed — which reads as "my fix didn't deploy"
+    /// and costs a debugging round trip.
+    public var cacheControl: String?
+    public init(_ status: HTTPResponseStatus,
+                body: Data? = nil,
+                contentType: String? = nil,
+                cacheControl: String? = nil)
+    {
         self.status = status; self.body = body
+        self.contentType = contentType; self.cacheControl = cacheControl
     }
 }
 
@@ -27,16 +43,34 @@ public actor Routes {
     private let config: RelayConfig
     private let auth: AuthService
     private let allowLocalhost: Bool
+    /// Serves the browser client when configured. `nil` keeps the relay
+    /// API-only, which is what every existing deployment (and the iOS app)
+    /// expects, so unknown paths stay 404.
+    private let staticFiles: StaticFileServer?
+    /// Whether this Mac's own tailnet login counts as authorised. See
+    /// `resolveSelfLogin()`. Opt out with `CMUX_NO_SELF_LOGIN=1`.
+    private let selfLoginEnabled: Bool
+    /// Memoised result of `auth.selfLogin()`. Only a *successful* lookup is
+    /// stored — a failure must stay retryable, which is the whole point of
+    /// resolving here instead of once at startup.
+    private var cachedSelfLogin: String?
+    private let logger: Logger
 
     public init(deviceStore: DeviceStore,
                 config: RelayConfig,
                 auth: AuthService,
-                allowLocalhost: Bool = Routes.defaultAllowLocalhost())
+                allowLocalhost: Bool = Routes.defaultAllowLocalhost(),
+                webRoot: URL? = nil,
+                selfLoginEnabled: Bool = Routes.defaultSelfLoginEnabled(),
+                logger: Logger = Logger(label: "Routes"))
     {
         self.deviceStore = deviceStore
         self.config = config
         self.auth = auth
         self.allowLocalhost = allowLocalhost
+        self.staticFiles = webRoot.map(StaticFileServer.init(root:))
+        self.selfLoginEnabled = selfLoginEnabled
+        self.logger = logger
     }
 
     /// Reads `CMUX_DEV_ALLOW_LOCALHOST=1` from the environment. When true,
@@ -47,6 +81,13 @@ public actor Routes {
     /// never ships to a production binding.
     public static func defaultAllowLocalhost() -> Bool {
         ProcessInfo.processInfo.environment["CMUX_DEV_ALLOW_LOCALHOST"] == "1"
+    }
+
+    /// Reads the `CMUX_NO_SELF_LOGIN=1` opt-out. Default on: the relay runs on
+    /// the operator's own Mac, so its tailnet login is the account their phone
+    /// signs in with.
+    public static func defaultSelfLoginEnabled() -> Bool {
+        ProcessInfo.processInfo.environment["CMUX_NO_SELF_LOGIN"] == nil
     }
 
     /// Top-level dispatch. `deviceId` is `nil` until the HTTP layer has
@@ -81,6 +122,13 @@ public actor Routes {
             return .init(.noContent)
 
         default:
+            // The browser client is the only thing served outside `/v1`, and
+            // only for GET. Holding the API namespace back means a typo'd
+            // endpoint stays a 404 instead of quietly serving a file that
+            // happens to sit at that name.
+            if method == .GET, !path.hasPrefix("/v1/"), let staticFiles {
+                return staticFiles.response(for: path)
+            }
             return .init(.notFound)
         }
     }
@@ -131,6 +179,38 @@ public actor Routes {
         }
     }
 
+    // MARK: - Pairing authorisation
+
+    /// Whether `login` may pair a new device.
+    ///
+    /// `allow_login` wins outright. Beyond it, this Mac's own tailnet login is
+    /// authorised automatically — a fresh `relay.json` lists nobody, and
+    /// demanding the operator hand-copy their own email before their phone can
+    /// connect is a pointless step that 403s every device until they find it.
+    ///
+    /// That lookup happens *here*, per request, rather than once at startup.
+    /// The relay is a launchd agent with `RunAtLoad`, so on a reboot it races
+    /// tailscaled — and losing that race once used to bake an empty allow-list
+    /// in for the whole process lifetime: every pairing 403s until someone
+    /// restarts the relay by hand, with nothing in the log to say why.
+    /// Resolving lazily lets the first request after tailscaled is up heal it.
+    private func isAuthorised(_ login: String) async -> Bool {
+        if config.allowLogin.contains(login) { return true }
+        guard selfLoginEnabled else { return false }
+        return await resolveSelfLogin() == login
+    }
+
+    /// This Mac's tailnet login, memoised. Failures are deliberately not
+    /// cached: tailscaled being unreachable is a transient boot condition, and
+    /// caching nil would reintroduce the permanent-403 bug this replaced.
+    private func resolveSelfLogin() async -> String? {
+        if let cachedSelfLogin { return cachedSelfLogin }
+        guard let login = await auth.selfLogin() else { return nil }
+        cachedSelfLogin = login
+        logger.info("auto-authorising this Mac's tailnet login for pairing: \(login)")
+        return login
+    }
+
     // MARK: - POST /v1/devices/me/register
 
     private func registerNew(remoteAddr: String) async -> HTTPResponseLite {
@@ -158,7 +238,7 @@ public actor Routes {
                 return .init(.internalServerError)
             }
 
-            guard config.allowLogin.contains(peer.loginName) else {
+            guard await isAuthorised(peer.loginName) else {
                 return .init(.forbidden)
             }
         }

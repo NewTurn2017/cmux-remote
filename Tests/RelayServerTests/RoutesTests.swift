@@ -4,21 +4,34 @@ import NIOHTTP1
 @testable import RelayCore
 
 final class RoutesTests: XCTestCase {
+    private static let defaultPeers: [String: PeerIdentity] = [
+        "100.64.0.5": .init(loginName: "a@b",
+                            hostname: "iPhone",
+                            os: "ios",
+                            nodeKey: "nk1")
+    ]
+
     private func makeRoutes(
         _ store: DeviceStore,
         allow: [String] = ["a@b"],
-        peers: [String: PeerIdentity] = [
-            "100.64.0.5": .init(loginName: "a@b",
-                                hostname: "iPhone",
-                                os: "ios",
-                                nodeKey: "nk1")
-        ]
+        peers: [String: PeerIdentity] = RoutesTests.defaultPeers,
+        auth: MockAuthService? = nil,
+        selfLoginEnabled: Bool = true
     ) -> Routes {
         var cfg = RelayConfig.testValue
         cfg.allowLogin = allow
         return Routes(deviceStore: store,
                       config: cfg,
-                      auth: MockAuthService(peers: peers))
+                      auth: auth ?? MockAuthService(peers: peers),
+                      selfLoginEnabled: selfLoginEnabled)
+    }
+
+    /// POSTs a register for the peer at `100.64.0.5` and returns the status.
+    private func register(_ routes: Routes) async -> HTTPResponseStatus {
+        await routes.handle(method: .POST,
+                            path: "/v1/devices/me/register",
+                            body: nil, deviceId: nil,
+                            remoteAddr: "100.64.0.5:1").status
     }
 
     func testHealthOk() async throws {
@@ -66,6 +79,62 @@ final class RoutesTests: XCTestCase {
             .handle(method: .POST, path: "/v1/devices/me/register",
                     body: nil, deviceId: nil, remoteAddr: "100.64.0.5:1")
         XCTAssertEqual(resp.status, .forbidden)
+    }
+
+    // MARK: - Pairing on this Mac's own tailnet login
+
+    func testRegisterAuthorisesThisMacsOwnLoginWhenAllowListEmpty() async throws {
+        // A fresh relay.json lists nobody; the operator's own login pairs anyway.
+        let auth = MockAuthService(peers: RoutesTests.defaultPeers, selfLogin: "a@b")
+        let routes = makeRoutes(try DeviceStore.empty(), allow: [], auth: auth)
+        let status = await register(routes)
+        XCTAssertEqual(status, .ok)
+    }
+
+    /// Regression: the relay is a launchd agent with `RunAtLoad`, so on a
+    /// reboot it can ask tailscaled who it is before tailscaled is ready.
+    /// Resolving that once at startup baked an empty allow-list in for the
+    /// whole process lifetime — every device 403'd until someone restarted the
+    /// relay by hand. The lookup must stay retryable.
+    func testRegisterHealsOnceTailscaledBecomesReachable() async throws {
+        let auth = MockAuthService(peers: RoutesTests.defaultPeers, selfLogin: nil)
+        let routes = makeRoutes(try DeviceStore.empty(), allow: [], auth: auth)
+
+        let duringBoot = await register(routes)
+        XCTAssertEqual(duringBoot, .forbidden)
+
+        auth.selfLoginValue = "a@b"   // tailscaled finished starting
+        let afterBoot = await register(routes)
+        XCTAssertEqual(afterBoot, .ok, "a failed lookup must not be cached")
+    }
+
+    func testRegisterMemoisesResolvedSelfLogin() async throws {
+        let auth = MockAuthService(peers: RoutesTests.defaultPeers, selfLogin: "a@b")
+        let routes = makeRoutes(try DeviceStore.empty(), allow: [], auth: auth)
+
+        _ = await register(routes)
+        _ = await register(routes)
+        XCTAssertEqual(auth.selfLoginCallCount, 1,
+                       "a resolved login must not re-query tailscaled per request")
+    }
+
+    func testRegisterIgnoresSelfLoginWhenOptedOut() async throws {
+        // CMUX_NO_SELF_LOGIN=1 — allow_login is then the only authority.
+        let auth = MockAuthService(peers: RoutesTests.defaultPeers, selfLogin: "a@b")
+        let routes = makeRoutes(try DeviceStore.empty(), allow: [],
+                                auth: auth, selfLoginEnabled: false)
+        let status = await register(routes)
+        XCTAssertEqual(status, .forbidden)
+        XCTAssertEqual(auth.selfLoginCallCount, 0)
+    }
+
+    func testRegisterRejectsPeerThatIsNotThisMacsLogin() async throws {
+        // Self-login resolves, but to a different account than the caller's.
+        let auth = MockAuthService(peers: RoutesTests.defaultPeers,
+                                   selfLogin: "someone@else")
+        let routes = makeRoutes(try DeviceStore.empty(), allow: [], auth: auth)
+        let status = await register(routes)
+        XCTAssertEqual(status, .forbidden)
     }
 
     func testApnsNeedsAuth() async throws {

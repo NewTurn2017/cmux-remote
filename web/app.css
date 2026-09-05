@@ -1,0 +1,114 @@
+:root { color-scheme: dark; }
+
+/* 터미널이 120행이라 그냥 두면 세로로 한없이 늘어나 키 바·입력창이 화면 밖으로 밀린다.
+   화면 높이를 기준으로 세로 배치하고, 남는 공간만 터미널에 준다. */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  color: #eee;
+  font: 14px/1.4 -apple-system, system-ui, sans-serif;
+  overscroll-behavior: none;
+}
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #252526;
+  border-bottom: 1px solid #333;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+#title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status { font-size: 12px; color: #9a9a9a; white-space: nowrap; }
+
+button {
+  font: inherit;
+  font-size: 15px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #4a4a4a;
+  background: #2d2d30;
+  color: #eee;
+}
+button:active { background: #3a3a3d; }
+
+#list { padding: 8px; overflow-y: auto; flex: 1; }
+#screen { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#screen[hidden] { display: none; }
+.ws {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 6px 0;
+  padding: 12px;
+  line-height: 1.35;
+}
+.ws .sub { display: block; font-size: 12px; color: #9a9a9a; margin-top: 3px;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws.selected { border-color: #0a84ff; }
+
+/* 터미널은 서버가 준 크기(272열 × 120행) 그대로 그리고,
+   화면에 맞추는 일은 CSS 확대/축소로만 한다 — 서버에 리사이즈를 요청할 방법이 없다. */
+#viewport {
+  flex: 1;
+  min-height: 0; /* 이게 없으면 flex 자식이 내용 크기만큼 커져 스크롤이 안 생긴다 */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #000;
+  border-bottom: 1px solid #333;
+}
+#term { transform-origin: top left; width: max-content; }
+
+#keys {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  background: #252526;
+}
+#keys[hidden] { display: none; }
+#keys button { flex: none; }
+#keys .spacer { flex: 1 0 12px; }
+#zoomlabel { min-width: 62px; text-align: center; }
+
+#input { display: flex; gap: 6px; padding: 8px; background: #252526; }
+#text {
+  flex: 1;
+  font: inherit;
+  font-size: 16px; /* 16px 미만이면 iOS/안드로이드가 입력할 때 화면을 확대한다 */
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid #4a4a4a;
+  background: #1e1e1e;
+  color: #eee;
+  resize: none;
+}
+
+/* 오류는 화면을 계속 차지하면 안 된다 — 뜨면 ✕ 로 바로 치울 수 있게 한다. */
+#logbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #3a1d1d;
+  border-top: 1px solid #663;
+}
+#logbox[hidden] { display: none; }
+#log {
+  flex: 1;
+  margin: 0;
+  max-height: 4.5em;
+  overflow-y: auto;
+  font-size: 11px;
+  color: #ffb4b4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+#logclose { flex: none; padding: 4px 10px; }
