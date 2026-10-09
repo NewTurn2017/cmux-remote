@@ -209,6 +209,66 @@ final class StoresTests: XCTestCase {
         })
     }
 
+    func testRejectedSubscribeDoesNotPresentPreviousSurfaceAsNewSelection() async {
+        let rpc = SubscribeRejectingRPCDispatch(rejectedSurfaceIds: ["s2"])
+        let surfaceStore = SurfaceStore(rpc: rpc)
+        await surfaceStore.subscribe(workspaceId: "w1", surfaceId: "s1")
+        surfaceStore.ingest(.screenFull(Self.fullFrame(surfaceId: "s1", rev: 1, text: "WORKSPACE A")))
+        XCTAssertEqual(surfaceStore.grid.rawRows.first, "WORKSPACE A")
+
+        await surfaceStore.subscribe(workspaceId: "w2", surfaceId: "s2")
+
+        XCTAssertFalse(surfaceStore.grid.rawRows.contains("WORKSPACE A"))
+        XCTAssertNotNil(surfaceStore.subscriptionError)
+        XCTAssertTrue(surfaceStore.subscriptionError?.contains("surface_subscription_failed") == true)
+        let reads = await rpc.calls.filter { $0.method == "surface.read_text" || $0.method == "surface.focus" }
+        XCTAssertTrue(reads.allSatisfy { call in
+            guard case .object(let params) = call.params else { return false }
+            return params["surface_id"] == .string("s1")
+        })
+
+        surfaceStore.ingest(.screenFull(Self.fullFrame(surfaceId: "s1", rev: 2, text: "LATE A")))
+        XCTAssertFalse(surfaceStore.grid.rawRows.contains("LATE A"))
+    }
+
+    func testSuccessfulSurfaceSwitchClearsPreviousScreenUntilNewFrame() async {
+        let rpc = SubscribeRejectingRPCDispatch(rejectedSurfaceIds: [])
+        let surfaceStore = SurfaceStore(rpc: rpc)
+        await surfaceStore.subscribe(workspaceId: "w1", surfaceId: "s1")
+        surfaceStore.ingest(.screenFull(Self.fullFrame(surfaceId: "s1", rev: 1, text: "WORKSPACE A")))
+
+        await surfaceStore.subscribe(workspaceId: "w2", surfaceId: "s2")
+
+        XCTAssertFalse(surfaceStore.grid.rawRows.contains("WORKSPACE A"))
+        XCTAssertNil(surfaceStore.subscriptionError)
+        surfaceStore.ingest(.screenFull(Self.fullFrame(surfaceId: "s2", rev: 1, text: "WORKSPACE B")))
+        XCTAssertEqual(surfaceStore.grid.rawRows.first, "WORKSPACE B")
+    }
+
+    func testResubscribeSuccessClearsSubscriptionError() async {
+        let rpc = SubscribeRejectingRPCDispatch(rejectedSurfaceIds: ["s2"])
+        let surfaceStore = SurfaceStore(rpc: rpc)
+        await surfaceStore.subscribe(workspaceId: "w2", surfaceId: "s2")
+        XCTAssertNotNil(surfaceStore.subscriptionError)
+
+        await rpc.accept("s2")
+        await surfaceStore.resubscribe()
+
+        XCTAssertNil(surfaceStore.subscriptionError)
+        XCTAssertEqual(surfaceStore.subscribed, "s2")
+    }
+
+    private static func fullFrame(surfaceId: String, rev: Int, text: String) -> ScreenFull {
+        ScreenFull(
+            surfaceId: surfaceId,
+            rev: rev,
+            rows: [text, ""],
+            cols: 12,
+            rowsCount: 2,
+            cursor: CursorPos(x: 0, y: 0)
+        )
+    }
+
     func testSurfaceStoreSameGeometryFullRefreshPreservesSelectionEpoch() {
         let surfaceStore = SurfaceStore(rpc: StubRPCDispatch())
         surfaceStore.ingest(.screenFull(ScreenFull(
@@ -722,5 +782,39 @@ final class StoresTests: XCTestCase {
 private actor FailingRPCDispatch: RPCDispatch {
     func call(method: String, params: JSONValue) async throws -> RPCResponse {
         throw RPCClientError.closed
+    }
+}
+
+private actor SubscribeRejectingRPCDispatch: RPCDispatch {
+    private(set) var calls: [(method: String, params: JSONValue)] = []
+    private var rejectedSurfaceIds: Set<String>
+
+    init(rejectedSurfaceIds: Set<String>) {
+        self.rejectedSurfaceIds = rejectedSurfaceIds
+    }
+
+    func accept(_ surfaceId: String) {
+        rejectedSurfaceIds.remove(surfaceId)
+    }
+
+    func call(method: String, params: JSONValue) async throws -> RPCResponse {
+        calls.append((method, params))
+        guard case .object(let p) = params, case .string(let surfaceId)? = p["surface_id"] else {
+            return RPCResponse(id: "stub", ok: true, result: .object([:]))
+        }
+        switch method {
+        case "surface.subscribe" where rejectedSurfaceIds.contains(surfaceId):
+            return RPCResponse(id: "stub", ok: false, error: RPCError(
+                code: "surface_subscription_failed",
+                message: "subscribe rejected"
+            ))
+        case "surface.read_text":
+            return RPCResponse(id: "stub", ok: false, error: RPCError(
+                code: "snapshot_unavailable",
+                message: "no active subscription"
+            ))
+        default:
+            return RPCResponse(id: "stub", ok: true, result: .object([:]))
+        }
     }
 }

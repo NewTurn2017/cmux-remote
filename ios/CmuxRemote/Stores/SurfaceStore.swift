@@ -12,6 +12,9 @@ public final class SurfaceStore {
     public var subscribed: String?
     public var subscribedWorkspaceId: String?
     public var inputStatus: TerminalInputStatus = .idle
+    /// Set when the relay rejected the current surface's subscription; the
+    /// grid is blank rather than live until a later subscribe succeeds.
+    public var subscriptionError: String?
 
     private let rpc: any RPCDispatch
 
@@ -23,34 +26,43 @@ public final class SurfaceStore {
         if let current = subscribed, current != surfaceId {
             await unsubscribe(surfaceId: current)
         }
+        if subscribed != surfaceId {
+            // Never show the previous surface's screen under the new selection.
+            grid = CellGrid(cols: grid.cols, rows: grid.rows.count)
+        }
         subscribed = surfaceId
         subscribedWorkspaceId = workspaceId
-        _ = try? await rpc.call(
-            method: "surface.subscribe",
-            params: .object([
-                "workspace_id": .string(workspaceId),
-                "surface_id": .string(surfaceId),
-                "fps": .int(15),
-                "lines": .int(Int64(Self.defaultSubscriptionLines)),
-            ])
-        )
+        guard await requestSubscription(workspaceId: workspaceId, surfaceId: surfaceId) else { return }
         await focusCurrentSurface()
         await requestFull(surfaceId: surfaceId)
     }
 
     public func resubscribe() async {
         guard let workspaceId = subscribedWorkspaceId, let surfaceId = subscribed else { return }
-        _ = try? await rpc.call(
-            method: "surface.subscribe",
-            params: .object([
-                "workspace_id": .string(workspaceId),
-                "surface_id": .string(surfaceId),
-                "fps": .int(15),
-                "lines": .int(Int64(Self.defaultSubscriptionLines)),
-            ])
-        )
+        guard await requestSubscription(workspaceId: workspaceId, surfaceId: surfaceId) else { return }
         await focusCurrentSurface()
         await requestFull(surfaceId: surfaceId)
+    }
+
+    private func requestSubscription(workspaceId: String, surfaceId: String) async -> Bool {
+        do {
+            _ = try await rpc.call(
+                method: "surface.subscribe",
+                params: .object([
+                    "workspace_id": .string(workspaceId),
+                    "surface_id": .string(surfaceId),
+                    "fps": .int(15),
+                    "lines": .int(Int64(Self.defaultSubscriptionLines)),
+                ])
+            ).requireOk()
+        } catch {
+            guard subscribed == surfaceId else { return false }
+            subscriptionError = "Couldn't open this terminal: \(error)"
+            return false
+        }
+        guard subscribed == surfaceId else { return false }
+        subscriptionError = nil
+        return true
     }
 
     /// Pin cmux's pane focus to the surface we're viewing — without it, key
@@ -213,6 +225,7 @@ public final class SurfaceStore {
         rev = 0
         subscribed = nil
         subscribedWorkspaceId = nil
+        subscriptionError = nil
         inputStatus = .idle
     }
 
