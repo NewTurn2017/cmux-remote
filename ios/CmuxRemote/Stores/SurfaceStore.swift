@@ -23,12 +23,17 @@ public final class SurfaceStore {
     }
 
     public func subscribe(workspaceId: String, surfaceId: String) async {
-        if let current = subscribed, current != surfaceId {
-            await unsubscribe(surfaceId: current)
-        }
         if subscribed != surfaceId {
-            // Never show the previous surface's screen under the new selection.
+            // Switch identity before awaiting anything, so neither the previous
+            // surface's screen nor its error is shown under the new selection.
+            let previous = subscribed
+            subscribed = surfaceId
+            subscribedWorkspaceId = workspaceId
+            subscriptionError = nil
             grid = CellGrid(cols: grid.cols, rows: grid.rows.count)
+            if let previous {
+                await unsubscribe(surfaceId: previous)
+            }
         }
         subscribed = surfaceId
         subscribedWorkspaceId = workspaceId
@@ -91,7 +96,7 @@ public final class SurfaceStore {
     public func ingest(_ frame: PushFrame) {
         switch frame {
         case .screenFull(let frame):
-            guard frame.surfaceId == subscribed || subscribed == nil else { return }
+            guard acceptsFrame(for: frame.surfaceId) else { return }
             var replacement = grid
             if grid.cols != frame.cols
                 || grid.rows.count != frame.rowsCount
@@ -106,7 +111,7 @@ public final class SurfaceStore {
             grid = replacement
             rev = frame.rev
         case .screenDiff(let frame):
-            guard frame.surfaceId == subscribed || subscribed == nil else { return }
+            guard acceptsFrame(for: frame.surfaceId) else { return }
             for op in frame.ops {
                 switch op {
                 case .clear:
@@ -127,6 +132,13 @@ public final class SurfaceStore {
         default:
             break
         }
+    }
+
+    /// A rejected subscription stays blank: frames still in flight for that
+    /// surface must not repaint it.
+    private func acceptsFrame(for surfaceId: String) -> Bool {
+        guard subscriptionError == nil else { return false }
+        return surfaceId == subscribed || subscribed == nil
     }
 
     public func sendText(workspaceId: String, surfaceId: String, text: String) async throws {
@@ -255,6 +267,8 @@ public final class SurfaceStore {
         ),
         let payload = try? response.unwrapResult().decode(ReadTextPayload.self)
         else { return }
+        // The selection may have moved while the read was in flight.
+        guard subscribed == surfaceId, subscribedWorkspaceId == workspaceId else { return }
 
         let screen = payload.screen(rev: rev + 1)
         grid = CellGrid(cols: screen.cols, rows: screen.rows.count)

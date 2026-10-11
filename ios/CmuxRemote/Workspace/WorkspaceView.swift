@@ -812,11 +812,11 @@ struct WorkspaceView: View {
     }
 
     private var inputFeedbackMessage: String? {
-        composer.errorMessage ?? surfaceStore.subscriptionError ?? surfaceStore.inputStatus.message
+        surfaceStore.subscriptionError ?? composer.errorMessage ?? surfaceStore.inputStatus.message
     }
 
     private var inputFeedbackIsError: Bool {
-        composer.errorMessage != nil || surfaceStore.subscriptionError != nil || surfaceStore.inputStatus.isError
+        surfaceStore.subscriptionError != nil || composer.errorMessage != nil || surfaceStore.inputStatus.isError
     }
 
     private func activeSurface() throws -> (workspaceId: String, surfaceId: String) {
