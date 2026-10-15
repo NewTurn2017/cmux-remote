@@ -1601,6 +1601,22 @@
         }
       }
     },
+    "terminal.subscription_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't open this terminal (%@)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 터미널을 열 수 없습니다 (%@)"
+          }
+        }
+      }
+    },
     "workspace.live_input.placeholder": {
       "localizations": {
         "en": {

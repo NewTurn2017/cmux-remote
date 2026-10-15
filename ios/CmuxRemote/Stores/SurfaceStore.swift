@@ -12,6 +12,9 @@ public final class SurfaceStore {
     public var subscribed: String?
     public var subscribedWorkspaceId: String?
     public var inputStatus: TerminalInputStatus = .idle
+    /// Set when the relay rejected the current surface's subscription; the
+    /// grid is blank rather than live until a later subscribe succeeds.
+    public var subscriptionError: String?
 
     private let rpc: any RPCDispatch
 
@@ -20,37 +23,67 @@ public final class SurfaceStore {
     }
 
     public func subscribe(workspaceId: String, surfaceId: String) async {
-        if let current = subscribed, current != surfaceId {
-            await unsubscribe(surfaceId: current)
+        if subscribed != surfaceId {
+            // Switch identity before awaiting anything, so neither the previous
+            // surface's screen nor its error is shown under the new selection.
+            let previous = subscribed
+            subscribed = surfaceId
+            subscribedWorkspaceId = workspaceId
+            subscriptionError = nil
+            grid = CellGrid(cols: grid.cols, rows: grid.rows.count)
+            if let previous {
+                await unsubscribe(surfaceId: previous)
+                // A newer selection may have started while this unsubscribe
+                // was in flight; it owns the store now.
+                guard subscribed == surfaceId else { return }
+            }
+        } else {
+            subscribedWorkspaceId = workspaceId
         }
-        subscribed = surfaceId
-        subscribedWorkspaceId = workspaceId
-        _ = try? await rpc.call(
-            method: "surface.subscribe",
-            params: .object([
-                "workspace_id": .string(workspaceId),
-                "surface_id": .string(surfaceId),
-                "fps": .int(15),
-                "lines": .int(Int64(Self.defaultSubscriptionLines)),
-            ])
-        )
+        guard await requestSubscription(workspaceId: workspaceId, surfaceId: surfaceId) else { return }
         await focusCurrentSurface()
         await requestFull(surfaceId: surfaceId)
     }
 
     public func resubscribe() async {
         guard let workspaceId = subscribedWorkspaceId, let surfaceId = subscribed else { return }
-        _ = try? await rpc.call(
-            method: "surface.subscribe",
-            params: .object([
-                "workspace_id": .string(workspaceId),
-                "surface_id": .string(surfaceId),
-                "fps": .int(15),
-                "lines": .int(Int64(Self.defaultSubscriptionLines)),
-            ])
-        )
+        guard await requestSubscription(workspaceId: workspaceId, surfaceId: surfaceId) else { return }
         await focusCurrentSurface()
         await requestFull(surfaceId: surfaceId)
+    }
+
+    private func requestSubscription(workspaceId: String, surfaceId: String) async -> Bool {
+        do {
+            _ = try await rpc.call(
+                method: "surface.subscribe",
+                params: .object([
+                    "workspace_id": .string(workspaceId),
+                    "surface_id": .string(surfaceId),
+                    "fps": .int(15),
+                    "lines": .int(Int64(Self.defaultSubscriptionLines)),
+                ])
+            ).requireOk()
+        } catch {
+            guard subscribed == surfaceId else { return false }
+            subscriptionError = Self.subscriptionFailureMessage(for: error)
+            return false
+        }
+        guard subscribed == surfaceId else { return false }
+        subscriptionError = nil
+        return true
+    }
+
+    private static func subscriptionFailureMessage(for error: any Error) -> String {
+        let reason: String
+        if case CmuxRemoteRPCError.rpc(let code, _) = error {
+            reason = code
+        } else {
+            reason = String(describing: error)
+        }
+        return String(
+            format: String(localized: "terminal.subscription_failed", defaultValue: "Couldn't open this terminal (%@)"),
+            reason
+        )
     }
 
     /// Pin cmux's pane focus to the surface we're viewing — without it, key
@@ -79,7 +112,7 @@ public final class SurfaceStore {
     public func ingest(_ frame: PushFrame) {
         switch frame {
         case .screenFull(let frame):
-            guard frame.surfaceId == subscribed || subscribed == nil else { return }
+            guard acceptsFrame(for: frame.surfaceId) else { return }
             var replacement = grid
             if grid.cols != frame.cols
                 || grid.rows.count != frame.rowsCount
@@ -94,7 +127,7 @@ public final class SurfaceStore {
             grid = replacement
             rev = frame.rev
         case .screenDiff(let frame):
-            guard frame.surfaceId == subscribed || subscribed == nil else { return }
+            guard acceptsFrame(for: frame.surfaceId) else { return }
             for op in frame.ops {
                 switch op {
                 case .clear:
@@ -115,6 +148,13 @@ public final class SurfaceStore {
         default:
             break
         }
+    }
+
+    /// A rejected subscription stays blank: frames still in flight for that
+    /// surface must not repaint it.
+    private func acceptsFrame(for surfaceId: String) -> Bool {
+        guard subscriptionError == nil else { return false }
+        return surfaceId == subscribed || subscribed == nil
     }
 
     public func sendText(workspaceId: String, surfaceId: String, text: String) async throws {
@@ -213,6 +253,7 @@ public final class SurfaceStore {
         rev = 0
         subscribed = nil
         subscribedWorkspaceId = nil
+        subscriptionError = nil
         inputStatus = .idle
     }
 
@@ -242,6 +283,8 @@ public final class SurfaceStore {
         ),
         let payload = try? response.unwrapResult().decode(ReadTextPayload.self)
         else { return }
+        // The selection may have moved while the read was in flight.
+        guard subscribed == surfaceId, subscribedWorkspaceId == workspaceId else { return }
 
         let screen = payload.screen(rev: rev + 1)
         grid = CellGrid(cols: screen.cols, rows: screen.rows.count)
