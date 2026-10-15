@@ -283,6 +283,27 @@ final class StoresTests: XCTestCase {
         XCTAssertEqual(surfaceStore.subscribed, "s2")
     }
 
+    func testOlderSwitchDoesNotOverwriteNewerSelection() async {
+        let rpc = UnsubscribeGatingRPCDispatch()
+        let surfaceStore = SurfaceStore(rpc: rpc)
+        await surfaceStore.subscribe(workspaceId: "w1", surfaceId: "s1")
+        await rpc.holdNextUnsubscribe()
+        let toS2 = Task { await surfaceStore.subscribe(workspaceId: "w2", surfaceId: "s2") }
+        while await !rpc.heldUnsubscribeStarted { await Task.yield() }
+
+        await surfaceStore.subscribe(workspaceId: "w3", surfaceId: "s3")
+        await rpc.releaseHeldUnsubscribe()
+        await toS2.value
+
+        XCTAssertEqual(surfaceStore.subscribed, "s3")
+        XCTAssertEqual(surfaceStore.subscribedWorkspaceId, "w3")
+        let subscribes = await rpc.calls.filter { $0.method == "surface.subscribe" }
+        XCTAssertFalse(subscribes.contains { call in
+            guard case .object(let params) = call.params else { return false }
+            return params["surface_id"] == .string("s2")
+        })
+    }
+
     private static func fullFrame(surfaceId: String, rev: Int, text: String) -> ScreenFull {
         ScreenFull(
             surfaceId: surfaceId,
@@ -853,5 +874,30 @@ private actor SubscribeRejectingRPCDispatch: RPCDispatch {
         default:
             return RPCResponse(id: "stub", ok: true, result: .object([:]))
         }
+    }
+}
+
+private actor UnsubscribeGatingRPCDispatch: RPCDispatch {
+    private(set) var calls: [(method: String, params: JSONValue)] = []
+    private var holdNext = false
+    private(set) var heldUnsubscribeStarted = false
+    private var released = false
+
+    func holdNextUnsubscribe() {
+        holdNext = true
+    }
+
+    func releaseHeldUnsubscribe() {
+        released = true
+    }
+
+    func call(method: String, params: JSONValue) async throws -> RPCResponse {
+        calls.append((method, params))
+        if method == "surface.unsubscribe", holdNext {
+            holdNext = false
+            heldUnsubscribeStarted = true
+            while !released { await Task.yield() }
+        }
+        return RPCResponse(id: "stub", ok: true, result: .object([:]))
     }
 }

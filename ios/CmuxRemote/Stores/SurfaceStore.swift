@@ -33,10 +33,13 @@ public final class SurfaceStore {
             grid = CellGrid(cols: grid.cols, rows: grid.rows.count)
             if let previous {
                 await unsubscribe(surfaceId: previous)
+                // A newer selection may have started while this unsubscribe
+                // was in flight; it owns the store now.
+                guard subscribed == surfaceId else { return }
             }
+        } else {
+            subscribedWorkspaceId = workspaceId
         }
-        subscribed = surfaceId
-        subscribedWorkspaceId = workspaceId
         guard await requestSubscription(workspaceId: workspaceId, surfaceId: surfaceId) else { return }
         await focusCurrentSurface()
         await requestFull(surfaceId: surfaceId)
@@ -62,12 +65,25 @@ public final class SurfaceStore {
             ).requireOk()
         } catch {
             guard subscribed == surfaceId else { return false }
-            subscriptionError = "Couldn't open this terminal: \(error)"
+            subscriptionError = Self.subscriptionFailureMessage(for: error)
             return false
         }
         guard subscribed == surfaceId else { return false }
         subscriptionError = nil
         return true
+    }
+
+    private static func subscriptionFailureMessage(for error: any Error) -> String {
+        let reason: String
+        if case CmuxRemoteRPCError.rpc(let code, _) = error {
+            reason = code
+        } else {
+            reason = String(describing: error)
+        }
+        return String(
+            format: String(localized: "terminal.subscription_failed", defaultValue: "Couldn't open this terminal (%@)"),
+            reason
+        )
     }
 
     /// Pin cmux's pane focus to the surface we're viewing — without it, key
