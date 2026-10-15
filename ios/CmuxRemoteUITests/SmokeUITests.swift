@@ -45,6 +45,7 @@ final class SmokeUITests: XCTestCase {
             "send ctrl c",
             "send slash new shortcut",
             "send space for omx selection",
+            "OptionUpShortcutButton",
         ] {
             let button = app.buttons[identifier]
             XCTAssertTrue(button.isHittable, "\(identifier) should remain hittable")

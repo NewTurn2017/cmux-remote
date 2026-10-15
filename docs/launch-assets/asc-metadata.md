@@ -1,4 +1,4 @@
-# App Store Connect — Metadata Draft (v1.0.9 build 12)
+# App Store Connect — Metadata Draft (v1.1.1 build 17)
 
 App: **Cmux Remote** · Bundle ID `com.genie.CmuxRemote` · Team `2UANJX7ATM`
 
@@ -48,9 +48,9 @@ Private terminal companion
 ### Promotional Text (max 170, can change without review)
 
 ```
-A native tablet workspace gives your terminal more room with a compact command deck, readable type, and a full-width terminal—while the phone layout stays familiar.
+See your terminal in true color, select and copy output, upload photos or files, and preview recent images — all through your private Tailscale connection.
 ```
-*(164 chars)*
+*(155 chars)*
 
 ### Keywords (max 100, comma-separated, no spaces after commas)
 
@@ -66,7 +66,7 @@ Cmux Remote is a private remote-control client for the cmux terminal multiplexer
 
 WHAT IT IS
 
-Cmux (https://cmux.com) is a modern terminal multiplexer with native splits, workspaces, and rich integrations for AI agents like Claude Code, Codex, omx, and Cursor. Cmux Remote mirrors the cmux surface you choose, lets you type into it, send keys, manage workspaces, attach photos, and receive notifications — all from this mobile app.
+Cmux (https://cmux.com) is a modern terminal multiplexer with native splits, workspaces, and rich integrations for AI agents like Claude Code, Codex, omx, and Cursor. Cmux Remote mirrors the cmux surface you choose, lets you type into it, send keys, manage workspaces, upload photos and documents, preview images, and receive notifications — all from this mobile app.
 
 WHO IT IS FOR
 
@@ -85,10 +85,12 @@ The relay speaks directly to cmux's local Unix socket. This app speaks to the re
 
 FEATURES
 
-- Performance-tuned live mirror of cmux terminal surfaces with Korean / CJK width support and ANSI colors when styled relay data is available
+- Performance-tuned live mirror of cmux terminal surfaces with Korean / CJK width support, opaque-black viewport fidelity, and ANSI truecolor
+- Long-press drag selection with adjustable handles and one-tap copy
 - Full keyboard accessory bar — Esc, Enter, Tab, arrows, Ctrl-C, other Ctrl combos, /new, and Space
-- Keyboard-safe composer layout with automatic keyboard dismissal after submit
-- Paste text from the mobile clipboard and attach photos; files are saved by the relay under Downloads/cmux-remote
+- Keyboard-safe composer layout with automatic keyboard dismissal after submit and an inline scroll-to-bottom control
+- Paste text from the mobile clipboard and upload photos or documents; files are saved by the relay under Downloads/cmux-remote
+- Browse recent uploads and terminal-visible files, including image thumbnails and a full-screen zoom viewer
 - Local and native Inbox push notifications for cmux events plus AI-agent needs-input prompts
 - Workspace create, rename, close, and multi-surface chip-bar switching
 - Connected computer battery status when the relay can provide it
@@ -154,9 +156,9 @@ cmux Remote
 ### 프로모션 텍스트 (max 170)
 
 ```
-태블릿 네이티브 작업공간으로 터미널은 더 넓게, 명령 패널은 더 간결하게. 읽기 쉬운 글자와 전체 너비 터미널을 제공하며 휴대폰 사용 방식은 그대로입니다.
+트루컬러 터미널, 드래그 선택·복사, 사진·파일 업로드와 최근 이미지 미리보기를 추가했습니다. 모든 연결은 기존처럼 사용자의 Tailscale 안에서만 이루어집니다.
 ```
-*(86 chars)*
+*(92 chars)*
 
 ### 키워드 (max 100)
 
@@ -172,7 +174,7 @@ cmux Remote는 사용자의 모바일 기기를 본인 컴퓨터에서 돌아가
 
 이 앱이 무엇인가요
 
-cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Codex / Cursor 같은 AI 에이전트와의 깊은 통합을 제공하는 데스크톱용 현대적 터미널 멀티플렉서입니다. cmux Remote는 선택한 cmux surface를 미러링하고, 키 입력을 보내고, 워크스페이스를 관리하고, 사진을 첨부하고, 알림을 받게 해 줍니다 — 전부 모바일 앱에서.
+cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Codex / Cursor 같은 AI 에이전트와의 깊은 통합을 제공하는 데스크톱용 현대적 터미널 멀티플렉서입니다. cmux Remote는 선택한 cmux surface를 미러링하고, 키 입력을 보내고, 워크스페이스를 관리하고, 사진과 문서를 업로드하고, 이미지를 미리 보고, 알림을 받게 해 줍니다 — 전부 모바일 앱에서.
 
 누구를 위한 앱인가요
 
@@ -191,10 +193,12 @@ cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Code
 
 주요 기능
 
-- 한국어 / CJK 폭 처리와 styled relay 데이터 제공 시 ANSI 색상을 지원하는 성능 최적화 cmux 터미널 surface 라이브 미러
+- 한국어 / CJK 폭 처리, 불투명 검은 viewport, ANSI 트루컬러를 지원하는 성능 최적화 cmux 터미널 surface 라이브 미러
+- 길게 눌러 드래그하는 선택 영역, 조절 핸들, 원탭 복사
 - 전용 키보드 액세서리 바 — Esc, Enter, Tab, 방향키, Ctrl-C, 기타 Ctrl 조합, /new, Space
-- 전송 후 키보드 자동 닫힘과 키보드 표시 중 안정적인 터미널/입력창 레이아웃
-- 모바일 클립보드 붙여넣기와 사진 첨부. 파일은 relay가 Downloads/cmux-remote 아래에 저장
+- 전송 후 키보드 자동 닫힘, 키보드 표시 중 안정적인 레이아웃, 인라인 맨 아래 이동 버튼
+- 모바일 클립보드 붙여넣기와 사진·문서 업로드. 파일은 relay가 Downloads/cmux-remote 아래에 저장
+- 최근 업로드 및 터미널에 표시된 파일 탐색, 이미지 썸네일과 전체 화면 확대 보기
 - cmux 이벤트와 AI 에이전트 needs input 프롬프트를 로컬 알림 / native Inbox push로 표시
 - 워크스페이스 생성, 이름 변경, 닫기와 다중 surface 칩바 전환
 - relay가 제공하는 경우 연결된 컴퓨터 배터리 상태 표시
@@ -224,62 +228,58 @@ https://github.com/NewTurn2017/cmux-remote
 
 ---
 
-## Version 1.0.9 Release Notes
+## Version 1.1.1 Release Notes
 
 ### What’s New — en-US
 
 ```
-cmux Remote 1.0.9 introduces a native tablet workspace designed for wide terminal sessions.
+cmux Remote 1.1.1 makes remote terminal work more visual and precise.
 
-- Uses the full tablet window instead of phone compatibility framing.
-- Reorganizes command input, utility actions, and shortcuts into a compact two-row landscape deck.
-- Keeps the terminal full-width and gives terminal text a more readable default size on larger screens.
-- Provides large touch targets, system text scaling, keyboard focus, Return-key submission, and visible status feedback.
-- Keeps shortcut keys usable even while a sent or error message is displayed.
-- Preserves the existing phone layout and interaction behavior.
-- Supports all four tablet orientations, including during multitasking.
+- Restores full ANSI truecolor on an opaque-black terminal viewport.
+- Adds long-press drag selection, adjustable handles, and one-tap copy.
+- Uploads photos and documents securely to Downloads/cmux-remote.
+- Shows recent uploads and terminal-visible files with image thumbnails and a full-screen zoom viewer.
+- Places the scroll-to-bottom control inside the command deck beside attachments and Send.
+- Localizes Settings guidance and notification copy in English and Korean.
 ```
 
 ### What's New
 
 ```
-cmux Remote 1.0.9 introduces a native tablet workspace designed for wide terminal sessions.
+cmux Remote 1.1.1 makes remote terminal work more visual and precise.
 
-- Uses the full tablet window instead of phone compatibility framing.
-- Reorganizes command input, utility actions, and shortcuts into a compact two-row landscape deck.
-- Keeps the terminal full-width and gives terminal text a more readable default size on larger screens.
-- Provides large touch targets, system text scaling, keyboard focus, Return-key submission, and visible status feedback.
-- Keeps shortcut keys usable even while a sent or error message is displayed.
-- Preserves the existing phone layout and interaction behavior.
-- Supports all four tablet orientations, including during multitasking.
+- Restores full ANSI truecolor on an opaque-black terminal viewport.
+- Adds long-press drag selection, adjustable handles, and one-tap copy.
+- Uploads photos and documents securely to Downloads/cmux-remote.
+- Shows recent uploads and terminal-visible files with image thumbnails and a full-screen zoom viewer.
+- Places the scroll-to-bottom control inside the command deck beside attachments and Send.
+- Localizes Settings guidance and notification copy in English and Korean.
 ```
 
 ### Release Notes
 
 ```
-cmux Remote 1.0.9 introduces a native tablet workspace designed for wide terminal sessions.
+cmux Remote 1.1.1 makes remote terminal work more visual and precise.
 
-- Uses the full tablet window instead of phone compatibility framing.
-- Reorganizes command input, utility actions, and shortcuts into a compact two-row landscape deck.
-- Keeps the terminal full-width and gives terminal text a more readable default size on larger screens.
-- Provides large touch targets, system text scaling, keyboard focus, Return-key submission, and visible status feedback.
-- Keeps shortcut keys usable even while a sent or error message is displayed.
-- Preserves the existing phone layout and interaction behavior.
-- Supports all four tablet orientations, including during multitasking.
+- Restores full ANSI truecolor on an opaque-black terminal viewport.
+- Adds long-press drag selection, adjustable handles, and one-tap copy.
+- Uploads photos and documents securely to Downloads/cmux-remote.
+- Shows recent uploads and terminal-visible files with image thumbnails and a full-screen zoom viewer.
+- Places the scroll-to-bottom control inside the command deck beside attachments and Send.
+- Localizes Settings guidance and notification copy in English and Korean.
 ```
 
 ### 새로운 기능 — ko
 
 ```
-cmux Remote 1.0.9은 넓은 터미널 작업에 맞춘 태블릿 네이티브 작업공간을 추가합니다.
+cmux Remote 1.1.1은 원격 터미널을 더 선명하고 정확하게 다룰 수 있도록 개선했습니다.
 
-- 휴대폰 호환 화면 대신 태블릿 전체 창을 사용합니다.
-- 명령 입력, 도구 버튼, 단축키를 가로 화면용 2단 패널로 압축했습니다.
-- 터미널을 전체 너비로 유지하고 큰 화면의 기본 글자 크기를 더 읽기 쉽게 조정했습니다.
-- 넉넉한 터치 영역, 시스템 글자 크기 조절, 키보드 포커스, Return 키 전송, 상태 피드백을 제공합니다.
-- 전송 완료 또는 오류 메시지가 표시되는 동안에도 단축키를 계속 사용할 수 있습니다.
-- 기존 휴대폰 레이아웃과 사용 방식은 그대로 유지합니다.
-- 멀티태스킹 중에도 태블릿의 네 가지 화면 방향을 모두 지원합니다.
+- 불투명 검은 터미널 viewport에서 ANSI 트루컬러를 정확하게 표시합니다.
+- 길게 눌러 드래그 선택하고, 핸들을 조절해 한 번에 복사할 수 있습니다.
+- 사진과 문서를 Downloads/cmux-remote에 안전하게 업로드합니다.
+- 최근 업로드 및 터미널에 표시된 파일을 썸네일과 전체 화면 이미지 뷰어로 확인합니다.
+- 맨 아래 이동 버튼을 첨부와 전송 버튼 옆 커맨드 덱에 배치했습니다.
+- Settings 안내와 알림 문구를 영어와 한국어로 현지화했습니다.
 ```
 
 ## App Privacy ("Data Used to Track You" / "Data Collected")
@@ -302,7 +302,7 @@ The app stores `bearer` and `device_id` in the iOS Keychain, but these are issue
 
 ## App Tracking Transparency (ATT)
 
-Not used in v1.0. No advertising identifiers, no tracking. (Required only when v1.1 adds AdMob.)
+Not used. No advertising identifiers, advertising SDKs, or tracking.
 
 ## App Review Notes
 
@@ -343,18 +343,19 @@ https://github.com/NewTurn2017/cmux-remote/issues
 
 ## Screenshot manifest
 
-Source: `docs/launch-assets/screenshots/app-store-6.9/`
+Source: `docs/launch-assets/screenshots/1.1.1/`
 
 | # | File | Caption (EN) | 자막 (KR) |
 |---|---|---|---|
-| 1 | `01-workspaces-remote-control.png` | All your cmux workspaces, one tap away | 모든 cmux 워크스페이스, 한 번에 |
-| 2 | `02-terminal-live-control.png` | Live terminal with full keyboard | 라이브 터미널 + 전용 키보드 |
-| 3 | `03-keyboard-shortcuts.png` | Esc, Tab, arrows, and Ctrl-C built in | Esc · Tab · 방향키 · Ctrl-C 내장 |
-| 4 | `04-inbox-notifications.png` | Native Inbox push for cmux events | cmux 이벤트 native Inbox push |
-| 5 | `05-settings-connection-guide.png` | Built-in setup walkthrough | 설치 가이드 내장 |
+| 1 | `iphone-6.9/{locale}/01-remote-command-center.png` | Your Mac terminal. In your hand. | Mac의 cmux를 손안에서 |
+| 2 | `iphone-6.9/{locale}/02-truecolor-selection-copy.png` | True color. Precise selection. | 색은 그대로, 선택은 정밀하게 |
+| 3 | `iphone-6.9/{locale}/03-terminal-files-preview.png` | Terminal files. On your phone. | 터미널의 파일을 바로 열어보세요 |
+| 4 | `iphone-6.9/{locale}/04-compact-command-deck.png` | Faster commands. More terminal room. | 명령은 빠르게, 터미널은 더 넓게 |
+| 5 | `iphone-6.9/{locale}/05-private-tailscale.png` | Private by design. Yours end to end. | 내 네트워크 안에서 안전하게 |
 
 Sizes needed:
-- ✅ 6.9" (1320×2868) — have 5
+- ✅ 6.9" (1320×2868) — 5 English + 5 Korean
+- ✅ iPad 13" landscape (2752×2064) — 3 English + 3 Korean
 - ⚠️ 6.5" (1284×2778) — Apple auto-scales from 6.9", but recommended to provide native captures
 - ⚠️ 6.7" (1290×2796) — same
 
@@ -364,19 +365,19 @@ App previews (video): not required for v1.0.
 
 | Locale | App Name | Subtitle | Description | Keywords | Screenshots |
 |---|---|---|---|---|---|
-| en-US (primary) | ✅ | ✅ | ✅ | ✅ | ⚠️ rebuild captions in EN |
-| ko (secondary) | ✅ | ✅ | ✅ | ✅ | ✅ already in KR |
+| en-US (primary) | ✅ | ✅ | ✅ | ✅ | ✅ iPhone + iPad |
+| ko (secondary) | ✅ | ✅ | ✅ | ✅ | ✅ iPhone + iPad |
 
 ## Submission checklist
 
 - [ ] Apple Developer Program active ($99/yr)
 - [ ] App registered in App Store Connect with bundle id `com.genie.CmuxRemote`
-- [ ] Demo Mode verified to work in Release build for v1.0.9 build 12
+- [ ] Demo Mode verified to work in Release build for v1.1.1 build 17
 - [ ] `ITSAppUsesNonExemptEncryption=false` in Info.plist (✅ done)
 - [ ] PRIVACY.md committed and accessible at the URL above (✅ done)
 - [ ] App Review Notes pasted from this document
 - [ ] Both en-US and ko metadata filled in
-- [ ] Screenshots uploaded for at least 6.9"
+- [ ] Localized iPhone 6.9" and iPad 13" screenshots uploaded
 - [ ] In-App Purchases: none (v1.0)
 - [x] Build archived with Release config + Distribution provisioning profile for v1.0.5 build 6
 - [x] Build exported and validated for App Store Connect upload for v1.0.5 build 6
@@ -385,5 +386,6 @@ App previews (video): not required for v1.0.
 - [x] Build 1.0.7 (9) archived + exported with Push Notifications entitlement (aps-environment=production, App Store distribution profile)
 - [x] Build 1.0.7 (9) uploaded to ASC on 2026-07-05 (train 1.0.7 now closed — superseded by 1.0.8)
 - [x] Build 1.0.9 (12) uploaded to ASC and marked VALID on 2026-08-02
+- [ ] Build 1.1.1 (17) archived, uploaded, processed, and attached
 - [ ] TestFlight internal test passes (recommended before public submit)
 - [ ] Submit for Review
