@@ -179,12 +179,21 @@ public final class AuthClient: @unchecked Sendable {
         return request
     }
 
+    /// The relay is a tailnet peer, not a trusted party: a zero, negative or
+    /// non-finite hint must not spin the retry loop or trap a sleep.
+    static func boundedRetryAfter(_ seconds: TimeInterval) -> TimeInterval {
+        guard seconds.isFinite else { return 5 }
+        return min(max(seconds, 1), 60)
+    }
+
     private func classifiedError(_ response: HTTPClientResponse) -> AuthError {
         switch response.statusCode {
         case 403:
             return .registrationDenied
         case 503:
-            let retryAfter = response.header("Retry-After").flatMap(TimeInterval.init) ?? 5
+            let retryAfter = response.header("Retry-After")
+                .flatMap(TimeInterval.init)
+                .map(Self.boundedRetryAfter) ?? 5
             return .relayUnavailable(status: 503, retryAfter: retryAfter)
         case 500...599:
             return .relayUnavailable(status: response.statusCode, retryAfter: nil)

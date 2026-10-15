@@ -34,7 +34,8 @@ public actor WSClient {
         connectionFactory = URLSessionWebSocketConnectionFactory()
         reconnectDelay = { delay in
             // Reconnect backoff is an intended bounded delay; injection keeps tests event-driven.
-            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            let seconds = delay.isFinite ? min(max(delay, 0), 60) : 1
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
         self.beforeReconnect = beforeReconnect
     }

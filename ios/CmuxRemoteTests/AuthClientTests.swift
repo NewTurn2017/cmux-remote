@@ -75,6 +75,24 @@ final class AuthClientTests: XCTestCase {
         }
     }
 
+    func testRegistration503BoundsHostileRetryAfter() async throws {
+        for (header, expected) in [("-3", 1.0), ("0", 1.0), ("nan", 5.0), ("86400", 60.0)] {
+            let client = makeClient(
+                keychain: makeKeychain(),
+                http: MockHTTPClient { _ in
+                    .init(data: Data(), statusCode: 503, headers: ["Retry-After": header])
+                }
+            )
+
+            do {
+                _ = try await client.prepareCredentials()
+                XCTFail("expected relayUnavailable for Retry-After \(header)")
+            } catch AuthError.relayUnavailable(_, let retryAfter) {
+                XCTAssertEqual(retryAfter, expected, "Retry-After \(header)")
+            }
+        }
+    }
+
     func testRegistration403IsPermanentPolicyDenial() async throws {
         let client = makeClient(
             keychain: makeKeychain(),
