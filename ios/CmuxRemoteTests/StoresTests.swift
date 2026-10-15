@@ -304,6 +304,47 @@ final class StoresTests: XCTestCase {
         })
     }
 
+    func testRateLimitedSurfaceListKeepsKnownSurfaces() async {
+        let rpc = RateLimitingRPCDispatch()
+        let store = WorkspaceStore(rpc: rpc)
+        await store.refresh()
+        XCTAssertEqual(store.surfaces(for: "w1").map(\.id), ["s1"])
+
+        await rpc.setLimitSurfaceList(true)
+        await store.refresh()
+
+        XCTAssertEqual(store.surfaces(for: "w1").map(\.id), ["s1"])
+        XCTAssertEqual(store.connection, .connected)
+    }
+
+    func testRefreshOverLiveConnectionDoesNotShowConnecting() async {
+        let rpc = RateLimitingRPCDispatch()
+        let store = WorkspaceStore(rpc: rpc)
+        await store.refresh()
+        XCTAssertEqual(store.connection, .connected)
+
+        await rpc.holdNextWorkspaceList()
+        let reload = Task { await store.refresh() }
+        while await !rpc.heldWorkspaceListStarted { await Task.yield() }
+        XCTAssertEqual(store.connection, .connected)
+        await rpc.releaseWorkspaceList()
+        await reload.value
+        XCTAssertEqual(store.connection, .connected)
+    }
+
+    func testUnsubscribeClearsScreenAndDropsReleasedSurfaceFrames() async {
+        let surfaceStore = SurfaceStore(rpc: StubRPCDispatch())
+        await surfaceStore.subscribe(workspaceId: "w1", surfaceId: "s1")
+        surfaceStore.ingest(.screenFull(Self.fullFrame(surfaceId: "s1", rev: 1, text: "WORKSPACE A")))
+
+        await surfaceStore.unsubscribe(surfaceId: "s1")
+
+        XCTAssertNil(surfaceStore.subscribed)
+        XCTAssertFalse(surfaceStore.grid.rawRows.contains("WORKSPACE A"))
+        surfaceStore.ingest(.screenFull(Self.fullFrame(surfaceId: "s1", rev: 2, text: "LATE A")))
+        XCTAssertFalse(surfaceStore.grid.rawRows.contains("LATE A"))
+    }
+
     private static func fullFrame(surfaceId: String, rev: Int, text: String) -> ScreenFull {
         ScreenFull(
             surfaceId: surfaceId,
@@ -899,5 +940,34 @@ private actor UnsubscribeGatingRPCDispatch: RPCDispatch {
             while !released { await Task.yield() }
         }
         return RPCResponse(id: "stub", ok: true, result: .object([:]))
+    }
+}
+
+
+/// Wraps the stub with cmux's polling refusal and a hold on `workspace.list`.
+private actor RateLimitingRPCDispatch: RPCDispatch {
+    private let stub = StubRPCDispatch()
+    private var limitSurfaceList = false
+    private var holdNext = false
+    private(set) var heldWorkspaceListStarted = false
+    private var released = false
+
+    func setLimitSurfaceList(_ value: Bool) { limitSurfaceList = value }
+    func holdNextWorkspaceList() { holdNext = true }
+    func releaseWorkspaceList() { released = true }
+
+    func call(method: String, params: JSONValue) async throws -> RPCResponse {
+        if method == "surface.list", limitSurfaceList {
+            return RPCResponse(id: "stub", ok: false, error: RPCError(
+                code: "rate_limited",
+                message: "Polling rate limited for this connection"
+            ))
+        }
+        if method == "workspace.list", holdNext {
+            holdNext = false
+            heldWorkspaceListStarted = true
+            while !released { await Task.yield() }
+        }
+        return try await stub.call(method: method, params: params)
     }
 }

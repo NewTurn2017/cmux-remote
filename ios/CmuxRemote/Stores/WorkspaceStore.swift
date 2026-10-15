@@ -19,7 +19,11 @@ public final class WorkspaceStore {
     }
 
     public func refresh() async {
-        connection = .connecting
+        // Reloading the list over a live connection is not a reconnect; only
+        // show "connecting" when there is no established connection yet.
+        if connection != .connected {
+            connection = .connecting
+        }
         do {
             let response = try await rpc.call(method: "workspace.list", params: .object([:]))
             let payload = try response.unwrapResult().decode(WorkspaceListPayload.self)
@@ -47,7 +51,11 @@ public final class WorkspaceStore {
             let payload = try response.unwrapResult().decode(SurfaceListPayload.self)
             surfacesByWorkspaceId[workspaceId] = payload.surfaces.map(\.model).sorted { $0.index < $1.index }
         } catch {
-            surfacesByWorkspaceId[workspaceId] = []
+            // A transient refusal (e.g. cmux rate limiting) must not erase a
+            // known surface list: an empty list leaves nothing to subscribe to.
+            if surfacesByWorkspaceId[workspaceId] == nil {
+                surfacesByWorkspaceId[workspaceId] = []
+            }
         }
     }
 

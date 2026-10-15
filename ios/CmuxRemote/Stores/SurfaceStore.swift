@@ -17,6 +17,9 @@ public final class SurfaceStore {
     public var subscriptionError: String?
 
     private let rpc: any RPCDispatch
+    /// Surface released by the last `unsubscribe` while nothing new is
+    /// subscribed; its in-flight frames must not repaint the cleared screen.
+    private var releasedSurfaceId: String?
 
     public init(rpc: any RPCDispatch) {
         self.rpc = rpc
@@ -102,11 +105,15 @@ public final class SurfaceStore {
     }
 
     public func unsubscribe(surfaceId: String) async {
-        _ = try? await rpc.call(method: "surface.unsubscribe", params: .object(["surface_id": .string(surfaceId)]))
         if subscribed == surfaceId {
+            // Leaving a surface must not keep its screen up under whatever is
+            // selected next, including a workspace with no surface to show.
             subscribed = nil
             subscribedWorkspaceId = nil
+            releasedSurfaceId = surfaceId
+            grid = CellGrid(cols: grid.cols, rows: grid.rows.count)
         }
+        _ = try? await rpc.call(method: "surface.unsubscribe", params: .object(["surface_id": .string(surfaceId)]))
     }
 
     public func ingest(_ frame: PushFrame) {
@@ -154,7 +161,8 @@ public final class SurfaceStore {
     /// surface must not repaint it.
     private func acceptsFrame(for surfaceId: String) -> Bool {
         guard subscriptionError == nil else { return false }
-        return surfaceId == subscribed || subscribed == nil
+        if let subscribed { return surfaceId == subscribed }
+        return surfaceId != releasedSurfaceId
     }
 
     public func sendText(workspaceId: String, surfaceId: String, text: String) async throws {
@@ -254,6 +262,7 @@ public final class SurfaceStore {
         subscribed = nil
         subscribedWorkspaceId = nil
         subscriptionError = nil
+        releasedSurfaceId = nil
         inputStatus = .idle
     }
 

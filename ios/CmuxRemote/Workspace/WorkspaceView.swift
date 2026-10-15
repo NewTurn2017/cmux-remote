@@ -857,7 +857,14 @@ struct WorkspaceView: View {
     private func subscribeFirstSurfaceIfNeeded() async {
         guard let workspace = currentWorkspace else { return }
         if activeWorkspaceId == workspace.id, activeSurfaceId != nil { return }
-        let surfaces = workspaceStore.surfaces(for: workspace.id)
+        var surfaces = workspaceStore.surfaces(for: workspace.id)
+        if surfaces.isEmpty {
+            // The list may have missed this workspace's surfaces (e.g. a
+            // refused list call); ask again before showing nothing.
+            await workspaceStore.refreshSurfaces(workspaceId: workspace.id)
+            guard workspaceStore.selectedId == workspace.id else { return }
+            surfaces = workspaceStore.surfaces(for: workspace.id)
+        }
         guard let first = surfaces.first else { return }
         activeWorkspaceId = workspace.id
         activeSurfaceId = first.id
