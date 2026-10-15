@@ -26,6 +26,29 @@ final class DeviceStoreTests: XCTestCase {
         XCTAssertFalse(store.validate(deviceId: "dev1", token: "wrong"))
     }
 
+    func testRePairingAfterKeyRotationReplacesStaleRecord() throws {
+        let url = tempURL()
+        let store = try DeviceStore(url: url)
+        _ = try store.register(deviceId: "old", loginName: "a", hostname: "h", apnsToken: nil, stableId: "nS1")
+        _ = try store.register(deviceId: "other", loginName: "a", hostname: "h2", apnsToken: nil, stableId: "nS2")
+        _ = try store.register(deviceId: "new", loginName: "a", hostname: "h", apnsToken: nil, stableId: "nS1")
+        XCTAssertNil(store.lookup(deviceId: "old"))
+        XCTAssertEqual(store.lookup(deviceId: "new")?.stableId, "nS1")
+        XCTAssertNotNil(store.lookup(deviceId: "other"))
+        XCTAssertEqual(try DeviceStore(url: url).allDevices().count, 2)
+    }
+
+    func testLegacyRecordWithoutStableIDLoadsAndBackfills() throws {
+        let url = tempURL()
+        let legacy = #"{"d":{"device_id":"d","login_name":"a","hostname":"h","registered_at":1,"token_hash":"x"}}"#
+        try Data(legacy.utf8).write(to: url)
+        let store = try DeviceStore(url: url)
+        XCTAssertNil(store.lookup(deviceId: "d")?.stableId)
+        try store.bindStableId(deviceId: "d", stableId: "nS1")
+        try store.bindStableId(deviceId: "d", stableId: "nOther")
+        XCTAssertEqual(try DeviceStore(url: url).lookup(deviceId: "d")?.stableId, "nS1")
+    }
+
     func testRevokeRemovesDevice() throws {
         let store = try DeviceStore(url: tempURL())
         _ = try store.register(deviceId: "d", loginName: "a", hostname: "h", apnsToken: nil)

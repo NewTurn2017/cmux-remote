@@ -41,10 +41,19 @@ struct BearerSourceAuthorizer: Sendable {
         }
         switch await peerResolver.resolve(remoteAddress: remoteAddress) {
         case .peer(let peer):
-            guard Self.deviceID(for: peer.nodeKey) == device.deviceId else {
-                return .rejected
+            if Self.deviceID(for: peer.nodeKey) == device.deviceId {
+                if device.stableId == nil, let stableID = peer.stableID {
+                    // Best effort: a failed write only delays the backfill.
+                    try? deviceStore.bindStableId(deviceId: device.deviceId, stableId: stableID)
+                }
+                return .authorized(deviceID: device.deviceId)
             }
-            return .authorized(deviceID: device.deviceId)
+            // Node-key rotation keeps the stable node ID, so a bearer bound to
+            // this node stays valid; any other node is still rejected.
+            if let stored = device.stableId, stored == peer.stableID {
+                return .authorized(deviceID: device.deviceId)
+            }
+            return .rejected
         case .peerNotFound:
             return .rejected
         case .unavailable:

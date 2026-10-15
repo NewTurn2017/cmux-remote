@@ -65,6 +65,18 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertEqual(p.hostname, "iPhone-15-Pro")
         XCTAssertEqual(p.os, "iOS")
         XCTAssertEqual(p.nodeKey, "nodekey:abc123def")
+        XCTAssertNil(p.stableID)
+    }
+
+    func testWhoisResponseParserReadsStableID() throws {
+        let json = #"""
+        {
+          "Node": { "ID": 1, "StableID": "nABC123CNTRL", "Key": "nodekey:k" },
+          "UserProfile": { "LoginName": "x@y" }
+        }
+        """#
+        let p = try TailscaledLocalAuth.parseWhoisResponse(Data(json.utf8))
+        XCTAssertEqual(p.stableID, "nABC123CNTRL")
     }
 
     func testWhoisResponseParserHandlesMissingHostinfo() throws {

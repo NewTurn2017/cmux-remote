@@ -12,6 +12,9 @@ public struct Device: Codable, Equatable, Sendable {
     public var tokenHash: String
     public var apnsToken: String?
     public var apnsEnv: String?
+    /// Tailscale stable node ID seen at registration (or backfilled on the
+    /// first node-key match). Absent for records written before it existed.
+    public var stableId: String?
 
     enum CodingKeys: String, CodingKey {
         case deviceId = "device_id"
@@ -21,6 +24,7 @@ public struct Device: Codable, Equatable, Sendable {
         case tokenHash = "token_hash"
         case apnsToken = "apns_token"
         case apnsEnv = "apns_env"
+        case stableId = "stable_id"
     }
 }
 
@@ -70,7 +74,8 @@ public final class DeviceStore: @unchecked Sendable {
         deviceId: String,
         loginName: String,
         hostname: String,
-        apnsToken: String?
+        apnsToken: String?,
+        stableId: String? = nil
     ) throws -> String {
         let token = try randomToken()
         let device = Device(
@@ -80,10 +85,30 @@ public final class DeviceStore: @unchecked Sendable {
             registeredAt: Int64(Date().timeIntervalSince1970),
             tokenHash: hash(token),
             apnsToken: apnsToken,
-            apnsEnv: nil
+            apnsEnv: nil,
+            stableId: stableId
         )
-        try mutate { $0[deviceId] = device }
+        try mutate { devices in
+            // A node that re-pairs after a key rotation replaces its own
+            // record instead of leaving a stale one behind.
+            if let stableId {
+                for (id, existing) in devices where id != deviceId && existing.stableId == stableId {
+                    devices.removeValue(forKey: id)
+                }
+            }
+            devices[deviceId] = device
+        }
         return token
+    }
+
+    /// Records the stable node ID for a device whose bearer was just
+    /// confirmed by a node-key match. No-op once a stable ID is stored.
+    public func bindStableId(deviceId: String, stableId: String) throws {
+        try mutate { devices in
+            guard var device = devices[deviceId], device.stableId == nil else { return }
+            device.stableId = stableId
+            devices[deviceId] = device
+        }
     }
 
     public func validate(deviceId: String, token: String) -> Bool {

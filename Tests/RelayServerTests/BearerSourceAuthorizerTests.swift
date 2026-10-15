@@ -138,4 +138,45 @@ final class BearerSourceAuthorizerTests: XCTestCase {
         let decision = await authorizer.authorize(headers: headers, remoteAddress: "127.0.0.1")
         XCTAssertEqual(decision, .rejected)
     }
+
+    func testStableIDKeepsBearerValidAcrossNodeKeyRotation() async throws {
+        let store = try DeviceStore.empty()
+        let deviceID = BearerSourceAuthorizer.deviceID(for: "nodekey:old")
+        let token = try store.register(
+            deviceId: deviceID,
+            loginName: "owner@example.com", hostname: "iPhone", apnsToken: nil
+        )
+        var headers = HTTPHeaders()
+        headers.add(name: "Authorization", value: "Bearer \(token)")
+
+        // First request on the original key backfills the stable ID.
+        let original = BearerSourceAuthorizer(
+            deviceStore: store,
+            peerResolver: RegistrationPeerResolver(auth: MockAuthService(peers: [
+                "100.64.0.5": PeerIdentity(loginName: "owner@example.com", hostname: "iPhone",
+                                           os: "iOS", nodeKey: "nodekey:old", stableID: "nStable1"),
+            ]))
+        )
+        let first = await original.authorize(headers: headers, remoteAddress: "100.64.0.5")
+        XCTAssertEqual(first, .authorized(deviceID: deviceID))
+        XCTAssertEqual(store.lookup(deviceId: deviceID)?.stableId, "nStable1")
+
+        let rotated = BearerSourceAuthorizer(
+            deviceStore: store,
+            peerResolver: RegistrationPeerResolver(auth: MockAuthService(peers: [
+                "100.64.0.5": PeerIdentity(loginName: "owner@example.com", hostname: "iPhone",
+                                           os: "iOS", nodeKey: "nodekey:new", stableID: "nStable1"),
+                "100.64.0.6": PeerIdentity(loginName: "owner@example.com", hostname: "Other",
+                                           os: "iOS", nodeKey: "nodekey:other", stableID: "nStable2"),
+                "100.64.0.7": PeerIdentity(loginName: "owner@example.com", hostname: "NoID",
+                                           os: "iOS", nodeKey: "nodekey:noid"),
+            ]))
+        )
+        let afterRotation = await rotated.authorize(headers: headers, remoteAddress: "100.64.0.5")
+        XCTAssertEqual(afterRotation, .authorized(deviceID: deviceID))
+        let otherNode = await rotated.authorize(headers: headers, remoteAddress: "100.64.0.6")
+        XCTAssertEqual(otherNode, .rejected)
+        let missingID = await rotated.authorize(headers: headers, remoteAddress: "100.64.0.7")
+        XCTAssertEqual(missingID, .rejected)
+    }
 }

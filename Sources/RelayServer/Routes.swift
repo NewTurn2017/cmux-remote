@@ -283,7 +283,8 @@ public actor Routes {
             let token = try deviceStore.register(deviceId: deviceId,
                                                  loginName: peer.loginName,
                                                  hostname: peer.hostname,
-                                                 apnsToken: nil)
+                                                 apnsToken: nil,
+                                                 stableId: peer.stableID)
             struct R: Encodable {
                 let device_id: String
                 let token: String

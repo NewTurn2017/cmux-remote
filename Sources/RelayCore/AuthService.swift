@@ -8,10 +8,13 @@ public struct PeerIdentity: Equatable, Sendable {
     public var hostname: String    // e.g. "iPhone-15-Pro" (Hostinfo.Hostname)
     public var os: String          // e.g. "iOS"           (Hostinfo.OS)
     public var nodeKey: String     // tailnet node key, e.g. "nodekey:abc..."
+    /// Tailscale's stable node ID (`Node.StableID`). Unlike `nodeKey` it
+    /// survives node-key rotation, so it keeps a pairing valid across renewals.
+    public var stableID: String?
 
-    public init(loginName: String, hostname: String, os: String, nodeKey: String) {
+    public init(loginName: String, hostname: String, os: String, nodeKey: String, stableID: String? = nil) {
         self.loginName = loginName; self.hostname = hostname
-        self.os = os; self.nodeKey = nodeKey
+        self.os = os; self.nodeKey = nodeKey; self.stableID = stableID
     }
 }
 
@@ -277,6 +280,7 @@ public final class TailscaledLocalAuth: AuthService {
             struct UserProfile: Decodable { let LoginName: String }
             struct Node: Decodable {
                 let Key: String
+                let StableID: String?
                 let Hostinfo: Hostinfo?
                 struct Hostinfo: Decodable {
                     let OS: String?
@@ -291,7 +295,8 @@ public final class TailscaledLocalAuth: AuthService {
             loginName: w.UserProfile.LoginName,
             hostname: w.Node.Hostinfo?.Hostname ?? "",
             os: w.Node.Hostinfo?.OS ?? "",
-            nodeKey: w.Node.Key
+            nodeKey: w.Node.Key,
+            stableID: w.Node.StableID.flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 }
