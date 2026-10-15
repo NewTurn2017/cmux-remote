@@ -69,6 +69,19 @@ final class HTTPServerTests: XCTestCase {
         }
     }
 
+    func testRegisterRejectsCrossSiteOriginAndForeignHost() async throws {
+        try await withFixture { fx in
+            for extra in ["Origin: https://evil.example\r\n", "Host: evil.example:4399\r\n"] {
+                let host = extra.hasPrefix("Host:") ? "" : "Host: \(fx.host)\r\n"
+                let resp = try await fx.rawRequest(
+                    "POST /v1/devices/me/register HTTP/1.1\r\n\(host)\(extra)Content-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                XCTAssertEqual(resp.statusCode, 403, extra)
+            }
+            XCTAssertTrue(fx.deviceStore.allDevices().isEmpty)
+        }
+    }
+
     func testRegisterReturnsRetryableIdentityUnavailableResponse() async throws {
         try await withFixture(
             allowLogin: [],
@@ -233,6 +246,20 @@ final class HTTPServerTests: XCTestCase {
             )
             XCTAssertEqual(resp.statusCode, 101,
                            "expected upgrade, got \(resp.statusCode): \(resp.bodyString)")
+        }
+    }
+
+    func testWebSocketUpgradeFromCrossSiteOriginIsRejected() async throws {
+        try await withFixture { fx in
+            let deviceID = BearerSourceAuthorizer.deviceID(for: "nk-fixture")
+            let token = try fx.deviceStore.register(deviceId: deviceID,
+                                                    loginName: "a@b",
+                                                    hostname: "iPhone",
+                                                    apnsToken: nil)
+            let resp = try await fx.rawRequest(
+                "GET /v1/ws HTTP/1.1\r\nHost: \(fx.host)\r\nOrigin: https://evil.example\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: cmuxremote.v1, bearer.\(token)\r\n\r\n"
+            )
+            XCTAssertEqual(resp.statusCode, 403)
         }
     }
 

@@ -109,6 +109,7 @@ public final class HTTPServer: @unchecked Sendable {
                     shouldUpgrade: { @Sendable channel, head in
                         let path = head.uri.split(separator: "?").first.map(String.init) ?? head.uri
                         guard path == "/v1/ws",
+                              RequestOriginPolicy.allows(head.headers),
                               let remote = channel.remoteAddress?.ipAddress else {
                             return channel.eventLoop.makeSucceededFuture(nil)
                         }
@@ -226,6 +227,11 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
             let routes = self.routes
             let sourceAuthorizer = self.sourceAuthorizer
             let responder = HTTPChannelResponder(context: context)
+            guard RequestOriginPolicy.allows(head.headers) else {
+                pendingHead = nil
+                responder.send(.init(.forbidden))
+                return
+            }
             Task {
                 let path = head.uri.split(separator: "?").first.map(String.init) ?? head.uri
                 let deviceID: String?
