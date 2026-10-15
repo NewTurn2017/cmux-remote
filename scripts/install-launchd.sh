@@ -192,8 +192,12 @@ note "building release binary"
 
 note "installing binary and logs under $DEST"
 mkdir -p "$DEST/bin" "$LOGDIR" "$LAUNCH_AGENTS_DIR"
-cp "$BIN_SRC" "$BIN_DEST"
-chmod 755 "$BIN_DEST"
+# Replace the binary by rename, never in place: overwriting the file the
+# running relay was launched from invalidates its code signature, and macOS
+# then kills it and refuses relaunch (OS_REASON_CODESIGNING).
+cp "$BIN_SRC" "$BIN_DEST.new"
+chmod 755 "$BIN_DEST.new"
+mv -f "$BIN_DEST.new" "$BIN_DEST"
 
 note "rendering $PLIST"
 render_plist > "$PLIST"
