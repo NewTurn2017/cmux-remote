@@ -1,4 +1,4 @@
-# App Store Connect — Metadata Draft (v1.1.1 build 17)
+# App Store Connect — Metadata Draft (v1.1.3 build 19)
 
 App: **Cmux Remote** · Bundle ID `com.genie.CmuxRemote` · Team `2UANJX7ATM`
 
@@ -228,58 +228,22 @@ https://github.com/NewTurn2017/cmux-remote
 
 ---
 
-## Version 1.1.1 Release Notes
+## Version 1.1.3 Release Notes
 
 ### What’s New — en-US
 
 ```
-cmux Remote 1.1.1 makes remote terminal work more visual and precise.
-
-- Restores full ANSI truecolor on an opaque-black terminal viewport.
-- Adds long-press drag selection, adjustable handles, and one-tap copy.
-- Uploads photos and documents securely to Downloads/cmux-remote.
-- Shows recent uploads and terminal-visible files with image thumbnails and a full-screen zoom viewer.
-- Places the scroll-to-bottom control inside the command deck beside attachments and Send.
-- Localizes Settings guidance and notification copy in English and Korean.
-```
-
-### What's New
-
-```
-cmux Remote 1.1.1 makes remote terminal work more visual and precise.
-
-- Restores full ANSI truecolor on an opaque-black terminal viewport.
-- Adds long-press drag selection, adjustable handles, and one-tap copy.
-- Uploads photos and documents securely to Downloads/cmux-remote.
-- Shows recent uploads and terminal-visible files with image thumbnails and a full-screen zoom viewer.
-- Places the scroll-to-bottom control inside the command deck beside attachments and Send.
-- Localizes Settings guidance and notification copy in English and Korean.
-```
-
-### Release Notes
-
-```
-cmux Remote 1.1.1 makes remote terminal work more visual and precise.
-
-- Restores full ANSI truecolor on an opaque-black terminal viewport.
-- Adds long-press drag selection, adjustable handles, and one-tap copy.
-- Uploads photos and documents securely to Downloads/cmux-remote.
-- Shows recent uploads and terminal-visible files with image thumbnails and a full-screen zoom viewer.
-- Places the scroll-to-bottom control inside the command deck beside attachments and Send.
-- Localizes Settings guidance and notification copy in English and Korean.
+- Switching to another terminal no longer shows the previous terminal's screen while the new one loads, and explains when a terminal can't be opened.
+- Reconnects automatically while your Mac's relay or Tailscale is still starting, with clearer connection and pairing messages.
+- Works with the hardened relay that binds each pairing to its Tailscale device. Thanks to Francesco Frapporti for responsibly reporting the issue.
 ```
 
 ### 새로운 기능 — ko
 
 ```
-cmux Remote 1.1.1은 원격 터미널을 더 선명하고 정확하게 다룰 수 있도록 개선했습니다.
-
-- 불투명 검은 터미널 viewport에서 ANSI 트루컬러를 정확하게 표시합니다.
-- 길게 눌러 드래그 선택하고, 핸들을 조절해 한 번에 복사할 수 있습니다.
-- 사진과 문서를 Downloads/cmux-remote에 안전하게 업로드합니다.
-- 최근 업로드 및 터미널에 표시된 파일을 썸네일과 전체 화면 이미지 뷰어로 확인합니다.
-- 맨 아래 이동 버튼을 첨부와 전송 버튼 옆 커맨드 덱에 배치했습니다.
-- Settings 안내와 알림 문구를 영어와 한국어로 현지화했습니다.
+- 다른 터미널로 전환할 때 새 화면을 불러오는 동안 이전 터미널 화면이 남지 않으며, 터미널을 열 수 없으면 이유를 알려 줍니다.
+- Mac의 relay나 Tailscale이 아직 시작 중이면 자동으로 다시 연결하고, 연결·페어링 상태 메시지를 더 명확하게 표시합니다.
+- 페어링을 각 Tailscale 기기에 묶도록 강화된 relay와 함께 동작합니다. 이 문제를 책임 있게 제보해 주신 Francesco Frapporti 님께 감사드립니다.
 ```
 
 ## App Privacy ("Data Used to Track You" / "Data Collected")
