@@ -94,4 +94,48 @@ final class BearerSourceAuthorizerTests: XCTestCase {
         )
         XCTAssertEqual(decision, .identityUnavailable)
     }
+
+    func testDevLocalhostBearerIsAuthorizedFromLoopbackOnlyWhenEnabled() async throws {
+        let store = try DeviceStore.empty()
+        let deviceID = BearerSourceAuthorizer.deviceID(
+            for: BearerSourceAuthorizer.devLocalhostNodeKey(login: "owner@example.com")
+        )
+        let token = try store.register(
+            deviceId: deviceID,
+            loginName: "owner@example.com", hostname: "localhost-dev", apnsToken: nil
+        )
+        let resolver = RegistrationPeerResolver(auth: MockAuthService(peers: [:]))
+        var headers = HTTPHeaders()
+        headers.add(name: "Authorization", value: "Bearer \(token)")
+
+        let enabled = BearerSourceAuthorizer(
+            deviceStore: store, peerResolver: resolver, allowLocalhost: true
+        )
+        let fromLoopback = await enabled.authorize(headers: headers, remoteAddress: "127.0.0.1")
+        XCTAssertEqual(fromLoopback, .authorized(deviceID: deviceID))
+        let fromTailnet = await enabled.authorize(headers: headers, remoteAddress: "100.64.0.8")
+        XCTAssertEqual(fromTailnet, .rejected)
+
+        let disabled = BearerSourceAuthorizer(deviceStore: store, peerResolver: resolver)
+        let withoutBypass = await disabled.authorize(headers: headers, remoteAddress: "127.0.0.1")
+        XCTAssertEqual(withoutBypass, .rejected)
+    }
+
+    func testLoopbackBypassDoesNotAcceptRealNodeBearer() async throws {
+        let store = try DeviceStore.empty()
+        let token = try store.register(
+            deviceId: BearerSourceAuthorizer.deviceID(for: "nodekey:phone"),
+            loginName: "owner@example.com", hostname: "iPhone", apnsToken: nil
+        )
+        let authorizer = BearerSourceAuthorizer(
+            deviceStore: store,
+            peerResolver: RegistrationPeerResolver(auth: MockAuthService(peers: [:])),
+            allowLocalhost: true
+        )
+        var headers = HTTPHeaders()
+        headers.add(name: "Authorization", value: "Bearer \(token)")
+
+        let decision = await authorizer.authorize(headers: headers, remoteAddress: "127.0.0.1")
+        XCTAssertEqual(decision, .rejected)
+    }
 }

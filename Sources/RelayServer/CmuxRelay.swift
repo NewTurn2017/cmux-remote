@@ -142,7 +142,12 @@ struct Serve: AsyncParsableCommand {
         try await server.run(host: host, port: port)
     }
     static func shouldAutoAuthorizeSelfLogin(environment: [String: String]) -> Bool {
-        environment["CMUX_NO_SELF_LOGIN"] != "1"
+        // The installer always writes the variable ("0" = keep auto-authorise);
+        // any other non-empty value opts out, as it did before the plist set it.
+        switch environment["CMUX_NO_SELF_LOGIN"] {
+        case nil, "", "0": true
+        default: false
+        }
     }
 }
 

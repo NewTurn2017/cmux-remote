@@ -37,7 +37,7 @@ public actor Routes {
     private let auth: AuthService
     private let registrationAuthorizer: RegistrationAuthorizer
     let registrationPeerResolver: RegistrationPeerResolver
-    private let allowLocalhost: Bool
+    let allowLocalhost: Bool
     private let logger = Logger(label: "cmux-relay.registration")
 
     public init(
@@ -249,7 +249,7 @@ public actor Routes {
                 loginName: login,
                 hostname: "localhost-dev",
                 os: "ios-simulator",
-                nodeKey: "cmux-dev-localhost:\(login)"
+                nodeKey: BearerSourceAuthorizer.devLocalhostNodeKey(login: login)
             )
         } else {
             switch await registrationPeerResolver.resolve(remoteAddress: remoteAddr) {

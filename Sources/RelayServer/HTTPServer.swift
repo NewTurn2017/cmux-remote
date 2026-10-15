@@ -93,7 +93,8 @@ public final class HTTPServer: @unchecked Sendable {
         let cmux = self.cmux
         let sourceAuthorizer = BearerSourceAuthorizer(
             deviceStore: store,
-            peerResolver: routes.registrationPeerResolver
+            peerResolver: routes.registrationPeerResolver,
+            allowLocalhost: routes.allowLocalhost
         )
         let uploadService = self.uploadService
         let artifactService = self.artifactService

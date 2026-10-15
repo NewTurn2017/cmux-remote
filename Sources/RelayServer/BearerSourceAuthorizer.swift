@@ -12,10 +12,16 @@ struct BearerSourceAuthorizer: Sendable {
 
     private let deviceStore: DeviceStore
     private let peerResolver: RegistrationPeerResolver
+    private let allowLocalhost: Bool
 
-    init(deviceStore: DeviceStore, peerResolver: RegistrationPeerResolver) {
+    init(
+        deviceStore: DeviceStore,
+        peerResolver: RegistrationPeerResolver,
+        allowLocalhost: Bool = false
+    ) {
         self.deviceStore = deviceStore
         self.peerResolver = peerResolver
+        self.allowLocalhost = allowLocalhost
     }
 
     func authorize(
@@ -25,6 +31,13 @@ struct BearerSourceAuthorizer: Sendable {
         guard let token = Self.bearerToken(from: headers),
               let device = deviceStore.device(matching: token) else {
             return .rejected
+        }
+        // Dev bypass mirrors registration: a loopback caller can't be resolved
+        // by tailscaled, so it may only use a bearer minted for the synthetic
+        // localhost node. Real-node bearers still need a live whois match.
+        if allowLocalhost, Routes.isLoopback(remoteAddress),
+           device.deviceId == Self.deviceID(for: Self.devLocalhostNodeKey(login: device.loginName)) {
+            return .authorized(deviceID: device.deviceId)
         }
         switch await peerResolver.resolve(remoteAddress: remoteAddress) {
         case .peer(let peer):
@@ -59,6 +72,10 @@ struct BearerSourceAuthorizer: Sendable {
             }
         }
         return candidates.first
+    }
+
+    static func devLocalhostNodeKey(login: String) -> String {
+        "cmux-dev-localhost:\(login)"
     }
 
     static func deviceID(for nodeKey: String) -> String {
