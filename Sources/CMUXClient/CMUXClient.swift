@@ -109,8 +109,41 @@ public actor CMUXClient {
         self.pushHandler = handler
     }
 
+    /// cmux rate-limits polling methods (`workspace.list`, `surface.list`,
+    /// `surface.read_text`, …) per connection: a burst of about nine, then
+    /// about ten a second. Every phone shares the relay's single connection, so
+    /// a workspace-list refresh (one list plus one `surface.list` per
+    /// workspace) overruns it. Waiting out cmux's `retry_after_ms` hint keeps
+    /// those reads from failing; the budget bounds how long a caller's FIFO
+    /// can stall before the `rate_limited` response is returned as is.
+    static let rateLimitRetryBudgetNanoseconds: UInt64 = 1_500_000_000
+
     @discardableResult
     public func call(method: String, params: JSONValue) async throws -> RPCResponse {
+        var waited: UInt64 = 0
+        while true {
+            let response = try await callOnce(method: method, params: params)
+            guard let delay = Self.rateLimitRetryDelay(for: response),
+                  waited + delay <= Self.rateLimitRetryBudgetNanoseconds
+            else { return response }
+            waited += delay
+            // Bounded backoff requested by cmux itself, not a polling loop.
+            try await Task.sleep(nanoseconds: delay)
+        }
+    }
+
+    /// The wait cmux asks for before retrying a rate-limited call, clamped to
+    /// 20–250 ms; `nil` when the response is not a rate limit.
+    static func rateLimitRetryDelay(for response: RPCResponse) -> UInt64? {
+        guard let error = response.error, error.code == "rate_limited" else { return nil }
+        var milliseconds: Int64 = 100
+        if case .object(let data)? = error.data, case .int(let hint)? = data["retry_after_ms"] {
+            milliseconds = hint
+        }
+        return UInt64(min(max(milliseconds, 20), 250)) * 1_000_000
+    }
+
+    private func callOnce(method: String, params: JSONValue) async throws -> RPCResponse {
         if let terminalError {
             throw terminalError
         }

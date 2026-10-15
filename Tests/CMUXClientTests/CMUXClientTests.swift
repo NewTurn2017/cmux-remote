@@ -23,6 +23,40 @@ final class CMUXClientTests: XCTestCase {
 
 
 
+    func testRateLimitedCallIsRetriedAfterCmuxHint() async throws {
+        let fix = try await MTELGCmuxFixture.make(requestTimeout: .seconds(2))
+        defer { Task { await fix.shutdown() } }
+
+        async let result = fix.client.call(method: "surface.list", params: .object([:]))
+
+        let first = try Self.extractId(from: try await fix.awaitRequestLine())
+        try await fix.sendToClient(
+            line: #"{"id":"\#(first)","ok":false,"error":{"code":"rate_limited","message":"Polling rate limited for this connection","data":{"retry_after_ms":30}}}"#
+        )
+        let second = try await fix.awaitRequestLine()
+        XCTAssertTrue(second.contains("\"method\":\"surface.list\""), second)
+        let secondId = try Self.extractId(from: second)
+        XCTAssertNotEqual(first, secondId)
+        try await fix.sendToClient(line: #"{"id":"\#(secondId)","result":{"surfaces":[]}}"#)
+
+        let value = try await result
+        XCTAssertTrue(value.isOk)
+    }
+
+    func testRateLimitRetryDelayFollowsHintWithinBounds() {
+        func response(_ data: JSONValue?) -> RPCResponse {
+            RPCResponse(id: "1", ok: false, result: nil,
+                        error: RPCError(code: "rate_limited", message: "m", data: data))
+        }
+        XCTAssertEqual(CMUXClient.rateLimitRetryDelay(for: response(.object(["retry_after_ms": .int(79)]))), 79_000_000)
+        XCTAssertEqual(CMUXClient.rateLimitRetryDelay(for: response(.object(["retry_after_ms": .int(0)]))), 20_000_000)
+        XCTAssertEqual(CMUXClient.rateLimitRetryDelay(for: response(.object(["retry_after_ms": .int(9_000)]))), 250_000_000)
+        XCTAssertEqual(CMUXClient.rateLimitRetryDelay(for: response(nil)), 100_000_000)
+        XCTAssertNil(CMUXClient.rateLimitRetryDelay(for: RPCResponse(
+            id: "1", ok: false, result: nil, error: RPCError(code: "invalid_params", message: "m"))))
+        XCTAssertNil(CMUXClient.rateLimitRetryDelay(for: RPCResponse(id: "1", ok: true, result: .object([:]), error: nil)))
+    }
+
     func testAuthenticateSendsAuthLoginRequest() async throws {
         let fix = try await MTELGCmuxFixture.make(requestTimeout: .seconds(2))
         defer { Task { await fix.shutdown() } }

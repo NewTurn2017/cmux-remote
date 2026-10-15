@@ -109,6 +109,11 @@ public actor WSProtocolMachine {
                 actions.append(.noteUserInput(surfaceId: surfaceId))
             }
             return actions
+        } catch let error as RPCError {
+            // Keep cmux's own code (e.g. `rate_limited`) so clients can tell a
+            // transient refusal from a relay fault.
+            let resp = RPCResponse(id: req.id, ok: false, result: nil, error: error)
+            return [.sendText(Self.encode(resp))]
         } catch {
             let err = RPCError(code: "internal_error",
                                message: String(describing: error))

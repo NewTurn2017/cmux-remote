@@ -76,6 +76,18 @@ final class WebSocketHandlerTests: XCTestCase {
         XCTAssertTrue(s.contains(#""code":"internal_error""#), "missing code: \(s)")
     }
 
+    func testCmuxRPCErrorCodeIsPassedThrough() async {
+        let m = WSProtocolMachine(cmux: RateLimitedCMUXFacade())
+        _ = await m.processText(#"{"deviceId":"d","appVersion":"1","protocolVersion":1}"#)
+
+        let actions = await m.processText(#"{"id":"8","method":"surface.list","params":{}}"#)
+        guard case .sendText(let s)? = actions.first else {
+            return XCTFail("expected sendText, got \(actions)")
+        }
+        XCTAssertTrue(s.contains(#""code":"rate_limited""#), "missing code: \(s)")
+        XCTAssertTrue(s.contains(#""retry_after_ms":40"#), "missing data: \(s)")
+    }
+
     func testGarbageAfterHelloIsIgnored() async {
         let m = WSProtocolMachine(cmux: NoOpCMUXFacade())
         _ = await m.processText(#"{"deviceId":"d","appVersion":"1","protocolVersion":1}"#)
@@ -761,6 +773,13 @@ actor RecordingCMUXFacade: CMUXFacade {
         return .object([:])
     }
     func snapshot() -> [Call] { calls }
+}
+
+final class RateLimitedCMUXFacade: CMUXFacade {
+    func dispatch(method: String, params: JSONValue) async throws -> JSONValue {
+        throw RPCError(code: "rate_limited", message: "Polling rate limited for this connection",
+                       data: .object(["retry_after_ms": .int(40)]))
+    }
 }
 
 final class ThrowingCMUXFacade: CMUXFacade {
