@@ -191,12 +191,20 @@ struct Devices: AsyncParsableCommand {
 
 // MARK: - Path helpers
 
+/// `$HOME` when set, else the account home. `NSHomeDirectory()` alone ignores
+/// `$HOME`, so an ephemeral smoke relay run with a temporary `HOME` used to
+/// read and rewrite the live relay's device registry.
+func relayHomeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+    if let home = environment["HOME"], !home.isEmpty { return home }
+    return NSHomeDirectory()
+}
+
 func defaultConfigPath() -> String {
-    "\(NSHomeDirectory())/.cmuxremote/relay.json"
+    "\(relayHomeDirectory())/.cmuxremote/relay.json"
 }
 
 func devicesStorePath() -> String {
-    "\(NSHomeDirectory())/.cmuxremote/devices.json"
+    "\(relayHomeDirectory())/.cmuxremote/devices.json"
 }
 
 /// Split `RelayConfig.listen` ("host:port") into a host + port pair.

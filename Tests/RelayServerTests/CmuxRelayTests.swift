@@ -26,6 +26,12 @@ final class CmuxRelayTests: XCTestCase {
                       "default config should live under ~/.cmuxremote/; got \(serve.config)")
     }
 
+    func testRelayHomeHonorsHomeEnvironment() {
+        XCTAssertEqual(relayHomeDirectory(environment: ["HOME": "/tmp/smoke-home"]), "/tmp/smoke-home")
+        XCTAssertEqual(relayHomeDirectory(environment: [:]), NSHomeDirectory())
+        XCTAssertEqual(relayHomeDirectory(environment: ["HOME": ""]), NSHomeDirectory())
+    }
+
     func testSelfLoginAutoAuthorizationOptOutValues() {
         XCTAssertTrue(Serve.shouldAutoAuthorizeSelfLogin(environment: [:]))
         XCTAssertTrue(Serve.shouldAutoAuthorizeSelfLogin(environment: ["CMUX_NO_SELF_LOGIN": ""]))
