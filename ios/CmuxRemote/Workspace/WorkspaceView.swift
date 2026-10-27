@@ -565,6 +565,7 @@ struct WorkspaceView: View {
             KeyButton(label: "/new", accessibilityLabel: "send slash new shortcut") { sendText("/new") }
             KeyButton(label: "␣", accessibilityLabel: "send space for omx selection") { sendText(" ") }
             optionUpShortcut()
+            optionDownShortcut()
         }
     }
 
@@ -580,6 +581,20 @@ struct WorkspaceView: View {
             sendKey(.named("up", modifiers: [.alt]))
         }
         .accessibilityIdentifier("OptionUpShortcutButton")
+    }
+
+    private func optionDownShortcut(minimumHeight: CGFloat = 34) -> some View {
+        KeyButton(
+            label: "⌥ ↓",
+            accessibilityLabel: String(
+                localized: "workspace.shortcut.option_down",
+                defaultValue: "Send Option Down arrow"
+            ),
+            minimumHeight: minimumHeight
+        ) {
+            sendKey(.named("down", modifiers: [.alt]))
+        }
+        .accessibilityIdentifier("OptionDownShortcutButton")
     }
 
     private var allShortcutsRow: some View {
@@ -599,6 +614,7 @@ struct WorkspaceView: View {
             KeyButton(label: "/new", accessibilityLabel: "send slash new shortcut", minimumHeight: 44) { sendText("/new") }
             KeyButton(label: "␣", accessibilityLabel: "send space for omx selection", minimumHeight: 44) { sendText(" ") }
             optionUpShortcut(minimumHeight: 44)
+            optionDownShortcut(minimumHeight: 44)
         }
     }
 

@@ -60,6 +60,60 @@ final class WorkspaceAccessoryLayoutUITests: XCTestCase {
         wait(for: [liveSent], timeout: 5)
     }
 
+    func testOptionDownShortcutSendsModifiedKeyBesideOptionUp() {
+        continueAfterFailure = false
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            XCUIDevice.shared.orientation = .landscapeLeft
+            addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
+        }
+        let app = XCUIApplication()
+        app.launchEnvironment["CMUX_FAKE_RELAY"] = "1"
+        app.launchEnvironment["CMUX_SKIP_SPLASH"] = "1"
+        app.launchArguments += [
+            "--cmux-skip-splash",
+            "-cmux.demoMode", "NO",
+            "-cmux.localNotificationsEnabled", "NO",
+        ]
+        addTeardownBlock { app.terminate() }
+        app.launch()
+        let workspace = firstWorkspace(in: app)
+        XCTAssertTrue(workspace.waitForExistence(timeout: 5), app.debugDescription)
+        workspace.tap()
+
+        assertOptionDownRow(in: app)
+        retainScreenshot(named: "option-down-keyboard-hidden")
+
+        let sent = expectation(
+            for: NSPredicate(format: "label == %@", "Sent alt+down"),
+            evaluatedWith: app.staticTexts["InputStatusMessage"]
+        )
+        app.buttons["OptionDownShortcutButton"].tap()
+        wait(for: [sent], timeout: 5)
+
+        let field = app.textFields["CommandComposerField"]
+        field.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        assertOptionDownRow(in: app)
+        XCTAssertLessThanOrEqual(app.buttons["OptionDownShortcutButton"].frame.maxY, keyboard.frame.minY)
+        retainScreenshot(named: "option-down-keyboard-visible")
+    }
+
+    private func assertOptionDownRow(in app: XCUIApplication) {
+        let shortcut = app.buttons["OptionDownShortcutButton"]
+        XCTAssertTrue(shortcut.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(shortcut.isHittable)
+        XCTAssertEqual(app.buttons.matching(identifier: "OptionDownShortcutButton").count, 1)
+        XCTAssertGreaterThanOrEqual(shortcut.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(shortcut.frame.height, 34)
+        let optionUp = app.buttons["OptionUpShortcutButton"]
+        XCTAssertEqual(shortcut.frame.midY, optionUp.frame.midY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(shortcut.frame.minX, optionUp.frame.maxX)
+        let panel = app.otherElements["TerminalAccessoryPanel"]
+        XCTAssertLessThanOrEqual(shortcut.frame.maxX, panel.frame.maxX)
+        XCTAssertLessThanOrEqual(shortcut.frame.maxY, panel.frame.maxY)
+    }
+
     private func assertOptionUpRow(in app: XCUIApplication) {
         let shortcut = app.buttons["OptionUpShortcutButton"]
         XCTAssertTrue(shortcut.waitForExistence(timeout: 5), app.debugDescription)

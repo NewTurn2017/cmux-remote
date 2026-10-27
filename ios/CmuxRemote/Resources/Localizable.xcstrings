@@ -1,6 +1,22 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "workspace.shortcut.option_down": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send Option Down arrow"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Option 아래쪽 방향키 보내기"
+          }
+        }
+      }
+    },
     "workspace.shortcut.option_up": {
       "localizations": {
         "en": {
