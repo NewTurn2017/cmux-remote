@@ -1,4 +1,4 @@
-# App Store Connect — Metadata Draft (v1.1.3 build 20)
+# App Store Connect — Metadata Draft (v1.1.4 build 21)
 
 App: **Cmux Remote** · Bundle ID `com.genie.CmuxRemote` · Team `2UANJX7ATM`
 
@@ -228,24 +228,20 @@ https://github.com/NewTurn2017/cmux-remote
 
 ---
 
-## Version 1.1.3 Release Notes
+## Version 1.1.4 Release Notes
 
 ### What’s New — en-US
 
 ```
-- Switching to another terminal no longer shows the previous terminal's screen while the new one loads, and explains when a terminal can't be opened.
-- Switching quickly between many workspaces stays reliable: a workspace no longer opens to the previous workspace's screen, and reloading the list no longer shows "connecting".
-- Reconnects automatically while your Mac's relay or Tailscale is still starting, with clearer connection and pairing messages.
-- Works with the hardened relay that binds each pairing to its Tailscale device. Thanks to Francesco Frapporti for responsibly reporting the issue.
+- Adds an Option + Down Arrow shortcut next to Option + Up Arrow.
+- In Claude Code's fullscreen view, it can jump back to the latest output. Add "alt+down": "scroll:bottom" to the Scroll context in ~/.claude/keybindings.json on your Mac.
 ```
 
 ### 새로운 기능 — ko
 
 ```
-- 다른 터미널로 전환할 때 새 화면을 불러오는 동안 이전 터미널 화면이 남지 않으며, 터미널을 열 수 없으면 이유를 알려 줍니다.
-- 워크스페이스가 많아도 빠르게 전환할 수 있습니다. 워크스페이스를 열었는데 이전 워크스페이스 화면이 남아 있거나, 목록을 다시 불러올 때 "connecting"이 표시되는 문제를 고쳤습니다.
-- Mac의 relay나 Tailscale이 아직 시작 중이면 자동으로 다시 연결하고, 연결·페어링 상태 메시지를 더 명확하게 표시합니다.
-- 페어링을 각 Tailscale 기기에 묶도록 강화된 relay와 함께 동작합니다. 이 문제를 책임 있게 제보해 주신 Francesco Frapporti 님께 감사드립니다.
+- Option + 위쪽 방향키 옆에 Option + 아래쪽 방향키 단축키를 추가했습니다.
+- Claude Code fullscreen 화면에서 최신 출력으로 바로 내려갈 수 있습니다. Mac의 ~/.claude/keybindings.json에서 Scroll 컨텍스트에 "alt+down": "scroll:bottom"을 추가하세요.
 ```
 
 ## App Privacy ("Data Used to Track You" / "Data Collected")
