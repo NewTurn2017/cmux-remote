@@ -267,6 +267,30 @@ No. The relay is a launchd service, so it **auto-starts on Mac login** and
 respawns if it dies. You do, however, need to **launch the cmux app**
 yourself.
 
+**Q. The ⌥↓ button doesn't jump Claude Code to the bottom.**
+The ⌥↓ button only sends the `alt+down` key. Claude Code's fullscreen view
+has no default action for that key, so add a binding once on the Mac that
+runs Claude Code.
+
+1. Open `~/.claude/keybindings.json`. Create it if it doesn't exist.
+2. Add `"alt+down": "scroll:bottom"` to the `Scroll` context. If the file
+   already exists, add just this entry to its `bindings` array.
+
+```json
+{
+  "bindings": [
+    { "context": "Scroll", "bindings": { "alt+down": "scroll:bottom" } }
+  ]
+}
+```
+
+Claude Code picks up the change as soon as you save, even in sessions that
+are already running. Scroll up: if the hint reads `Jump to bottom (opt+↓)`,
+the binding is active. If it still reads `Jump to bottom (click)`, check the
+file path. With a separate profile in `CLAUDE_CONFIG_DIR`, Claude Code reads
+`$CLAUDE_CONFIG_DIR/keybindings.json` instead of `~/.claude`, so put the
+same file in each profile. (Verified on Claude Code 2.1.310 and 2.1.311.)
+
 ---
 
 ## Short notice to send to a user

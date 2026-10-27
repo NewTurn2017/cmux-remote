@@ -174,6 +174,9 @@ client that talks to cmux over a documented JSON-RPC schema.
 - Photo attachments are saved by the Mac relay under
   `~/Downloads/cmux-remote/`, then the saved path is inserted into the
   command field
+- To make the `⌥ ↓` shortcut jump Claude Code's fullscreen view to the
+  bottom, add one key binding on the Mac. See the
+  [connection guide FAQ](docs/connection-guide.en.md#faq).
 - `surface.send_key` is delivered via an `NSEvent` synth on the Mac
   side, so multi-byte sequences (arrows, ctrl-combos) arrive
   atomically — important for Ink-based TUIs (Claude Code etc.) whose

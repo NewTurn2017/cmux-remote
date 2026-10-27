@@ -265,6 +265,30 @@ launchctl kickstart -k "gui/$(id -u)/com.genie.cmuxremote"
 아니요. relay는 launchd 서비스라 **Mac 로그인 시 자동 시작**되고 죽으면
 다시 뜹니다. 단, **cmux 앱은 직접 실행**해야 합니다.
 
+**Q. ⌥↓ 버튼을 눌러도 Claude Code가 맨 아래로 안 내려가요.**
+⌥↓ 버튼은 `alt+down` 키만 보냅니다. Claude Code fullscreen 화면에는 이
+키의 기본 동작이 없어서, Claude Code를 실행하는 Mac에서 바인딩을 한 번
+추가해야 합니다.
+
+1. `~/.claude/keybindings.json`을 엽니다. 없으면 새로 만듭니다.
+2. `Scroll` 컨텍스트에 `"alt+down": "scroll:bottom"`을 넣습니다. 파일이
+   이미 있으면 `bindings` 배열에 아래 항목만 추가하세요.
+
+```json
+{
+  "bindings": [
+    { "context": "Scroll", "bindings": { "alt+down": "scroll:bottom" } }
+  ]
+}
+```
+
+저장하면 실행 중인 Claude Code에도 바로 반영됩니다. 위로 스크롤했을 때
+안내 문구가 `Jump to bottom (opt+↓)`로 바뀌면 적용된 것입니다. 계속
+`Jump to bottom (click)`으로 보이면 파일 경로를 확인하세요.
+`CLAUDE_CONFIG_DIR`로 프로필을 따로 쓰면 Claude Code는 `~/.claude`가 아니라
+`$CLAUDE_CONFIG_DIR/keybindings.json`을 읽으므로, 프로필마다 같은 파일을
+넣어야 합니다. (Claude Code 2.1.310, 2.1.311에서 확인)
+
 ---
 
 ## 사용자에게 보낼 짧은 안내문

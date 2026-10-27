@@ -161,6 +161,9 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 - 한글 IME 입력은 LIVE 즉시 전송에서 제외해 자모가 분리되지 않도록 로컬 조합 유지
 - 사진 첨부는 iOS 기기 이미지를 Mac의 `~/Downloads/cmux-remote/`로 저장하고
   입력창에 저장 경로를 삽입
+- `⌥ ↓` 단축키로 Claude Code fullscreen 화면을 맨 아래로 내리려면 Mac에
+  키바인딩을 한 번 추가해야 합니다. 방법은
+  [연결 가이드의 자주 묻는 질문](docs/connection-guide.md#자주-묻는-질문)에 있습니다.
 - `surface.send_key`는 `NSEvent` synth — 화살표/Ctrl 조합 등 멀티바이트
   시퀀스가 atomic하게 전달. Ink 기반 TUI (Claude Code 등)의 ESC 파서
   타임아웃 문제 해결.
