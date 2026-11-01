@@ -8,6 +8,11 @@ extension CmuxRemoteApp {
                 localized: "connection.error.pairing_removed",
                 defaultValue: "Pairing was removed on the Mac. Select Unpair This Device, then reconnect."
             )
+        case .nodeMismatch:
+            return String(
+                localized: "connection.error.node_mismatch",
+                defaultValue: "This iPhone's Tailscale identity changed and re-pairing did not complete. Select Unpair This Device, then reconnect."
+            )
         case .registrationDenied:
             return String(
                 localized: "connection.error.registration_denied",

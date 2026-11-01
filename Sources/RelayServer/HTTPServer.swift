@@ -242,6 +242,7 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
                 let path = head.uri.split(separator: "?").first.map(String.init) ?? head.uri
                 let deviceID: String?
                 let authorizationUnavailable: Bool
+                var staleNode = false
                 if path == "/v1/health" || path == "/v1/devices/me/register" {
                     deviceID = nil
                     authorizationUnavailable = false
@@ -256,6 +257,10 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
                     case .rejected:
                         deviceID = nil
                         authorizationUnavailable = false
+                    case .nodeMismatch:
+                        deviceID = nil
+                        authorizationUnavailable = false
+                        staleNode = true
                     case .identityUnavailable:
                         deviceID = nil
                         authorizationUnavailable = true
@@ -264,6 +269,8 @@ private final class HTTPHandler: ChannelInboundHandler, RemovableChannelHandler,
                 let response: HTTPResponseLite
                 if authorizationUnavailable {
                     response = Routes.identityUnavailableResponse()
+                } else if staleNode {
+                    response = Routes.nodeMismatchResponse()
                 } else {
                     response = await routes.handle(
                         method: head.method,

@@ -63,7 +63,7 @@ final class BearerSourceAuthorizerTests: XCTestCase {
             headers: headers,
             remoteAddress: "100.64.0.6"
         )
-        XCTAssertEqual(decision, .rejected)
+        XCTAssertEqual(decision, .nodeMismatch)
     }
 
     func testAuthorizationFailsClosedWhenWhoisIsUnavailable() async throws {
@@ -175,8 +175,8 @@ final class BearerSourceAuthorizerTests: XCTestCase {
         let afterRotation = await rotated.authorize(headers: headers, remoteAddress: "100.64.0.5")
         XCTAssertEqual(afterRotation, .authorized(deviceID: deviceID))
         let otherNode = await rotated.authorize(headers: headers, remoteAddress: "100.64.0.6")
-        XCTAssertEqual(otherNode, .rejected)
+        XCTAssertEqual(otherNode, .nodeMismatch)
         let missingID = await rotated.authorize(headers: headers, remoteAddress: "100.64.0.7")
-        XCTAssertEqual(missingID, .rejected)
+        XCTAssertEqual(missingID, .nodeMismatch)
     }
 }

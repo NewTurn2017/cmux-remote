@@ -1,5 +1,6 @@
 import Crypto
 import Foundation
+import Logging
 import NIOHTTP1
 import RelayCore
 
@@ -7,12 +8,16 @@ struct BearerSourceAuthorizer: Sendable {
     enum Decision: Equatable, Sendable {
         case authorized(deviceID: String)
         case rejected
+        /// The bearer is known but was minted for a different tailnet node than
+        /// the caller (e.g. the phone was reinstalled and got a new node ID).
+        case nodeMismatch
         case identityUnavailable
     }
 
     private let deviceStore: DeviceStore
     private let peerResolver: RegistrationPeerResolver
     private let allowLocalhost: Bool
+    private let logger = Logger(label: "cmux-relay.auth")
 
     init(
         deviceStore: DeviceStore,
@@ -30,6 +35,7 @@ struct BearerSourceAuthorizer: Sendable {
     ) async -> Decision {
         guard let token = Self.bearerToken(from: headers),
               let device = deviceStore.device(matching: token) else {
+            logger.warning("auth rejected: unknown or missing bearer from \(remoteAddress)")
             return .rejected
         }
         // Dev bypass mirrors registration: a loopback caller can't be resolved
@@ -53,10 +59,13 @@ struct BearerSourceAuthorizer: Sendable {
             if let stored = device.stableId, stored == peer.stableID {
                 return .authorized(deviceID: device.deviceId)
             }
-            return .rejected
+            logger.warning("auth rejected: node-mismatch bearer device=\(device.deviceId.prefix(8)) (\(device.hostname)) presented by node=\(Self.deviceID(for: peer.nodeKey).prefix(8)) (\(peer.hostname)); client must re-register")
+            return .nodeMismatch
         case .peerNotFound:
+            logger.warning("auth rejected: Tailscale peer not found for \(remoteAddress)")
             return .rejected
         case .unavailable:
+            logger.warning("auth deferred: Tailscale identity unavailable for \(remoteAddress)")
             return .identityUnavailable
         }
     }

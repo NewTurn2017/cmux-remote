@@ -59,6 +59,39 @@ final class AuthClientTests: XCTestCase {
         XCTAssertEqual(try keychain.get("bearer"), "abc")
     }
 
+    func testStaleNodeBearerReRegistersAutomatically() async throws {
+        let keychain = makeKeychain()
+        try seed(keychain, host: "mac.tailnet.ts.net")
+        let mock = MockHTTPClient { request in
+            if request.httpMethod == "GET" {
+                return .init(data: Data(#"{"error":"node_mismatch","action":"re-register"}"#.utf8), statusCode: 401)
+            }
+            return .init(data: Data(#"{"device_id":"d2","token":"fresh"}"#.utf8), statusCode: 200)
+        }
+        let client = makeClient(keychain: keychain, http: mock)
+
+        let credentials = try await client.prepareCredentials()
+
+        XCTAssertEqual(credentials, .init(deviceId: "d2", bearer: "fresh"))
+        XCTAssertEqual(try keychain.get("bearer"), "fresh")
+    }
+
+    func testStaleNodeReRegisterFailureSurfacesRealError() async throws {
+        let keychain = makeKeychain()
+        try seed(keychain, host: "mac.tailnet.ts.net")
+        let mock = MockHTTPClient { request in
+            request.httpMethod == "GET"
+                ? .init(data: Data(#"{"error":"node_mismatch"}"#.utf8), statusCode: 401)
+                : .init(data: Data(), statusCode: 403)
+        }
+        let client = makeClient(keychain: keychain, http: mock)
+
+        do {
+            _ = try await client.prepareCredentials()
+            XCTFail("expected registrationDenied")
+        } catch AuthError.registrationDenied {}
+    }
+
     func testRegistration503PreservesRetryAfter() async throws {
         let keychain = makeKeychain()
         let mock = MockHTTPClient { _ in

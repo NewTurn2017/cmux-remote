@@ -192,6 +192,26 @@ final class RoutesTests: XCTestCase {
         XCTAssertEqual(resp.status, .forbidden)
     }
 
+    func testNodeMismatchResponseTellsClientToReRegister() throws {
+        let resp = Routes.nodeMismatchResponse()
+        XCTAssertEqual(resp.status, .unauthorized)
+        let json = try JSONSerialization.jsonObject(with: resp.body ?? Data()) as? [String: String]
+        XCTAssertEqual(json?["error"], "node_mismatch")
+        XCTAssertEqual(json?["action"], "re-register")
+    }
+
+    func testReRegisterFromNewNodeOfSameUserIssuesFreshDevice() async throws {
+        let store = try DeviceStore.empty()
+        let oldID = BearerSourceAuthorizer.deviceID(for: "nodekey:old-phone")
+        _ = try store.register(deviceId: oldID, loginName: "a@b", hostname: "localhost", apnsToken: nil)
+        let newPeer = PeerIdentity(loginName: "a@b", hostname: "iphone175", os: "iOS", nodeKey: "nodekey:new-phone")
+        let resp = await makeRoutes(store, peers: ["100.64.0.9": newPeer])
+            .handle(method: .POST, path: "/v1/devices/me/register",
+                    body: nil, deviceId: nil, remoteAddr: "100.64.0.9:1")
+        XCTAssertEqual(resp.status, .ok)
+        XCTAssertNotNil(store.lookup(deviceId: BearerSourceAuthorizer.deviceID(for: "nodekey:new-phone")))
+    }
+
     func testApnsNeedsAuth() async throws {
         // No deviceId on the request → 401 even though body is well-formed.
         let resp = await makeRoutes(try DeviceStore.empty())

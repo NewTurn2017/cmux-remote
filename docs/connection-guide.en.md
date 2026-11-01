@@ -237,6 +237,10 @@ The app now distinguishes the remaining authorization states:
   Mac is still starting. Leave the app open; it retries with bounded backoff.
 - **Pairing was removed on the Mac**: the saved device token was revoked or
   removed. Select **Unpair This Device**, then reconnect to pair again.
+- **iPhone re-added to the tailnet (new node)**: the saved token belonged to the
+  old Tailscale node. The relay answers `401 {"error":"node_mismatch"}` and logs
+  `auth rejected: node-mismatch ...` in `~/.cmuxremote/log/stderr.log`; the app
+  re-registers automatically. Successful pairings log `registration ok`.
 - `registration denied` in the Mac relay log: add the intended tailnet login
   to `allow_login`, then restart the relay or send it SIGHUP.
 

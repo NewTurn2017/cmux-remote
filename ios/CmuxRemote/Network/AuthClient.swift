@@ -78,7 +78,7 @@ public final class AuthClient: @unchecked Sendable {
             try keychain.wipe()
         }
         if let stored = try storedCredentials(), try keychain.get("relay_host") == host {
-            return try await validate(stored)
+            return try await validateOrRepair(stored)
         }
         return try await register()
     }
@@ -88,7 +88,7 @@ public final class AuthClient: @unchecked Sendable {
               try keychain.get("relay_host") == host else {
             throw AuthError.missingBearer
         }
-        return try await validate(credentials)
+        return try await validateOrRepair(credentials)
     }
 
     public func registerIfNeeded() async throws {
@@ -137,6 +137,18 @@ public final class AuthClient: @unchecked Sendable {
         return AuthCredentials(deviceId: payload.deviceId, bearer: payload.token)
     }
 
+    /// A bearer minted for a different Tailscale node (phone reinstalled or
+    /// re-added to the tailnet) can never validate again, so re-pair on its
+    /// behalf. A plain 401 still means the Mac removed the pairing and stays
+    /// terminal until the user repairs explicitly.
+    private func validateOrRepair(_ credentials: AuthCredentials) async throws -> AuthCredentials {
+        do {
+            return try await validate(credentials)
+        } catch AuthError.nodeMismatch {
+            return try await register()
+        }
+    }
+
     private func validate(_ credentials: AuthCredentials) async throws -> AuthCredentials {
         var request = try makeRequest(path: "/v1/devices/me", method: "GET")
         request.setValue("Bearer \(credentials.bearer)", forHTTPHeaderField: "Authorization")
@@ -154,6 +166,7 @@ public final class AuthClient: @unchecked Sendable {
             }
             return AuthCredentials(deviceId: payload.deviceId, bearer: credentials.bearer)
         case 401:
+            if Self.isNodeMismatch(response.data) { throw AuthError.nodeMismatch }
             throw AuthError.pairingRemoved
         case 404:
             // Upgrade compatibility: relays before this endpoint still accept
@@ -162,6 +175,11 @@ public final class AuthClient: @unchecked Sendable {
         default:
             throw classifiedError(response)
         }
+    }
+
+    static func isNodeMismatch(_ body: Data) -> Bool {
+        let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        return object?["error"] as? String == "node_mismatch"
     }
 
     private func storedCredentials() throws -> AuthCredentials? {
@@ -242,6 +260,8 @@ public enum AuthError: Error, Equatable {
     case missingBearer
     case invalidAPNsToken
     case pairingRemoved
+    /// The relay says this bearer belongs to another Tailscale node.
+    case nodeMismatch
     case registrationDenied
     case relayUnavailable(status: Int, retryAfter: TimeInterval?)
     case relayRejected(Int)

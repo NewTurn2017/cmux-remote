@@ -290,6 +290,7 @@ public actor Routes {
                 let token: String
             }
             let body = try JSONEncoder().encode(R(device_id: deviceId, token: token))
+            logger.info("registration ok: device=\(deviceId.prefix(8)) host=\(peer.hostname) os=\(peer.os)")
             return .init(.ok, body: body)
         } catch {
             logger.error("device registration failed: registry persistence error")
@@ -299,6 +300,16 @@ public actor Routes {
 }
 
 extension Routes {
+    /// 401 body a stale-node bearer gets, so the app can re-pair instead of
+    /// reporting a generic failure.
+    static func nodeMismatchResponse() -> HTTPResponseLite {
+        .init(
+            .unauthorized,
+            body: Data(#"{"error":"node_mismatch","action":"re-register"}"#.utf8),
+            headers: [("Content-Type", "application/json")]
+        )
+    }
+
     static func identityUnavailableResponse() -> HTTPResponseLite {
         .init(
             .serviceUnavailable,
