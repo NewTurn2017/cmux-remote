@@ -80,6 +80,52 @@ struct SessionStyledReconcileTests {
         await manager.detach(session: session)
     }
 
+    @Test func activeScreenSwitchWithSameRowCountSendsFull() async throws {
+        let rows = ["same", "rows"]
+        let primary = Screen(
+            rev: 0,
+            rows: rows,
+            cols: 8,
+            cursor: CursorPos(x: 0, y: 0),
+            snapshotMetadata: Self.metadata(epoch: "epoch-a", revision: 1, viewportRows: 2),
+            activeScreen: "primary"
+        )
+        let alternate = Screen(
+            rev: 0,
+            rows: rows,
+            cols: 8,
+            cursor: CursorPos(x: 0, y: 0),
+            snapshotMetadata: Self.metadata(epoch: "epoch-a", revision: 2, viewportRows: 2),
+            activeScreen: "alternate"
+        )
+        let reader = SessionStaticReader([primary, alternate])
+        let manager = SessionManager(reader: reader, defaultFps: 15, idleFps: 5)
+        let frames = FrameInbox()
+        let session = await manager.attach(deviceId: "device") { frames.append($0) }
+        try await session.subscribe(workspaceId: "workspace", surfaceId: "surface", lines: 120)
+        let hub = try #require(await manager.renderHub(surfaceId: "surface"))
+
+        await hub.tick()
+        await hub.tick()
+
+        let snapshot = frames.snapshot()
+        #expect(snapshot.count == 2)
+        guard snapshot.count == 2,
+              case .screenFull(let initial) = snapshot[0],
+              case .screenFull(let switched) = snapshot[1]
+        else {
+            Issue.record("an activeScreen switch with identical rows must send screen.full, got \(snapshot)")
+            await manager.detach(session: session)
+            return
+        }
+        #expect(initial.activeScreen == "primary")
+        #expect(switched.activeScreen == "alternate")
+        #expect(switched.rows == rows)
+        #expect(switched.rowsCount == 2)
+        #expect(switched.rev > initial.rev)
+        await manager.detach(session: session)
+    }
+
     @Test func geometryAndEpochChangesUseFullFrames() async throws {
         let first = Screen(
             rev: 0,

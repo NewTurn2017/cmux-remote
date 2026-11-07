@@ -97,14 +97,17 @@ public actor SurfaceRenderHubRegistry {
     ///   - lines: Legacy plain-text line retention used by a newly created hub.
     ///   - onSnapshot: Styled authoritative snapshots accepted by the shared hub.
     ///   - onChecksum: Periodic hashes for the same authoritative snapshot stream.
+    ///   - onNotTerminal: Called once when the surface is classified as a non-terminal.
     /// - Returns: A generation-bound lease.
-    /// - Throws: ``SurfaceRenderHubError`` for workspace or collection-bound violations.
+    /// - Throws: ``SurfaceRenderHubError`` for workspace or collection-bound violations, or
+    ///   ``SurfaceRenderHubError/surfaceNotTerminal(surfaceId:)`` for a known non-terminal.
     public func subscribe(
         workspaceId: String,
         surfaceId: String,
         lines: Int,
         onSnapshot: @escaping @Sendable (Screen) async -> Void,
-        onChecksum: @escaping @Sendable (String, Int) async -> Void
+        onChecksum: @escaping @Sendable (String, Int) async -> Void,
+        onNotTerminal: (@Sendable () async -> Void)? = nil
     ) async throws -> SurfaceRenderSubscription {
         try await subscribe(
             workspaceId: workspaceId,
@@ -112,7 +115,8 @@ public actor SurfaceRenderHubRegistry {
             lines: lines,
             subscriber: SurfaceRenderSubscriber(
                 onSnapshot: onSnapshot,
-                onChecksum: onChecksum
+                onChecksum: onChecksum,
+                onNotTerminal: onNotTerminal
             )
         )
     }

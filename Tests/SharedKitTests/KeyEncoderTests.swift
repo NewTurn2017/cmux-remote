@@ -29,4 +29,19 @@ struct KeyEncoderTests {
     @Test func parseRejectsEmpty() {
         #expect(KeyEncoder.decode("") == nil)
     }
+
+    @Test func pageKeysEncodeAsCmuxNames() {
+        #expect(KeyEncoder.encode(.pageUp) == "page_up")
+        #expect(KeyEncoder.encode(.pageDown) == "page_down")
+    }
+
+    @Test(arguments: ["page_up", "pgup"])
+    func pageUpNamesDecode(name: String) {
+        #expect(KeyEncoder.decode(name) == .pageUp)
+    }
+
+    @Test(arguments: ["page_down", "pagedown", "pgdn"])
+    func pageDownNamesDecode(name: String) {
+        #expect(KeyEncoder.decode(name) == .pageDown)
+    }
 }

@@ -110,6 +110,158 @@ struct CMUXTerminalReplayTests {
         }
     }
 
+    @Test(arguments: [(String?.none, "primary"), ("primary", "primary"), ("alternate", "alternate")])
+    func replayScreenCarriesActiveScreen(sent: String?, expected: String) async throws {
+        try await Self.withFixture { fixture in
+            let outcome = try await Self.readSupported(
+                Self.replayResult(activeScreen: sent),
+                through: fixture,
+                negotiates: true
+            )
+            guard case .updated(let update) = outcome else {
+                Issue.record("replay did not produce an update: \(outcome)")
+                return
+            }
+            #expect(update.screen.activeScreen == expected)
+            #expect(ScreenFull(surfaceId: "surface-test", screen: update.screen).activeScreen == expected)
+        }
+    }
+
+    @Test(arguments: ["browser", "markdown"])
+    func replayNotFoundForNonTerminalSurfaceIsClassifiedAfterOneListLookup(kind: String) async throws {
+        try await Self.withFixture { fixture in
+            async let pending = fixture.client.terminalRead(
+                workspaceId: "workspace-test",
+                surfaceId: "surface-test",
+                lines: 120
+            )
+            _ = try await Self.answerCapabilities(supported: true, through: fixture)
+            let replay = try await Self.nextRequest(from: fixture)
+            #expect(replay.method == "terminal.replay")
+            try await Self.sendError(Self.replayNotFound, for: replay, through: fixture)
+            let lookup = try await Self.nextRequest(from: fixture)
+            #expect(lookup.method == "surface.list")
+            #expect(lookup.params == .object(["workspace_id": .string("workspace-test")]))
+            try await Self.sendResult(
+                Self.surfaceList(including: "surface-test", type: kind),
+                for: lookup,
+                through: fixture
+            )
+
+            do {
+                let outcome = try await pending
+                Issue.record("non-terminal replay must throw, got \(outcome)")
+            } catch CMUXTerminalSourceError.surfaceNotTerminal {
+            } catch {
+                Issue.record("expected surfaceNotTerminal, got \(error)")
+            }
+        }
+    }
+
+    @Test func replayNotFoundForClosedSurfaceKeepsNotFoundAndLooksUpOnlyOnce() async throws {
+        try await Self.withFixture { fixture in
+            async let firstRead = fixture.client.terminalRead(
+                workspaceId: "workspace-test",
+                surfaceId: "surface-test",
+                lines: 120
+            )
+            _ = try await Self.answerCapabilities(supported: true, through: fixture)
+            let firstReplay = try await Self.nextRequest(from: fixture)
+            try await Self.sendError(Self.replayNotFound, for: firstReplay, through: fixture)
+            let lookup = try await Self.nextRequest(from: fixture)
+            #expect(lookup.method == "surface.list")
+            try await Self.sendResult(
+                Self.surfaceList(including: "other-surface", type: "terminal"),
+                for: lookup,
+                through: fixture
+            )
+            let firstResult: Result<CMUXTerminalReadOutcome, any Error>
+            do { firstResult = .success(try await firstRead) } catch { firstResult = .failure(error) }
+            await Self.expectReplayNotFound(firstResult)
+
+            async let secondRead = fixture.client.terminalRead(
+                workspaceId: "workspace-test",
+                surfaceId: "surface-test",
+                lines: 120
+            )
+            let secondReplay = try await Self.nextRequest(from: fixture)
+            #expect(secondReplay.method == "terminal.replay")
+            try await Self.sendError(Self.replayNotFound, for: secondReplay, through: fixture)
+            let secondResult: Result<CMUXTerminalReadOutcome, any Error>
+            do { secondResult = .success(try await secondRead) } catch { secondResult = .failure(error) }
+            await Self.expectReplayNotFound(secondResult)
+
+            async let thirdRead = fixture.client.terminalRead(
+                workspaceId: "workspace-test",
+                surfaceId: "surface-test",
+                lines: 120
+            )
+            let thirdRequest = try await Self.nextRequest(from: fixture)
+            #expect(thirdRequest.method == "terminal.replay")
+            try await Self.sendResult(Self.replayResult(), for: thirdRequest, through: fixture)
+            guard case .updated = try await thirdRead else {
+                Issue.record("a reopened surface must read normally")
+                return
+            }
+        }
+    }
+
+    @Test func legacyReadTextNotATerminalIsClassifiedWithoutExtraCalls() async throws {
+        try await Self.withFixture { fixture in
+            async let pending = fixture.client.terminalRead(
+                workspaceId: "workspace-test",
+                surfaceId: "surface-test",
+                lines: 120
+            )
+            _ = try await Self.answerCapabilities(supported: false, through: fixture)
+            let request = try await Self.nextRequest(from: fixture)
+            #expect(request.method == "surface.read_text")
+            try await Self.sendError(
+                RPCError(
+                    code: "invalid_params",
+                    message: "Surface is not a terminal",
+                    data: .object(["surface_id": .string("surface-test")])
+                ),
+                for: request,
+                through: fixture
+            )
+
+            do {
+                let outcome = try await pending
+                Issue.record("legacy non-terminal read must throw, got \(outcome)")
+            } catch CMUXTerminalSourceError.surfaceNotTerminal {
+            } catch {
+                Issue.record("expected surfaceNotTerminal, got \(error)")
+            }
+        }
+    }
+
+    @Test(arguments: [
+        ("invalid_params", "lines must be nonnegative"),
+        ("not_found", "Workspace not found"),
+    ])
+    func legacyReadTextOtherErrorsStayGeneric(code: String, message: String) async throws {
+        try await Self.withFixture { fixture in
+            async let pending = fixture.client.terminalRead(
+                workspaceId: "workspace-test",
+                surfaceId: "surface-test",
+                lines: 120
+            )
+            _ = try await Self.answerCapabilities(supported: false, through: fixture)
+            let request = try await Self.nextRequest(from: fixture)
+            try await Self.sendError(RPCError(code: code, message: message), for: request, through: fixture)
+
+            do {
+                let outcome = try await pending
+                Issue.record("legacy error must throw, got \(outcome)")
+            } catch CMUXClientError.rpc(let error) {
+                #expect(error.code == code)
+            } catch {
+                Issue.record("expected the daemon RPC error, got \(error)")
+            }
+        }
+    }
+
     @Test func absentReplayCapabilityUsesExactLegacySurfaceReadText() async throws {
         try await Self.withFixture { fixture in
             async let pending = fixture.client.terminalRead(
@@ -733,6 +885,31 @@ struct CMUXTerminalReplayTests {
     private static let firstEpoch = "00000000-0000-4000-8000-000000000001"
     private static let secondEpoch = "00000000-0000-4000-8000-000000000002"
 
+    /// PM-measured cmux 0.65.2 replay answer for browser, markdown, closed, and unknown surfaces.
+    private static let replayNotFound = RPCError(code: "not_found", message: "Terminal surface not found")
+
+    private static func surfaceList(including surfaceID: String, type: String) -> JSONValue {
+        .object(["surfaces": .array([
+            .object([
+                "id": .string(surfaceID),
+                "index": .int(0),
+                "title": .string("tab"),
+                "type": .string(type),
+            ]),
+        ])])
+    }
+
+    private static func expectReplayNotFound(_ result: Result<CMUXTerminalReadOutcome, any Error>) async {
+        switch result {
+        case .success(let outcome):
+            Issue.record("closed surface replay must keep failing, got \(outcome)")
+        case .failure(CMUXClientError.rpc(let error)):
+            #expect(error.code == "not_found")
+        case .failure(let error):
+            Issue.record("expected replay not_found, got \(error)")
+        }
+    }
+
     private static func withFixture<T: Sendable>(
         _ body: @escaping @Sendable (MTELGCmuxFixture) async throws -> T
     ) async throws -> T {
@@ -895,7 +1072,8 @@ struct CMUXTerminalReplayTests {
         full: Bool = true,
         includeRenderRevision: Bool = true,
         includeFull: Bool = true,
-        includeAnchor: Bool = true
+        includeAnchor: Bool = true,
+        activeScreen: String? = nil
     ) -> JSONValue {
         var renderGrid: [String: JSONValue] = [
             "format": .string("cmux.render-grid.v1"),
@@ -935,6 +1113,9 @@ struct CMUXTerminalReplayTests {
         }
         if includeAnchor {
             renderGrid["anchor"] = .string(anchor)
+        }
+        if let activeScreen {
+            renderGrid["active_screen"] = .string(activeScreen)
         }
         return .object([
             "columns": .int(Int64(columns)),

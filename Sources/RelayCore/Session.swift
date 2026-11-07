@@ -82,8 +82,12 @@ public actor Session {
     ///   - workspaceId: Workspace containing the surface.
     ///   - surfaceId: Surface to render.
     ///   - lines: Legacy plain-text retention requested by the client.
-    /// - Throws: ``SurfaceRenderHubError`` when registry bounds reject the subscription.
+    /// - Throws: ``SurfaceRenderHubError`` when registry bounds reject the subscription, or
+    ///   ``SurfaceRenderHubError/surfaceNotTerminal(surfaceId:)`` for a known non-terminal surface.
     public func subscribe(workspaceId: String, surfaceId: String, lines: Int) async throws {
+        if !isClosed, surfaceStates[surfaceId]?.isNotTerminal == true {
+            throw SurfaceRenderHubError.surfaceNotTerminal(surfaceId: surfaceId)
+        }
         guard !isClosed,
               subscriptions[surfaceId] == nil,
               !pendingSubscriptions.contains(surfaceId)
@@ -105,6 +109,9 @@ public actor Session {
                         revision: revision,
                         surfaceId: surfaceId
                     )
+                },
+                onNotTerminal: { [weak self] in
+                    await self?.receiveNotTerminal(workspaceId: workspaceId, surfaceId: surfaceId)
                 }
             )
             pendingSubscriptions.remove(surfaceId)
@@ -253,6 +260,32 @@ public actor Session {
             streamIdentity: state.streamIdentity
         ))
     }
+
+    /// Tells the client once that a subscribed surface is not a terminal.
+    ///
+    /// The lease stays until the client unsubscribes or the session closes; the shared hub
+    /// no longer reads the surface, and re-subscribing is rejected with the same code.
+    private func receiveNotTerminal(workspaceId: String, surfaceId: String) {
+        guard !isClosed,
+              subscriptions[surfaceId] != nil || pendingSubscriptions.contains(surfaceId),
+              var state = surfaceStates[surfaceId],
+              !state.isNotTerminal
+        else { return }
+        state.isNotTerminal = true
+        surfaceStates[surfaceId] = state
+        emit(SessionOutboundFrame(frame: .event(EventFrame(
+            category: .surface,
+            name: Self.surfaceNotTerminalCode,
+            payload: .object([
+                "code": .string(Self.surfaceNotTerminalCode),
+                "surface_id": .string(surfaceId),
+                "workspace_id": .string(workspaceId),
+            ])
+        ))))
+    }
+
+    /// Stable client-facing code for surfaces that cannot be rendered as terminals.
+    public static let surfaceNotTerminalCode = "surface_not_terminal"
 
     private func emit(_ output: SessionOutboundFrame) {
         sendOutputEvent?(.frame(output))

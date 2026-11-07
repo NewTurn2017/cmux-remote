@@ -43,6 +43,8 @@ public actor CMUXClient {
 
     /// Bounded replay identity state; screen payloads are never retained here.
     var terminalContinuityState = CMUXTerminalContinuityState()
+    /// Surfaces whose replay `not_found` has already been checked once against `surface.list`.
+    var nonTerminalProbeKeys: Set<String> = []
 
     nonisolated static let inboundBridgeHandlerName = "CMUXClient.InboundBridge"
 

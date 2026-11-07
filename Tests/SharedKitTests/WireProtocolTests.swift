@@ -139,4 +139,58 @@ struct WireProtocolTests {
         let back = try JSONDecoder().decode(PushFrame.self, from: data)
         #expect(back == original)
     }
+
+    @Test func screenFullOmitsActiveScreenWhenNil() throws {
+        let frame = PushFrame.screenFull(ScreenFull(
+            surfaceId: "sf", rev: 1, rows: ["a"], cols: 1, rowsCount: 1, cursor: CursorPos(x: 0, y: 0)
+        ))
+        let data = try SharedKitJSON.deterministicEncoder.encode(frame)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["activeScreen"] == nil)
+        #expect(Set(object.keys) == ["type", "surface_id", "rev", "rows", "cols", "rowsCount", "cursor"])
+    }
+
+    @Test(arguments: ["primary", "alternate"])
+    func screenFullActiveScreenRoundTrip(activeScreen: String) throws {
+        let original = PushFrame.screenFull(ScreenFull(
+            surfaceId: "sf", rev: 2, rows: ["a", "b"], cols: 1, rowsCount: 2,
+            cursor: CursorPos(x: 0, y: 1), activeScreen: activeScreen
+        ))
+        let data = try SharedKitJSON.deterministicEncoder.encode(original)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["activeScreen"] as? String == activeScreen)
+        #expect(try JSONDecoder().decode(PushFrame.self, from: data) == original)
+    }
+
+    @Test func legacyScreenFullJSONDecodesWithNilActiveScreen() throws {
+        let raw = #"{"type":"screen.full","surface_id":"sf","rev":0,"rows":["a"],"cols":1,"rowsCount":1,"cursor":{"x":0,"y":0}}"#
+        guard case .screenFull(let full) = try JSONDecoder().decode(PushFrame.self, from: Data(raw.utf8)) else {
+            Issue.record("expected screen.full")
+            return
+        }
+        #expect(full.activeScreen == nil)
+    }
+
+    @Test func screenFullFromScreenCopiesActiveScreen() {
+        let screen = Screen(rev: 3, rows: ["x"], cols: 1, cursor: CursorPos(x: 0, y: 0), activeScreen: "alternate")
+        #expect(ScreenFull(surfaceId: "sf", screen: screen).activeScreen == "alternate")
+        #expect(ScreenFull(surfaceId: "sf", screen: Screen(rev: 3, rows: ["x"], cols: 1, cursor: CursorPos(x: 0, y: 0))).activeScreen == nil)
+    }
+
+    @Test func screenCodableShapeStaysFourFieldsWithActiveScreen() throws {
+        let screen = Screen(rev: 1, rows: ["x"], cols: 1, cursor: CursorPos(x: 0, y: 0), activeScreen: "primary")
+        let data = try SharedKitJSON.deterministicEncoder.encode(screen)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["rev", "rows", "cols", "cursor"])
+    }
+
+    @Test func activeScreenChangeAloneRequiresFullReset() {
+        let rows = ["same", "rows"]
+        let primary = Screen(rev: 1, rows: rows, cols: 4, cursor: CursorPos(x: 0, y: 0), activeScreen: "primary")
+        let alternate = Screen(rev: 2, rows: rows, cols: 4, cursor: CursorPos(x: 0, y: 0), activeScreen: "alternate")
+        let primaryAgain = Screen(rev: 3, rows: rows, cols: 4, cursor: CursorPos(x: 0, y: 0), activeScreen: "primary")
+        #expect(alternate.requiresFullReset(comparedTo: primary))
+        #expect(primary.requiresFullReset(comparedTo: alternate))
+        #expect(!primaryAgain.requiresFullReset(comparedTo: primary))
+    }
 }

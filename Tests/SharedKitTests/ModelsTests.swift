@@ -46,4 +46,33 @@ struct ModelsTests {
         #expect(!EventCategory.allCases.contains(.unknown))
     }
 
+    @Test func surfaceDecodesWithoutType() throws {
+        let json = #"{"id":"s1","title":"shell","index":0}"#
+        let surface = try JSONDecoder().decode(Surface.self, from: Data(json.utf8))
+        #expect(surface == Surface(id: "s1", title: "shell", index: 0))
+        #expect(surface.type == nil)
+    }
+
+    @Test func surfaceDecodesWithType() throws {
+        let json = #"{"id":"s2","title":"docs","index":1,"type":"browser"}"#
+        let surface = try JSONDecoder().decode(Surface.self, from: Data(json.utf8))
+        #expect(surface.type == "browser")
+        let data = try SharedKitJSON.deterministicEncoder.encode(surface)
+        #expect(try JSONDecoder().decode(Surface.self, from: data) == surface)
+    }
+
+    @Test func surfaceNilTypeOmitsKey() throws {
+        let data = try SharedKitJSON.deterministicEncoder.encode(Surface(id: "s1", title: "shell", index: 0))
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] == nil)
+        #expect(Set(object.keys) == ["id", "title", "index"])
+    }
+
+    @Test func surfaceIsTerminalForNilAndTerminalOnly() {
+        #expect(Surface(id: "a", title: "", index: 0).isTerminal)
+        #expect(Surface(id: "a", title: "", index: 0, type: "terminal").isTerminal)
+        #expect(!Surface(id: "a", title: "", index: 0, type: "browser").isTerminal)
+        #expect(!Surface(id: "a", title: "", index: 0, type: "markdown").isTerminal)
+        #expect(!Surface(id: "a", title: "", index: 0, type: "future-kind").isTerminal)
+    }
 }

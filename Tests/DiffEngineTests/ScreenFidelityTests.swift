@@ -171,7 +171,7 @@ struct ScreenFidelityTests {
         }
     }
 
-    @Test func retainsLatest120StyledScrollbackAndViewportRowsDeterministically() throws {
+    @Test func retainsViewportPlusScrollbackUpTo240StyledRowsDeterministically() throws {
         let scrollbackSpans: [[String: Any]] = (0..<125).map { row in
             [
                 "row": row,
@@ -203,16 +203,40 @@ struct ScreenFidelityTests {
             scrollbackSpans: scrollbackSpans
         )
 
-        #expect(first.rows.count == 120)
+        #expect(first.rows.count == 127)
         #expect(first.rows == second.rows)
-        #expect(Self.visibleText(first.rows[0]) == "history 7")
-        #expect(Self.visibleText(first.rows[117]) == "history 124")
-        #expect(Self.visibleText(first.rows[118]) == "viewport 0")
-        #expect(Self.visibleText(first.rows[119]) == "viewport 1")
-        #expect(first.cursor == CursorPos(x: 2, y: 119))
+        #expect(Self.visibleText(first.rows[0]) == "history 0")
+        #expect(Self.visibleText(first.rows[124]) == "history 124")
+        #expect(Self.visibleText(first.rows[125]) == "viewport 0")
+        #expect(Self.visibleText(first.rows[126]) == "viewport 1")
+        #expect(first.cursor == CursorPos(x: 2, y: 126))
     }
 
-    @Test func viewportLargerThanRetentionStillKeepsExactly120RowsAndTranslatesCursor() throws {
+    @Test func scrollbackBeyond240DropsOldestAndKeepsCursorInViewport() throws {
+        let scrollbackSpans: [[String: Any]] = (0..<300).map { row in
+            ["row": row, "column": 0, "style_id": 0, "text": "history \(row)"]
+        }
+        let screen = try Self.screen(
+            columns: 16,
+            rows: 2,
+            cursorRow: 0,
+            cursorColumn: 3,
+            rowSpans: [
+                ["row": 0, "column": 0, "style_id": 0, "text": "viewport 0"],
+                ["row": 1, "column": 0, "style_id": 0, "text": "viewport 1"],
+            ],
+            scrollbackRows: 300,
+            scrollbackSpans: scrollbackSpans
+        )
+
+        #expect(screen.rows.count == 242)
+        #expect(Self.visibleText(screen.rows[0]) == "history 60")
+        #expect(Self.visibleText(screen.rows[240]) == "viewport 0")
+        #expect(screen.cursor == CursorPos(x: 3, y: 240))
+        #expect(screen.snapshotMetadata?.viewportRows == 2)
+    }
+
+    @Test func viewportLargerThan120IsNeverTruncatedAndCursorIsTranslated() throws {
         let screen = try Self.screen(
             columns: 8,
             rows: 121,
@@ -226,15 +250,15 @@ struct ScreenFidelityTests {
             ]]
         )
 
-        #expect(screen.rows.count == 120)
-        #expect(Self.visibleText(screen.rows[119]) == "tail")
-        #expect(screen.cursor == CursorPos(x: 3, y: 119))
+        #expect(screen.rows.count == 121)
+        #expect(Self.visibleText(screen.rows[120]) == "tail")
+        #expect(screen.cursor == CursorPos(x: 3, y: 120))
         #expect(screen.snapshotMetadata?.viewportRows == 121)
     }
 
-    @Test func invisibleAndRetentionDroppedCursorsUseHiddenSentinel() throws {
+    @Test func invisibleCursorUsesHiddenSentinelAndTopViewportCursorIsRetained() throws {
         let invisible = try Self.screen(cursorColumn: 3, cursorVisible: false)
-        let dropped = try Self.screen(
+        let topOfLargeViewport = try Self.screen(
             columns: 8,
             rows: 121,
             cursorRow: 0,
@@ -248,11 +272,39 @@ struct ScreenFidelityTests {
         )
 
         print("invisibleCursor=\(invisible.cursor.x),\(invisible.cursor.y)")
-        print("droppedCursor=\(dropped.cursor.x),\(dropped.cursor.y)")
+        print("topOfLargeViewportCursor=\(topOfLargeViewport.cursor.x),\(topOfLargeViewport.cursor.y)")
         #expect(invisible.cursor == .hidden)
-        #expect(dropped.cursor == .hidden)
         #expect(invisible.cursor.x < 0)
-        #expect(dropped.cursor.x < 0)
+        #expect(topOfLargeViewport.cursor == CursorPos(x: 3, y: 0))
+    }
+
+    @Test func renderGridCarriesActiveScreenAndLegacyTextDoesNot() throws {
+        let defaulted = try Self.screen()
+        let alternate = try Self.screen(activeScreen: "alternate")
+        let legacy = try SharedKitJSON.snakeCaseDecoder.decode(
+            CMUXReadTextRaw.self,
+            from: Data(#"{"text":"legacy"}"#.utf8)
+        ).toScreen(rev: 0)
+
+        #expect(defaulted.activeScreen == "primary")
+        #expect(alternate.activeScreen == "alternate")
+        #expect(legacy.activeScreen == nil)
+    }
+
+    @Test func activeScreenChangeWithIdenticalRowsForcesFullResetAtDiffBoundary() throws {
+        let primary = try Self.screen(revision: 2, activeScreen: "primary")
+        let alternate = try Self.screen(revision: 3, activeScreen: "alternate")
+        let alternateAgain = try Self.screen(revision: 4, activeScreen: "alternate")
+        #expect(primary.rows == alternate.rows)
+        #expect(primary.rows.count == alternate.rows.count)
+
+        var state = RowState()
+        _ = state.ingest(snapshot: primary)
+        let switchOps = state.ingest(snapshot: alternate)
+        let steadyOps = state.ingest(snapshot: alternateAgain)
+
+        #expect(switchOps.first == .clear)
+        #expect(steadyOps.isEmpty)
     }
 
     @Test func legacyPlainCursorRemainsAtOrigin() throws {
@@ -339,7 +391,8 @@ struct ScreenFidelityTests {
         rowSpans: [[String: Any]]? = nil,
         scrollbackRows: Int = 0,
         scrollbackSpans: [[String: Any]] = [],
-        plainText: String = "legacy"
+        plainText: String = "legacy",
+        activeScreen: String? = nil
     ) throws -> Screen {
         let spans = rowSpans ?? [[
             "row": 0,
@@ -348,39 +401,40 @@ struct ScreenFidelityTests {
             "text": "row",
             "cell_width": 3,
         ]]
-        let object: [String: Any] = [
-            "text": plainText,
-            "render_grid": [
-                "format": "cmux.render-grid.v1",
-                "surface_id": "surface",
-                "state_seq": 1,
-                "render_epoch": epoch,
-                "render_revision": revision,
-                "columns": columns,
-                "rows": rows,
-                "cursor": [
-                    "row": cursorRow,
-                    "column": cursorColumn,
-                    "visible": cursorVisible,
-                    "blinking": false,
-                    "style": 0,
-                ],
-                "full": true,
-                "styles": [[
-                    "id": 0,
-                    "foreground": "#eaeaea",
-                    "background": background,
-                    "foreground_source": "default",
-                    "background_source": "rgb",
-                ]],
-                "row_spans": spans,
-                "scrollback_rows": scrollbackRows,
-                "scrollback_spans": scrollbackSpans,
-                "terminal_foreground": terminalForeground,
-                "terminal_background": terminalBackground,
-                "terminal_theme_revision": themeRevision,
+        var renderGrid: [String: Any] = [
+            "format": "cmux.render-grid.v1",
+            "surface_id": "surface",
+            "state_seq": 1,
+            "render_epoch": epoch,
+            "render_revision": revision,
+            "columns": columns,
+            "rows": rows,
+            "cursor": [
+                "row": cursorRow,
+                "column": cursorColumn,
+                "visible": cursorVisible,
+                "blinking": false,
+                "style": 0,
             ],
+            "full": true,
+            "styles": [[
+                "id": 0,
+                "foreground": "#eaeaea",
+                "background": background,
+                "foreground_source": "default",
+                "background_source": "rgb",
+            ]],
+            "row_spans": spans,
+            "scrollback_rows": scrollbackRows,
+            "scrollback_spans": scrollbackSpans,
+            "terminal_foreground": terminalForeground,
+            "terminal_background": terminalBackground,
+            "terminal_theme_revision": themeRevision,
         ]
+        if let activeScreen {
+            renderGrid["active_screen"] = activeScreen
+        }
+        let object: [String: Any] = ["text": plainText, "render_grid": renderGrid]
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         let raw = try SharedKitJSON.snakeCaseDecoder.decode(CMUXReadTextRaw.self, from: data)
         return raw.toScreen(rev: 0)

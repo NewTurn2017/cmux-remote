@@ -107,6 +107,49 @@ final class WebSocketHandlerTests: XCTestCase {
         XCTAssertEqual(actions, [.subscribe(responseId: "9", workspaceId: "w", surfaceId: "s", lines: 200)])
     }
 
+    func testLegacyPageKeysAreNormalizedBeforeDispatch() async throws {
+        let cmux = ParamsRecordingCMUXFacade()
+        let m = WSProtocolMachine(cmux: cmux)
+        _ = await m.processText(#"{"deviceId":"d","appVersion":"1","protocolVersion":1}"#)
+        let sent = ["pgup", "pgdn", "pagedown", "page_up", "page_down", "ctrl+c", "alt+up", "enter"]
+
+        for (index, key) in sent.enumerated() {
+            _ = await m.processText(
+                #"{"id":"k\#(index)","method":"surface.send_key","params":{"workspace_id":"w","surface_id":"s","key":"\#(key)"}}"#
+            )
+        }
+
+        let forwarded = await cmux.snapshot().map { call -> String? in
+            guard case .object(let params) = call.params, case .string(let key)? = params["key"] else { return nil }
+            return key
+        }
+        XCTAssertEqual(forwarded, ["page_up", "page_down", "page_down", "page_up", "page_down", "ctrl+c", "alt+up", "enter"])
+    }
+
+    func testNonSendKeyRequestsPassThroughUnchanged() {
+        let request = RPCRequest(id: "1", method: "surface.send_text",
+                                 params: .object(["surface_id": .string("s"), "text": .string("pgdn")]))
+        XCTAssertEqual(WSProtocolMachine.daemonCompatibleParams(for: request), request.params)
+    }
+
+    func testSurfaceNotTerminalSubscriptionFailureUsesStableWireShape() throws {
+        let response = WebSocketSessionLifecycle.subscriptionFailureResponse(
+            id: "r1",
+            error: SurfaceRenderHubError.surfaceNotTerminal(surfaceId: "s")
+        )
+        let wire = try XCTUnwrap(String(data: SharedKitJSON.deterministicEncoder.encode(response), encoding: .utf8))
+        XCTAssertEqual(
+            wire,
+            #"{"error":{"code":"surface_not_terminal","data":{"surface_id":"s"},"message":"Surface is not a terminal"},"id":"r1","ok":false}"#
+        )
+
+        let other = WebSocketSessionLifecycle.subscriptionFailureResponse(
+            id: "r2",
+            error: SurfaceRenderHubError.surfaceLimitReached(4)
+        )
+        XCTAssertEqual(other.error?.code, "surface_subscription_failed")
+    }
+
     func testSurfaceSubscribeUsesRequestedLineCount() async {
         let cmux = RecordingCMUXFacade()
         let m = WSProtocolMachine(cmux: cmux)
@@ -770,6 +813,16 @@ actor RecordingCMUXFacade: CMUXFacade {
     private var calls: [Call] = []
     func dispatch(method: String, params: JSONValue) async throws -> JSONValue {
         calls.append(.init(method: method))
+        return .object([:])
+    }
+    func snapshot() -> [Call] { calls }
+}
+
+actor ParamsRecordingCMUXFacade: CMUXFacade {
+    struct Call: Equatable, Sendable { let method: String; let params: JSONValue }
+    private var calls: [Call] = []
+    func dispatch(method: String, params: JSONValue) async throws -> JSONValue {
+        calls.append(.init(method: method, params: params))
         return .object([:])
     }
     func snapshot() -> [Call] { calls }

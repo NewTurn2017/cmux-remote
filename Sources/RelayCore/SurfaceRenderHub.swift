@@ -56,6 +56,9 @@ public actor SurfaceRenderHub {
     /// Whether the scheduler and source lifecycle have fully stopped.
     public private(set) var isStopped = false
 
+    /// Whether the source was classified as a non-terminal surface; no further reads run.
+    public private(set) var isSourceNotTerminal = false
+
     private let reader: any TerminalSourceReader
     private let clock: any SurfaceRenderClock
     private var subscribers: [UUID: SurfaceRenderSubscriber] = [:]
@@ -138,7 +141,8 @@ public actor SurfaceRenderHub {
     /// - Throws: ``SurfaceRenderHubError`` when stopped or at subscriber capacity.
     public func subscribe(
         onSnapshot: @escaping @Sendable (Screen) async -> Void,
-        onChecksum: @escaping @Sendable (String, Int) async -> Void
+        onChecksum: @escaping @Sendable (String, Int) async -> Void,
+        onNotTerminal: (@Sendable () async -> Void)? = nil
     ) async throws -> SurfaceRenderSubscription {
         let subscription = SurfaceRenderSubscription(
             surfaceId: surfaceId,
@@ -148,7 +152,8 @@ public actor SurfaceRenderHub {
             subscription: subscription,
             subscriber: SurfaceRenderSubscriber(
                 onSnapshot: onSnapshot,
-                onChecksum: onChecksum
+                onChecksum: onChecksum,
+                onNotTerminal: onNotTerminal
             )
         )
     }
@@ -160,6 +165,9 @@ public actor SurfaceRenderHub {
     ) async throws -> SurfaceRenderSubscription {
         guard !isStopped else {
             throw SurfaceRenderHubError.stopped(surfaceId: surfaceId)
+        }
+        guard !isSourceNotTerminal else {
+            throw SurfaceRenderHubError.surfaceNotTerminal(surfaceId: surfaceId)
         }
         guard subscription.surfaceId == surfaceId,
               subscription.generation == generation
@@ -269,14 +277,14 @@ public actor SurfaceRenderHub {
         if lastActivityAt == nil {
             lastActivityAt = await clock.now
         }
-        while !Task.isCancelled, !isStopped, !subscribers.isEmpty {
+        while !Task.isCancelled, !isStopped, !isSourceNotTerminal, !subscribers.isEmpty {
             let delay = await nextScheduledDelay()
             do {
                 try await clock.sleep(for: delay)
             } catch {
                 return
             }
-            guard !Task.isCancelled, !isStopped, !subscribers.isEmpty else { return }
+            guard !Task.isCancelled, !isStopped, !isSourceNotTerminal, !subscribers.isEmpty else { return }
 
             let task = requestRead()
             await task?.value
@@ -287,7 +295,7 @@ public actor SurfaceRenderHub {
     }
 
     private func requestRead() -> Task<Void, Never>? {
-        guard !isStopped, !subscribers.isEmpty else { return nil }
+        guard !isStopped, !isSourceNotTerminal, !subscribers.isEmpty else { return nil }
         if let readTask {
             pendingTick = true
             metrics.coalescedTicks += 1
@@ -318,6 +326,8 @@ public actor SurfaceRenderHub {
                 result = Task.isCancelled ? .cancelled : .success(outcome)
             } catch is CancellationError {
                 result = .cancelled
+            } catch CMUXTerminalSourceError.surfaceNotTerminal {
+                result = .notTerminal
             } catch {
                 result = .failure(String(describing: error))
             }
@@ -375,6 +385,8 @@ public actor SurfaceRenderHub {
             return
         case .failure(let description):
             record(error: description)
+        case .notTerminal:
+            await markSourceNotTerminal()
         case .success(let outcome):
             switch outcome {
             case .unchanged(let identity):
@@ -512,6 +524,28 @@ public actor SurfaceRenderHub {
             schedulerTask = nil
             guard !isStopped, !subscribers.isEmpty else { return }
             startScheduler()
+        }
+    }
+
+    /// Stops polling a non-terminal surface and tells each current subscriber exactly once.
+    ///
+    /// Leases stay registered so later subscribers are rejected without another daemon read;
+    /// they are released through the ordinary unsubscribe or session-close path.
+    private func markSourceNotTerminal() async {
+        guard !isSourceNotTerminal else { return }
+        isSourceNotTerminal = true
+        pendingTick = false
+        consecutiveFailures = 0
+        metrics.errors += 1
+        lastErrorDescription = "surface is not a terminal"
+
+        let currentSubscribers = Array(subscribers.values)
+        await withTaskGroup(of: Void.self) { group in
+            for subscriber in currentSubscribers {
+                if let onNotTerminal = subscriber.onNotTerminal {
+                    group.addTask { await onNotTerminal() }
+                }
+            }
         }
     }
 

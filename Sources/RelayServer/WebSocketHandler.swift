@@ -99,7 +99,10 @@ public actor WSProtocolMachine {
         }
 
         do {
-            let result = try await cmux.dispatch(method: req.method, params: req.params)
+            let result = try await cmux.dispatch(
+                method: req.method,
+                params: Self.daemonCompatibleParams(for: req)
+            )
             let resp = RPCResponse(id: req.id, ok: true, result: result, error: nil)
             var actions: [Action] = [.sendText(Self.encode(resp))]
             if Self.isSuccessfulInput(req),
@@ -445,6 +448,21 @@ public actor WSProtocolMachine {
         default:
             return nil
         }
+    }
+
+    /// Rewrites legacy page-key names from older apps to the names cmux accepts.
+    ///
+    /// Only unmodified `pgup`/`pgdn`/`pagedown` style names that decode to a page key are
+    /// changed; every other request passes through untouched.
+    static func daemonCompatibleParams(for request: RPCRequest) -> JSONValue {
+        guard request.method == "surface.send_key",
+              case .object(var params) = request.params,
+              case .string(let key)? = params["key"],
+              let decoded = KeyEncoder.decode(key),
+              decoded == .pageUp || decoded == .pageDown
+        else { return request.params }
+        params["key"] = .string(KeyEncoder.encode(decoded))
+        return .object(params)
     }
 
     private static func isSuccessfulInput(_ request: RPCRequest) -> Bool {
