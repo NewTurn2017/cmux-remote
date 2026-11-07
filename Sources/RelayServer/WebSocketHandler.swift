@@ -43,6 +43,7 @@ public actor WSProtocolMachine {
     private let uploadService: ChunkedFileUploadService
     private let artifactService: TerminalArtifactService
     private let uploadIDSource: @Sendable () -> UUID
+    private let relayOwnedTimeout: Duration
     private var helloed = false
 
     public init(cmux: CMUXFacade) {
@@ -55,6 +56,7 @@ public actor WSProtocolMachine {
             }
         )
         self.uploadIDSource = { UUID() }
+        self.relayOwnedTimeout = BoundedRelayWork.defaultTimeout
     }
 
     init(
@@ -62,13 +64,15 @@ public actor WSProtocolMachine {
         authenticatedDeviceID: String,
         uploadService: ChunkedFileUploadService,
         artifactService: TerminalArtifactService,
-        uploadIDSource: @escaping @Sendable () -> UUID = { UUID() }
+        uploadIDSource: @escaping @Sendable () -> UUID = { UUID() },
+        relayOwnedTimeout: Duration = BoundedRelayWork.defaultTimeout
     ) {
         self.cmux = cmux
         self.authenticatedDeviceID = authenticatedDeviceID
         self.uploadService = uploadService
         self.artifactService = artifactService
         self.uploadIDSource = uploadIDSource
+        self.relayOwnedTimeout = relayOwnedTimeout
     }
 
     public var hasHelloed: Bool { helloed }
@@ -90,6 +94,11 @@ public actor WSProtocolMachine {
         }
         if let immediate = Self.synchronousRelayOwnedResponse(for: req) {
             return [.sendText(immediate)]
+        }
+        if req.method == "file.upload" {
+            return [.sendText(await bounded(req) {
+                await BoundedRelayWork.offCooperativePool { Self.legacyUploadResponse(for: req) }
+            })]
         }
         if let response = await relayOwnedResponse(for: req) {
             return [.sendText(response)]
@@ -136,20 +145,52 @@ public actor WSProtocolMachine {
         switch req.method {
         case "host.battery":
             return encode(RPCResponse(id: req.id, ok: true, result: HostBatteryService.snapshot().json, error: nil))
-        case "file.upload":
-            do {
-                let uploaded = try RelayFileUploadService.save(params: req.params)
-                return encode(RPCResponse(id: req.id, ok: true, result: uploaded.json, error: nil))
-            } catch {
-                return encode(errorResponse(id: req.id, code: "upload_failed", message: String(describing: error)))
-            }
         default:
             return nil
         }
     }
 
+    /// Saves one legacy single-frame upload. Runs off this actor because the write can block.
+    private static func legacyUploadResponse(for req: RPCRequest) -> String {
+        do {
+            let uploaded = try RelayFileUploadService.save(params: req.params)
+            return encode(RPCResponse(id: req.id, ok: true, result: uploaded.json, error: nil))
+        } catch {
+            return encode(errorResponse(id: req.id, code: "upload_failed", message: String(describing: error)))
+        }
+    }
+
+    /// Stable code for relay-owned file work that missed its deadline.
+    static let temporarilyUnavailableCode = "temporarily_unavailable"
+
+    /// Answers a relay-owned file RPC by its deadline so the frames queued behind it still run.
+    private func bounded(
+        _ req: RPCRequest,
+        _ work: @escaping @Sendable () async -> String
+    ) async -> String {
+        switch await BoundedRelayWork.run(timeout: relayOwnedTimeout, work) {
+        case .finished(let response):
+            return response
+        case .timedOut:
+            return Self.encode(Self.errorResponse(
+                id: req.id,
+                code: Self.temporarilyUnavailableCode,
+                message: "Mac file access did not finish in time; check for a pending privacy prompt on the Mac"
+            ))
+        }
+    }
+
     private func relayOwnedResponse(for req: RPCRequest) async -> String? {
         guard let method = RemoteRPCMethod(rawValue: req.method) else { return nil }
+        guard method != .hostCapabilities else {
+            return await relayOwnedResponseBody(method: method, req: req)
+        }
+        return await bounded(req) { [self] in
+            await self.relayOwnedResponseBody(method: method, req: req)
+        }
+    }
+
+    private func relayOwnedResponseBody(method: RemoteRPCMethod, req: RPCRequest) async -> String {
         do {
             let result: JSONValue
             switch method {

@@ -13,14 +13,30 @@ DRY_RUN=0
 
 usage() {
   cat <<USAGE
-Usage: scripts/install-launchd.sh [--dry-run] [--socket <path>]
+Usage: scripts/install-launchd.sh [--dry-run] [--socket <path>] [--sign <identity>]
 
 Options:
-  --dry-run        Print resolved paths and rendered plist without building,
-                   copying, writing LaunchAgents, or invoking launchctl.
-  --socket <path>  Pin cmux-relay to a fixed socket path. Omit to let the
-                   relay discover the live cmux socket at runtime.
+  --dry-run          Print resolved paths and rendered plist without building,
+                     copying, writing LaunchAgents, or invoking launchctl.
+  --socket <path>    Pin cmux-relay to a fixed socket path. Omit to let the
+                     relay discover the live cmux socket at runtime.
+  --sign <identity>  Code-sign the relay with this keychain identity, e.g.
+                     "Developer ID Application: Name (TEAMID)". The choice is
+                     remembered in ~/.cmuxremote/codesign-identity. Pass
+                     "adhoc" to go back to ad-hoc signing.
+                     Also read from CMUX_RELAY_CODESIGN_IDENTITY.
+
+Why sign: an ad-hoc signature changes with every build, so macOS treats each
+reinstall as a new app and asks again for Downloads access. Until someone
+clicks Allow on the Mac, relay file work (uploads, terminal artifacts) waits.
+A stable identity keeps that permission across reinstalls.
 USAGE
+}
+
+sign_identity_error() {
+  echo "--sign requires an identity" >&2
+  usage >&2
+  exit 2
 }
 
 socket_path_error() {
@@ -31,6 +47,8 @@ socket_path_error() {
 
 PIN_SOCKET=""
 PIN_SOCKET_SET=0
+SIGN_IDENTITY_ARG=""
+SIGN_IDENTITY_ARG_SET=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -47,6 +65,18 @@ while [ "$#" -gt 0 ]; do
         ""|-*) socket_path_error ;;
       esac
       PIN_SOCKET_SET=1 ;;
+    --sign)
+      [ "$#" -ge 2 ] || sign_identity_error
+      case "$2" in
+        ""|-*) sign_identity_error ;;
+      esac
+      SIGN_IDENTITY_ARG="$2"; SIGN_IDENTITY_ARG_SET=1; shift ;;
+    --sign=*)
+      SIGN_IDENTITY_ARG="${1#--sign=}"
+      case "$SIGN_IDENTITY_ARG" in
+        ""|-*) sign_identity_error ;;
+      esac
+      SIGN_IDENTITY_ARG_SET=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -80,6 +110,23 @@ DEV_ALLOW_LOCALHOST="${CMUX_DEV_ALLOW_LOCALHOST:-0}"
 # /usr/local/bin (pkg install), /opt/homebrew/bin (brew), or the Tailscale.app
 # bundle, so prepend them before the system defaults for CLI fallback discovery.
 RELAY_PATH="${CMUX_RELAY_PATH:-/usr/local/bin:/opt/homebrew/bin:/Applications/Tailscale.app/Contents/MacOS:/usr/bin:/bin:/usr/sbin:/sbin}"
+# Code-signing identity: --sign beats CMUX_RELAY_CODESIGN_IDENTITY, which beats
+# the identity remembered from an earlier install. "adhoc" (or nothing) keeps
+# the ad-hoc signature from swift build.
+SIGN_IDENTITY_FILE="$DEST/codesign-identity"
+SIGN_IDENTITY_SOURCE="default"
+SIGN_IDENTITY=""
+if [ "$SIGN_IDENTITY_ARG_SET" -eq 1 ]; then
+  SIGN_IDENTITY="$SIGN_IDENTITY_ARG"; SIGN_IDENTITY_SOURCE="--sign"
+elif [ -n "${CMUX_RELAY_CODESIGN_IDENTITY:-}" ]; then
+  SIGN_IDENTITY="$CMUX_RELAY_CODESIGN_IDENTITY"; SIGN_IDENTITY_SOURCE="CMUX_RELAY_CODESIGN_IDENTITY"
+elif [ -f "$SIGN_IDENTITY_FILE" ]; then
+  SIGN_IDENTITY="$(head -n 1 "$SIGN_IDENTITY_FILE")"; SIGN_IDENTITY_SOURCE="$SIGN_IDENTITY_FILE"
+fi
+if [ "$SIGN_IDENTITY" = "adhoc" ]; then
+  SIGN_IDENTITY=""
+fi
+SIGN_IDENTIFIER="$LABEL.relay"
 LAUNCH_AGENTS_DIR="${CMUX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 PLIST="$LAUNCH_AGENTS_DIR/$LABEL.plist"
 TARGET="gui/$(id -u)"
@@ -154,6 +201,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
     note "socket override: <dynamic via cmux last-socket-path>"
   fi
   note "logdir: $LOGDIR"
+  if [ -n "$SIGN_IDENTITY" ]; then
+    note "codesign identity: $SIGN_IDENTITY (from $SIGN_IDENTITY_SOURCE)"
+  else
+    note "codesign identity: adhoc (macOS asks for Downloads access again after each reinstall)"
+  fi
   note "plist: $PLIST"
   note "would run: swift build -c release"
   note "would copy: $BIN_SRC -> $BIN_DEST"
@@ -197,7 +249,26 @@ mkdir -p "$DEST/bin" "$LOGDIR" "$LAUNCH_AGENTS_DIR"
 # then kills it and refuses relaunch (OS_REASON_CODESIGNING).
 cp "$BIN_SRC" "$BIN_DEST.new"
 chmod 755 "$BIN_DEST.new"
+if [ -n "$SIGN_IDENTITY" ]; then
+  command -v codesign >/dev/null 2>&1 || fail "missing required tool: codesign"
+  note "signing with: $SIGN_IDENTITY (from $SIGN_IDENTITY_SOURCE)"
+  codesign --force --timestamp=none --identifier "$SIGN_IDENTIFIER" \
+    --sign "$SIGN_IDENTITY" "$BIN_DEST.new" \
+    || { rm -f "$BIN_DEST.new"; fail "codesign failed for identity: $SIGN_IDENTITY"; }
+  codesign --verify --strict "$BIN_DEST.new" \
+    || { rm -f "$BIN_DEST.new"; fail "codesign verification failed"; }
+else
+  note "keeping the ad-hoc signature; macOS will ask again for Downloads access"
+  note "  (pass --sign \"Developer ID Application: …\" once to keep it across reinstalls)"
+fi
 mv -f "$BIN_DEST.new" "$BIN_DEST"
+if [ "$SIGN_IDENTITY_ARG_SET" -eq 1 ]; then
+  if [ -n "$SIGN_IDENTITY" ]; then
+    printf '%s\n' "$SIGN_IDENTITY" > "$SIGN_IDENTITY_FILE"
+  else
+    rm -f "$SIGN_IDENTITY_FILE"
+  fi
+fi
 
 note "rendering $PLIST"
 render_plist > "$PLIST"
@@ -209,4 +280,7 @@ launchctl bootstrap "$TARGET" "$PLIST"
 launchctl kickstart -k "$SERVICE"
 
 note "installed; logs at $LOGDIR"
+if [ -n "$SIGN_IDENTITY" ] && [ "$SIGN_IDENTITY_SOURCE" != "$SIGN_IDENTITY_FILE" ]; then
+  note "first install with this identity: allow Downloads access once if macOS asks"
+fi
 note "inspect with: launchctl print $SERVICE"

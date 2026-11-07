@@ -462,6 +462,24 @@ re-renders the plist, and bootstraps + kickstarts in one shot:
 ./scripts/uninstall-launchd.sh          # bootout + remove plist
 ```
 
+By default the relay keeps the ad-hoc signature from `swift build`. That
+signature changes with every build, so macOS treats each reinstall as a new
+app and asks again for access to the Downloads folder. Phone uploads and
+terminal attachments live there. Until someone clicks Allow on the Mac, those
+requests answer `temporarily_unavailable` after about 4 seconds. The screen
+and typing are not blocked, though input can arrive a few seconds late right
+after you open a terminal. If you have a signing identity, pass it once.
+The installer remembers it in `~/.cmuxremote/codesign-identity`:
+
+```bash
+security find-identity -v -p codesigning     # list identities
+./scripts/install-launchd.sh --sign "Developer ID Application: Your Name (TEAMID)"
+./scripts/install-launchd.sh --sign adhoc    # back to ad-hoc
+```
+
+The first install with the new identity asks for Downloads access once.
+Later reinstalls keep it.
+
 ---
 
 ## Troubleshooting connection

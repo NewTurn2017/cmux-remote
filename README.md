@@ -432,6 +432,23 @@ bootstrap + kickstart를 한 번에 처리하는 설치 스크립트를 다시 �
 ./scripts/uninstall-launchd.sh          # bootout + plist 제거
 ```
 
+relay는 기본적으로 `swift build`가 붙인 ad-hoc 서명을 그대로 씁니다. ad-hoc
+서명은 빌드할 때마다 달라지므로, macOS는 재설치할 때마다 relay를 새 앱으로
+보고 다운로드 폴더 접근 권한을 다시 묻습니다. 폰에서 올린 파일과 터미널
+첨부는 이 폴더에 있습니다. Mac에서 "허용"을 누를 때까지 이 요청들은 약 4초 뒤
+`temporarily_unavailable`로 답합니다. 화면과 입력은 막히지 않지만, 터미널을 연 직후 몇 초 동안은 입력이 늦게 들어갈 수 있습니다. 서명
+인증서가 있다면 한 번만 지정하세요. 설치 스크립트가
+`~/.cmuxremote/codesign-identity`에 기억해 둡니다:
+
+```bash
+security find-identity -v -p codesigning     # 인증서 목록
+./scripts/install-launchd.sh --sign "Developer ID Application: 이름 (TEAMID)"
+./scripts/install-launchd.sh --sign adhoc    # ad-hoc으로 되돌리기
+```
+
+새 인증서로 처음 설치할 때 다운로드 폴더 권한을 한 번 묻고, 그 뒤 재설치에서는
+유지됩니다.
+
 정상 기동 시 `stderr.log`에 `starting cmux-relay on 0.0.0.0:4399` →
 `listening …` → `cmux event stream attached` 순으로 찍힙니다.
 `cmux event stream unavailable: socketMissing`가 보이면 cmux 앱부터
