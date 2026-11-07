@@ -64,6 +64,12 @@ public struct Screen: Codable, Sendable, Equatable {
     /// for row and cursor diffs. Geometry, epoch, active-screen, and resolved theme-default
     /// changes reset.
     ///
+    /// The producer theme revision is deliberately not compared. cmux 0.65.2 advances it on
+    /// every `terminal.replay` call while the theme stays byte-identical, so comparing it
+    /// turned every poll into a `screen.full`. Rows carry fully resolved truecolor, so a real
+    /// palette change still reaches the client as row diffs, and a default-color change still
+    /// resets through the foreground and background comparison.
+    ///
     /// - Parameter previous: The previously ingested authoritative snapshot.
     /// - Returns: `true` when incremental row operations cannot safely preserve state.
     public func requiresFullReset(comparedTo previous: Screen) -> Bool {
@@ -80,7 +86,6 @@ public struct Screen: Codable, Sendable, Equatable {
                 || old.viewportRows != new.viewportRows
                 || old.terminalForeground != new.terminalForeground
                 || old.terminalBackground != new.terminalBackground
-                || old.terminalThemeRevision != new.terminalThemeRevision
         }
     }
 

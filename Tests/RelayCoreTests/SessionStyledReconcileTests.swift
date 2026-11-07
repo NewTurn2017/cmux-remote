@@ -335,6 +335,50 @@ struct SessionStyledReconcileTests {
         await manager.detach(session: session)
     }
 
+    /// cmux 0.65.2 advances `terminal_theme_revision` on every replay with an unchanged theme.
+    /// That counter alone must not turn each poll into a `screen.full`.
+    @Test func themeRevisionCounterAloneSendsNoFrame() async throws {
+        let row = "\u{1B}[48;2;16;24;32mrow\u{1B}[0m"
+        let first = Screen(
+            rev: 0,
+            rows: [row],
+            cols: 3,
+            cursor: .hidden,
+            snapshotMetadata: Self.metadata(epoch: "epoch-a", revision: 1)
+        )
+        let recounted = Screen(
+            rev: 0,
+            rows: [row],
+            cols: 3,
+            cursor: .hidden,
+            snapshotMetadata: ScreenSnapshotMetadata(
+                renderEpoch: "epoch-a",
+                renderRevision: 2,
+                viewportRows: 1,
+                terminalForeground: "#eaeaea",
+                terminalBackground: "#101820",
+                terminalThemeRevision: 2
+            )
+        )
+        let reader = SessionStaticReader([first, recounted])
+        let manager = SessionManager(reader: reader, defaultFps: 15, idleFps: 5)
+        let frames = FrameInbox()
+        let session = await manager.attach(deviceId: "device") { frames.append($0) }
+        try await session.subscribe(workspaceId: "workspace", surfaceId: "surface", lines: 120)
+        let hub = try #require(await manager.renderHub(surfaceId: "surface"))
+
+        await hub.tick()
+        await hub.tick()
+
+        let output = frames.snapshot()
+        #expect(output.count == 1)
+        if let only = output.first, case .screenFull = only {
+        } else {
+            Issue.record("only the initial screen.full may be sent when just the theme counter moved")
+        }
+        await manager.detach(session: session)
+    }
+
     @Test func sessionCloseRetiresEveryStreamAndReconnectUsesFreshIdentity() async throws {
         let manager = SessionManager(
             reader: SessionStaticReader([]),

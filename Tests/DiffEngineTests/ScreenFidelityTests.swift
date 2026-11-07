@@ -125,16 +125,14 @@ struct ScreenFidelityTests {
         #expect(ops.isEmpty)
     }
 
+    /// cmux 0.65.2 advances `terminal_theme_revision` on every replay while the theme stays
+    /// byte-identical, so a theme revision change alone must not force a reset.
     @Test(arguments: [
-        (UInt64(9), UInt64(9), false),
-        (UInt64(9), UInt64(10), true),
-        (UInt64(10), UInt64(9), true),
+        (UInt64(9), UInt64(9)),
+        (UInt64(9), UInt64(10)),
+        (UInt64(10), UInt64(9)),
     ])
-    func themeRevisionResetSemantics(
-        oldRevision: UInt64,
-        newRevision: UInt64,
-        expectsReset: Bool
-    ) throws {
+    func themeRevisionAloneAvoidsNeedlessFull(oldRevision: UInt64, newRevision: UInt64) throws {
         let before = try Self.screen(themeRevision: oldRevision)
         let after = try Self.screen(revision: 3, themeRevision: newRevision)
         var state = RowState()
@@ -142,12 +140,8 @@ struct ScreenFidelityTests {
         _ = state.ingest(snapshot: before)
         let ops = state.ingest(snapshot: after)
 
-        #expect((ops.first == .clear) == expectsReset)
-        if expectsReset {
-            #expect(ops.contains(.row(y: 0, text: after.rows[0])))
-        } else {
-            #expect(ops.isEmpty)
-        }
+        #expect(!after.requiresFullReset(comparedTo: before))
+        #expect(ops.isEmpty)
     }
 
     @Test(arguments: [
