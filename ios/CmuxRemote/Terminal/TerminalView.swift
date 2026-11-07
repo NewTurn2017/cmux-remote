@@ -16,6 +16,9 @@ struct TerminalView: View {
     var topContentInset: CGFloat = 0
     var bottomContentInset: CGFloat = 0
     var scrollToBottomRequest: Int = 0
+    var activeScreen: String?
+    var onPageRequest: (Key) -> Void = { _ in }
+    @State private var pagingHint: TerminalOverscrollPagingPolicy.Hint = .idle
     @State private var fontMetrics = TerminalFontMetrics(
         fontSize: TerminalLayoutPolicy.defaultFontSize(
             isPad: UIDevice.current.userInterfaceIdiom == .pad
@@ -32,12 +35,16 @@ struct TerminalView: View {
         topContentInset: CGFloat = 0,
         bottomContentInset: CGFloat = 0,
         scrollToBottomRequest: Int = 0,
+        activeScreen: String? = nil,
+        onPageRequest: @escaping (Key) -> Void = { _ in },
         selectionController: TerminalSelectionController? = nil
     ) {
         self.store = store
         self.topContentInset = topContentInset
         self.bottomContentInset = bottomContentInset
         self.scrollToBottomRequest = scrollToBottomRequest
+        self.activeScreen = activeScreen
+        self.onPageRequest = onPageRequest
         _selectionController = State(
             initialValue: selectionController ?? TerminalSelectionController()
         )
@@ -156,6 +163,18 @@ struct TerminalView: View {
                     Color.clear.frame(height: bottomInset)
                 }
 
+                TerminalOverscrollObserver(
+                    activeScreen: activeScreen,
+                    interactionBlocked: !selectionController.allowsScrolling || pinchAnchorFontSize != nil,
+                    onPage: onPageRequest,
+                    onHint: { pagingHint = $0 }
+                )
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+
+                pagingHintOverlay(topInset: topInset, bottomInset: bottomInset)
+                    .animation(.easeOut(duration: 0.15), value: pagingHint)
+
                 if selectionController.showsActionControls {
                     TerminalSelectionActionControls(
                         copy: { selectionController.copySelection() },
@@ -205,6 +224,21 @@ struct TerminalView: View {
             )
         }
         .background(CmuxTheme.terminalViewportBackground)
+    }
+
+    @ViewBuilder
+    private func pagingHintOverlay(topInset: CGFloat, bottomInset: CGFloat) -> some View {
+        switch pagingHint {
+        case .idle:
+            EmptyView()
+        case .pulling(let edge), .sent(let edge):
+            TerminalPagingHint(edge: edge, sent: pagingHint == .sent(edge))
+                .padding(.top, topInset + 8)
+                .padding(.bottom, bottomInset + 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .top ? .top : .bottom)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
     }
 
     static func bottomScrollPadding(lineHeight: CGFloat) -> CGFloat {

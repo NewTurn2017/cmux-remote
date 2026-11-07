@@ -51,13 +51,24 @@ struct WorkspaceView: View {
                 ? proxy.safeAreaInsets.top + 20
                 : proxy.safeAreaInsets.top + headerHeight + 10
             ZStack(alignment: .bottom) {
-                TerminalView(
-                    store: surfaceStore,
-                    topContentInset: terminalTopInset,
-                    bottomContentInset: terminalBottomInset,
-                    scrollToBottomRequest: scrollToBottomRequest
-                )
-                .ignoresSafeArea(.container, edges: .all)
+                if let placeholder = placeholderSurface {
+                    NonTerminalSurfaceCard(
+                        surface: placeholder,
+                        topContentInset: terminalTopInset,
+                        bottomContentInset: terminalBottomInset
+                    )
+                    .ignoresSafeArea(.container, edges: .all)
+                } else {
+                    TerminalView(
+                        store: surfaceStore,
+                        topContentInset: terminalTopInset,
+                        bottomContentInset: terminalBottomInset,
+                        scrollToBottomRequest: scrollToBottomRequest,
+                        activeScreen: surfaceStore.activeScreen,
+                        onPageRequest: { sendKey($0) }
+                    )
+                    .ignoresSafeArea(.container, edges: .all)
+                }
 
                 VStack(spacing: 0) {
                     terminalHeader
@@ -245,7 +256,7 @@ struct WorkspaceView: View {
                     surfaceStore: surfaceStore,
                     connection: workspaceStore.connection,
                     workspaceID: activeWorkspaceId,
-                    surfaceID: activeSurfaceId
+                    surfaceID: placeholderSurface == nil ? activeSurfaceId : nil
                 )
             }
 
@@ -256,6 +267,7 @@ struct WorkspaceView: View {
                         ForEach(surfaces) { surface in
                             SurfaceChip(
                                 title: surface.title,
+                                kind: SurfaceKind(surface),
                                 isSelected: activeSurfaceId == surface.id,
                                 canClose: surfaces.count > 1,
                                 isBusy: surfaceActionInFlight,
@@ -863,8 +875,17 @@ struct WorkspaceView: View {
         return workspaceStore.workspaces.first { $0.id == id }
     }
 
+    private var placeholderSurface: Surface? {
+        guard let surfaceId = activeSurfaceId,
+              surfaceStore.placeholderSurfaceId == surfaceId,
+              let workspaceId = activeWorkspaceId
+        else { return nil }
+        return workspaceStore.surfaces(for: workspaceId).first { $0.id == surfaceId }
+            ?? Surface(id: surfaceId, title: surfaceId, index: 0)
+    }
+
     private func switchWorkspace(to workspaceId: String?) async {
-        if let current = activeSurfaceId { await surfaceStore.unsubscribe(surfaceId: current) }
+        await surfaceStore.leaveCurrentSurface()
         activeWorkspaceId = workspaceId
         activeSurfaceId = nil
         await subscribeFirstSurfaceIfNeeded()
@@ -881,7 +902,7 @@ struct WorkspaceView: View {
             guard workspaceStore.selectedId == workspace.id else { return }
             surfaces = workspaceStore.surfaces(for: workspace.id)
         }
-        guard let first = surfaces.first else { return }
+        guard let first = SurfaceSelectionPolicy.initialSurface(in: surfaces) else { return }
         activeWorkspaceId = workspace.id
         activeSurfaceId = first.id
         await subscribeAndPinToBottom(workspaceId: workspace.id, surfaceId: first.id)
@@ -898,7 +919,7 @@ struct WorkspaceView: View {
             preferredSurfaceId = nil
             return
         }
-        if let current = activeSurfaceId { await surfaceStore.unsubscribe(surfaceId: current) }
+        await surfaceStore.leaveCurrentSurface()
         activeWorkspaceId = workspace.id
         activeSurfaceId = surfaceId
         preferredSurfaceId = nil
@@ -906,7 +927,9 @@ struct WorkspaceView: View {
     }
 
     private func subscribeAndPinToBottom(workspaceId: String, surfaceId: String) async {
-        await surfaceStore.subscribe(workspaceId: workspaceId, surfaceId: surfaceId)
+        let surface = workspaceStore.surfaces(for: workspaceId).first { $0.id == surfaceId }
+            ?? Surface(id: surfaceId, title: surfaceId, index: 0)
+        guard await surfaceStore.open(workspaceId: workspaceId, surface: surface) == .terminal else { return }
         scrollToBottomRequest &+= 1
     }
 }
@@ -962,6 +985,7 @@ enum WorkspaceAccessoryLayout: Equatable {
 
 private struct SurfaceChip: View {
     let title: String
+    let kind: SurfaceKind
     let isSelected: Bool
     let canClose: Bool
     let isBusy: Bool
@@ -971,16 +995,22 @@ private struct SurfaceChip: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: onSelect) {
-                Text(title)
-                    .cmuxMono(11, weight: isSelected ? .medium : .regular)
-                    .lineLimit(1)
-                    .foregroundStyle(isSelected ? CmuxTheme.accentGreen : CmuxTheme.muted)
-                    .padding(.leading, 10)
-                    .padding(.trailing, canClose ? 6 : 10)
-                    .frame(height: 28)
+                HStack(spacing: 4) {
+                    Image(systemName: kind.systemImage)
+                        .font(.system(size: 9, weight: .semibold))
+                    Text(title)
+                        .cmuxMono(11, weight: isSelected ? .medium : .regular)
+                        .lineLimit(1)
+                }
+                .foregroundStyle(isSelected ? CmuxTheme.accentGreen : CmuxTheme.muted)
+                .padding(.leading, 10)
+                .padding(.trailing, canClose ? 6 : 10)
+                .frame(height: 28)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(title)
+            .accessibilityValue(kind.accessibilityName)
+            .accessibilityIdentifier("SurfaceChip-\(kind.identifierSuffix)")
 
             if canClose {
                 Button(action: onClose) {

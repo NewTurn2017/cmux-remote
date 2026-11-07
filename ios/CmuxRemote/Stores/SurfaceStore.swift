@@ -15,6 +15,13 @@ public final class SurfaceStore {
     /// Set when the relay rejected the current surface's subscription; the
     /// grid is blank rather than live until a later subscribe succeeds.
     public var subscriptionError: String?
+    /// `activeScreen` of the last `screen.full` for the subscribed surface.
+    /// Diffs never carry it, so only a full frame or a surface/connection
+    /// reset changes it.
+    public private(set) var activeScreen: String?
+    /// Non-terminal surface shown as the placeholder card instead of a mirror.
+    public private(set) var placeholderSurfaceId: String?
+    public private(set) var reportedNotTerminalSurfaceIds: Set<String> = []
 
     private let rpc: any RPCDispatch
     /// Surface released by the last `unsubscribe` while nothing new is
@@ -25,7 +32,34 @@ public final class SurfaceStore {
         self.rpc = rpc
     }
 
+    /// Routes a selected surface: terminals subscribe, everything else shows
+    /// the placeholder without any subscribe, focus, or read for that surface.
+    @discardableResult
+    public func open(workspaceId: String, surface: Surface) async -> SurfaceRoute {
+        guard SurfaceSelectionPolicy.route(
+            for: surface,
+            reportedNotTerminal: reportedNotTerminalSurfaceIds
+        ) == .terminal else {
+            let previous = subscribed
+            placeholderSurfaceId = surface.id
+            activeScreen = nil
+            subscriptionError = nil
+            if let previous { await unsubscribe(surfaceId: previous) }
+            return .placeholder
+        }
+        await subscribe(workspaceId: workspaceId, surfaceId: surface.id)
+        return placeholderSurfaceId == surface.id ? .placeholder : .terminal
+    }
+
+    public func leaveCurrentSurface() async {
+        placeholderSurfaceId = nil
+        activeScreen = nil
+        if let subscribed { await unsubscribe(surfaceId: subscribed) }
+    }
+
     public func subscribe(workspaceId: String, surfaceId: String) async {
+        placeholderSurfaceId = nil
+        activeScreen = nil
         if subscribed != surfaceId {
             // Switch identity before awaiting anything, so neither the previous
             // surface's screen nor its error is shown under the new selection.
@@ -50,6 +84,7 @@ public final class SurfaceStore {
 
     public func resubscribe() async {
         guard let workspaceId = subscribedWorkspaceId, let surfaceId = subscribed else { return }
+        activeScreen = nil
         guard await requestSubscription(workspaceId: workspaceId, surfaceId: surfaceId) else { return }
         await focusCurrentSurface()
         await requestFull(surfaceId: surfaceId)
@@ -68,6 +103,10 @@ public final class SurfaceStore {
             ).requireOk()
         } catch {
             guard subscribed == surfaceId else { return false }
+            if case CmuxRemoteRPCError.rpc(let code, _) = error, code == SurfaceSelectionPolicy.notTerminalCode {
+                if markNotTerminal(surfaceId) { await sendUnsubscribe(surfaceId: surfaceId) }
+                return false
+            }
             subscriptionError = Self.subscriptionFailureMessage(for: error)
             return false
         }
@@ -105,15 +144,36 @@ public final class SurfaceStore {
     }
 
     public func unsubscribe(surfaceId: String) async {
-        if subscribed == surfaceId {
-            // Leaving a surface must not keep its screen up under whatever is
-            // selected next, including a workspace with no surface to show.
-            subscribed = nil
-            subscribedWorkspaceId = nil
-            releasedSurfaceId = surfaceId
-            grid = CellGrid(cols: grid.cols, rows: grid.rows.count)
-        }
+        releaseIfCurrent(surfaceId)
+        await sendUnsubscribe(surfaceId: surfaceId)
+    }
+
+    private func releaseIfCurrent(_ surfaceId: String) {
+        guard subscribed == surfaceId else { return }
+        // Leaving a surface must not keep its screen up under whatever is
+        // selected next, including a workspace with no surface to show.
+        subscribed = nil
+        subscribedWorkspaceId = nil
+        releasedSurfaceId = surfaceId
+        activeScreen = nil
+        grid = CellGrid(cols: grid.cols, rows: grid.rows.count)
+    }
+
+    private func sendUnsubscribe(surfaceId: String) async {
         _ = try? await rpc.call(method: "surface.unsubscribe", params: .object(["surface_id": .string(surfaceId)]))
+    }
+
+    /// Records a relay `surface_not_terminal` verdict. When it names the
+    /// subscribed surface, the mirror is released synchronously (so an
+    /// in-flight subscribe cannot go on to focus or read it) and the caller
+    /// must send `surface.unsubscribe`.
+    private func markNotTerminal(_ surfaceId: String) -> Bool {
+        reportedNotTerminalSurfaceIds.insert(surfaceId)
+        guard subscribed == surfaceId else { return false }
+        placeholderSurfaceId = surfaceId
+        subscriptionError = nil
+        releaseIfCurrent(surfaceId)
+        return true
     }
 
     public func ingest(_ frame: PushFrame) {
@@ -133,6 +193,7 @@ public final class SurfaceStore {
             replacement.cursor = frame.cursor
             grid = replacement
             rev = frame.rev
+            activeScreen = frame.activeScreen
         case .screenDiff(let frame):
             guard acceptsFrame(for: frame.surfaceId) else { return }
             for op in frame.ops {
@@ -152,6 +213,11 @@ public final class SurfaceStore {
             if computed != frame.hash {
                 Task { await self.requestFull(surfaceId: frame.surfaceId) }
             }
+        case .event(let event):
+            guard let surfaceId = SurfaceSelectionPolicy.notTerminalSurfaceId(in: event),
+                  markNotTerminal(surfaceId)
+            else { return }
+            Task { await self.sendUnsubscribe(surfaceId: surfaceId) }
         default:
             break
         }
@@ -166,6 +232,7 @@ public final class SurfaceStore {
     }
 
     public func sendText(workspaceId: String, surfaceId: String, text: String) async throws {
+        try requireTerminalInput(surfaceId)
         try await dispatchInput(
             successMessage: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "Sent text"
@@ -203,6 +270,7 @@ public final class SurfaceStore {
     }
 
     public func submitCommand(workspaceId: String, surfaceId: String, command: String) async throws {
+        try requireTerminalInput(surfaceId)
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         let singleLine = trimmed.map { $0.isNewline ? " " : String($0) }.joined()
         guard !singleLine.isEmpty else {
@@ -230,6 +298,7 @@ public final class SurfaceStore {
     }
 
     public func sendKey(workspaceId: String, surfaceId: String, key: Key) async throws {
+        try requireTerminalInput(surfaceId)
         let encoded = KeyEncoder.encode(key)
         try await dispatchInput(successMessage: "Sent \(encoded)") {
             // cmux's `surface.send_key` synthesizes one NSEvent so multi-byte
@@ -263,7 +332,16 @@ public final class SurfaceStore {
         subscribedWorkspaceId = nil
         subscriptionError = nil
         releasedSurfaceId = nil
+        activeScreen = nil
+        placeholderSurfaceId = nil
+        reportedNotTerminalSurfaceIds = []
         inputStatus = .idle
+    }
+
+    private func requireTerminalInput(_ surfaceId: String) throws {
+        if placeholderSurfaceId == surfaceId || reportedNotTerminalSurfaceIds.contains(surfaceId) {
+            throw SurfaceInputError.notTerminal
+        }
     }
 
     private func dispatchInput(

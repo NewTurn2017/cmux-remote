@@ -173,8 +173,9 @@ struct SurfacePayload: Decodable {
     let id: String
     let title: String
     let index: Int
+    let type: String?
 
-    var model: Surface { Surface(id: id, title: title, index: index) }
+    var model: Surface { Surface(id: id, title: title, index: index, type: type) }
 }
 
 

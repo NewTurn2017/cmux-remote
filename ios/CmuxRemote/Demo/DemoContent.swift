@@ -109,7 +109,56 @@ enum DemoContent {
                 DemoSurface(id: "SF-DEMO-6B", title: "tmux", screen: tmuxSession),
             ]
         ),
+        DemoWorkspace(
+            id: tabTypesWorkspaceID,
+            title: String(localized: "demo.tabs.workspace.title", defaultValue: "Tab Types"),
+            surfaces: [
+                DemoSurface(id: "SF-DEMO-TABS-WEB", title: "localhost:3000", screen: [], type: "browser"),
+                DemoSurface(
+                    id: tabTypesAlternateSurfaceID,
+                    title: "claude-code",
+                    screen: claudeCodeFullscreen,
+                    activeScreen: "alternate"
+                ),
+                DemoSurface(id: "SF-DEMO-TABS-MD", title: "README.md", screen: [], type: "markdown"),
+                DemoSurface(
+                    id: tabTypesPrimarySurfaceID,
+                    title: "shell",
+                    screen: primaryShell,
+                    activeScreen: "primary"
+                ),
+                DemoSurface(
+                    id: tabTypesStaleSurfaceID,
+                    title: "old-list tab",
+                    screen: [],
+                    type: nil,
+                    reportsNotTerminal: true
+                ),
+            ]
+        ),
     ]
+
+    static let tabTypesWorkspaceID = "WS-DEMO-TABS"
+    static let tabTypesAlternateSurfaceID = "SF-DEMO-TABS-ALT"
+    static let tabTypesPrimarySurfaceID = "SF-DEMO-TABS-SH"
+    static let tabTypesStaleSurfaceID = "SF-DEMO-TABS-STALE"
+
+    static func workspaceID(forSurface id: String) -> String? {
+        workspaces.first { $0.surfaces.contains { $0.id == id } }?.id
+    }
+
+    /// The relay's `surface_not_terminal` push event, as described in the
+    /// relay contract notes.
+    static func notTerminalEvent(surfaceId: String) -> EventFrame {
+        var payload: [String: JSONValue] = [
+            "code": .string("surface_not_terminal"),
+            "surface_id": .string(surfaceId),
+        ]
+        if let workspaceId = workspaceID(forSurface: surfaceId) {
+            payload["workspace_id"] = .string(workspaceId)
+        }
+        return EventFrame(category: .surface, name: "surface_not_terminal", payload: .object(payload))
+    }
 
     static func surface(for id: String) -> DemoSurface? {
         for ws in workspaces {
@@ -130,7 +179,8 @@ enum DemoContent {
             rows: rows,
             cols: cols,
             rowsCount: rows.count,
-            cursor: CursorPos(x: 0, y: rows.count - 1)
+            cursor: CursorPos(x: 0, y: rows.count - 1),
+            activeScreen: surface.activeScreen
         )
     }
 
@@ -281,6 +331,30 @@ enum DemoContent {
         "[3] Skip tests",
         "",
         "› ",
+    ]
+
+    private static let claudeCodeFullscreen: [String] = [
+        "\u{1B}[38;2;217;119;87m╭─ Claude Code ────────────────────────╮\u{1B}[0m",
+        "│ fullscreen session (alternate screen) │",
+        "╰──────────────────────────────────────╯",
+        "",
+        "> Summarize the relay retention change",
+        "",
+        "● The relay now keeps the viewport plus up",
+        "  to 240 scrollback rows per screen.full.",
+        "",
+        "  Pull past the top to page up, past the",
+        "  bottom to page down.",
+        "",
+        "\u{1B}[2m? for shortcuts\u{1B}[0m",
+    ]
+
+    private static let primaryShell: [String] = [
+        "$ git status --short",
+        " M ios/CmuxRemote/Stores/SurfaceStore.swift",
+        "$ swift test --filter SharedKitTests",
+        "Test run with 61 tests passed",
+        "$",
     ]
 
     private static let codexAgentLab: [String] = [
@@ -652,4 +726,9 @@ struct DemoSurface {
     let id: String
     let title: String
     let screen: [String]
+    var type: String? = "terminal"
+    var activeScreen: String?
+    var reportsNotTerminal = false
+
+    var isTerminal: Bool { !reportsNotTerminal && (type == nil || type == "terminal") }
 }

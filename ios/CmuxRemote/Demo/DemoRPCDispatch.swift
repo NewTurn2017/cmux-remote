@@ -155,11 +155,13 @@ public actor DemoRPCDispatch: RPCDispatch {
             }
             return RPCResponse(id: "demo", result: .object([
                 "surfaces": .array(workspace.surfaces.enumerated().map { index, surface in
-                    .object([
+                    var payload: [String: JSONValue] = [
                         "id": .string(surface.id),
                         "title": .string(surface.title),
                         "index": .int(Int64(index)),
-                    ])
+                    ]
+                    if let type = surface.type { payload["type"] = .string(type) }
+                    return .object(payload)
                 }),
             ]))
 
@@ -167,6 +169,9 @@ public actor DemoRPCDispatch: RPCDispatch {
             if case .object(let p) = params,
                case .string(let surfaceId)? = p["surface_id"]
             {
+                if let surface = surface(for: surfaceId), !surface.isTerminal, !surface.reportsNotTerminal {
+                    return notTerminalResponse()
+                }
                 await onSubscribe?(surfaceId)
             }
             return RPCResponse(id: "demo", ok: true, result: .object([:]))
@@ -176,6 +181,7 @@ public actor DemoRPCDispatch: RPCDispatch {
                case .string(let surfaceId)? = p["surface_id"],
                let surface = surface(for: surfaceId)
             {
+                guard surface.isTerminal else { return notTerminalResponse() }
                 return RPCResponse(id: "demo", result: .object([
                     "text": .string(surface.screen.joined(separator: "\n")),
                 ]))
@@ -604,6 +610,14 @@ public actor DemoRPCDispatch: RPCDispatch {
             id: "demo",
             ok: false,
             error: RPCError(code: code.rawValue, message: message)
+        )
+    }
+
+    private func notTerminalResponse() -> RPCResponse {
+        RPCResponse(
+            id: "demo",
+            ok: false,
+            error: RPCError(code: "surface_not_terminal", message: "Surface is not a terminal")
         )
     }
 

@@ -260,7 +260,9 @@ struct CmuxRemoteApp: App {
         // so the terminal mirror lights up just like the live path would.
         await rpc.setOnSubscribe { surfaceId in
             await MainActor.run {
-                if let frame = DemoContent.screenFull(for: surfaceId) {
+                if DemoContent.surface(for: surfaceId)?.reportsNotTerminal == true {
+                    liveSurfaceStore.ingest(.event(DemoContent.notTerminalEvent(surfaceId: surfaceId)))
+                } else if let frame = DemoContent.screenFull(for: surfaceId) {
                     liveSurfaceStore.ingest(.screenFull(frame))
                 }
             }
