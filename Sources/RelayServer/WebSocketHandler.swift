@@ -648,16 +648,31 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         guard let text = buffer.getString(
             at: buffer.readerIndex,
             length: buffer.readableBytes
-        ), let actionQueue,
-           let sessionLifecycle,
-           let generation = sessionLifecycle.activeGeneration
-        else { return }
+        ) else { return }
+        guard let actionQueue,
+              let sessionLifecycle,
+              let generation = sessionLifecycle.activeGeneration
+        else {
+            // Previously silent: a client would only see its RPC time out.
+            logger.warning("rpc dropped: no active session method=\(InboundRPCTrace.method(of: text)) device=\(deviceId.prefix(8))")
+            return
+        }
 
         let machine = self.machine
+        let trace = InboundRPCTrace(text: text, deviceId: deviceId, receivedAt: .now)
+        let logger = self.logger
         guard actionQueue.enqueue(retainedByteCount: text.utf8.count, { [weak sessionLifecycle] in
+            let startedAt = ContinuousClock.now
             let actions = await machine.processText(text)
             guard !Task.isCancelled else { return }
             await sessionLifecycle?.apply(actions: actions, generation: generation)
+            if let line = trace.line(
+                startedAt: startedAt,
+                finishedAt: .now,
+                traceAll: InboundRPCTrace.traceAll
+            ) {
+                logger.info("\(line)")
+            }
         }) else {
             logger.warning("Closing WebSocket after inbound action queue overflow")
             invalidate(context: context, closeChannel: true)
