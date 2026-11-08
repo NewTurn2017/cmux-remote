@@ -5,6 +5,83 @@ import SharedKit
 /// reviewers can't bring their own Tailscale-connected Mac, so this gives
 /// them a populated, navigable surface to evaluate the app against).
 enum DemoContent {
+    static let documentSurfaceID = "SF-DEMO-TABS-MD"
+    static let documentReadmeArtifactPrefix = "demo-document-readme-"
+    static let documentNotesBytes = Data("""
+    # Release notes
+
+    - Markdown tabs open in the document viewer.
+    - Text files from **Terminal files** open here too.
+
+    ```sh
+    swift test
+    ```
+    """.utf8)
+    static let documentNotesArtifact = TerminalArtifact(
+        artifactId: "demo-document-notes",
+        filename: "notes.md",
+        mimeType: "text/markdown",
+        bytes: documentNotesBytes.count,
+        revision: "demo-notes-r1",
+        isImage: false
+    )
+
+    static func documentReadmeMarkdown(openCount: Int) -> String {
+        """
+        # cmux Remote demo
+
+        Loaded from the demo relay: open #\(openCount).
+
+        ## Features
+
+        - Read **markdown** tabs from your Mac
+          - Nested lists keep their depth
+          - Links like [cmux](https://cmux.dev) stay tappable
+        - Relative links such as [setup](docs/setup.md) stay plain text
+
+        1. Pick a markdown tab
+        2. Pull the latest copy with refresh
+
+        > Documents refresh only when you ask.
+
+        ```swift
+        let summary = "A long line of code scrolls sideways instead of wrapping, so the code keeps its shape on a phone."
+        ```
+
+        | Setting | Value |
+        | :-- | --: |
+        | Retained lines | 120 |
+        | Active polling | 15 Hz |
+
+        ![Architecture diagram](images/architecture.png)
+
+        ---
+
+        A long paragraph wraps to the width of the screen so you can read it without scrolling sideways, even on the smallest iPhone.
+        """
+    }
+
+    static func documentReadmeArtifact(openCount: Int) -> TerminalArtifact {
+        TerminalArtifact(
+            artifactId: "\(documentReadmeArtifactPrefix)\(openCount)",
+            filename: "README.md",
+            mimeType: "text/markdown",
+            bytes: Data(documentReadmeMarkdown(openCount: openCount).utf8).count,
+            revision: "demo-readme-r\(openCount)",
+            isImage: false
+        )
+    }
+
+    static func documentFixture(artifactID: String) -> (data: Data, revision: String)? {
+        if artifactID == documentNotesArtifact.artifactId {
+            return (documentNotesBytes, documentNotesArtifact.revision)
+        }
+        guard artifactID.hasPrefix(documentReadmeArtifactPrefix),
+              let openCount = Int(artifactID.dropFirst(documentReadmeArtifactPrefix.count))
+        else { return nil }
+        return (Data(documentReadmeMarkdown(openCount: openCount).utf8), "demo-readme-r\(openCount)")
+    }
+
     static let fileFeatureHappySurfaceID = "SF-DEMO-1A"
     static let fileFeatureReplacementSurfaceID = "SF-DEMO-1B"
     static let fileFeatureUnavailableSurfaceID = "SF-DEMO-1C"

@@ -10,6 +10,9 @@ struct TerminalFilesSheet: View {
     @State private var viewerFilename = ""
     @State private var viewerError: TerminalArtifactRowState?
     @State private var openingArtifactID: String?
+    @State private var documentArtifact: TerminalArtifact?
+    @State private var documentContent: DocumentViewer.Content = .loading
+    @State private var documentLoadID = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,6 +49,7 @@ struct TerminalFilesSheet: View {
         }
         .onDisappear {
             closeViewer()
+            closeDocument()
         }
     }
 
@@ -150,7 +154,8 @@ struct TerminalFilesSheet: View {
                             TerminalArtifactRow(
                                 artifact: artifact,
                                 store: store,
-                                onOpen: openViewer
+                                onOpen: openViewer,
+                                onOpenDocument: openDocument
                             )
                         }
                     }
@@ -175,6 +180,16 @@ struct TerminalFilesSheet: View {
             localized: "terminal.artifact.sheet.list",
             defaultValue: "Terminal file list"
         ))
+        .fullScreenCover(item: $documentArtifact) { artifact in
+            DocumentViewer(
+                title: artifact.filename,
+                content: documentContent,
+                canRefresh: documentContent != .loading,
+                onRefresh: { openDocument(artifact) },
+                onClose: closeDocument
+            )
+            .accessibilityAction(.escape, closeDocument)
+        }
     }
 
     private var emptyState: some View {
@@ -270,6 +285,7 @@ struct TerminalFilesSheet: View {
         case .loading: return "arrow.clockwise"
         case .ready: return "checkmark"
         case .generic: return "doc"
+        case .document: return "doc.text"
         case .stale, .fileChanged: return "clock.badge.exclamationmark"
         case .unavailable: return "wifi.slash"
         case .corrupt: return "photo.badge.exclamationmark"
@@ -283,6 +299,7 @@ struct TerminalFilesSheet: View {
         case .ready: return CmuxTheme.accentGreen
         case .loading: return CmuxTheme.accentBlue
         case .generic: return CmuxTheme.inkDim
+        case .document: return CmuxTheme.accentCyan
         case .stale, .fileChanged: return CmuxTheme.accentYellow
         case .unavailable: return CmuxTheme.muted
         case .corrupt, .oversized, .byteCap, .pixelCap, .error: return CmuxTheme.accentRed
@@ -321,6 +338,41 @@ struct TerminalFilesSheet: View {
                 viewerError = TerminalArtifactRowState(error: error)
             }
         }
+    }
+
+    private func openDocument(_ artifact: TerminalArtifact) {
+        documentLoadID &+= 1
+        let loadID = documentLoadID
+        documentContent = .loading
+        documentArtifact = artifact
+        Task { @MainActor in
+            let content: DocumentViewer.Content
+            do {
+                let document = try await store.loadText(for: artifact)
+                if DocumentContentKind.isLikelyText(document.rawPrefix) {
+                    let kind = DocumentContentKind.classify(
+                        filename: artifact.filename,
+                        mimeType: artifact.mimeType,
+                        isImage: artifact.isImage
+                    )
+                    content = .loaded(await RenderedDocument.render(document, asMarkdown: kind == .markdown))
+                } else {
+                    content = .failed(.notText)
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                content = .failed(DocumentLoadFailure(error: error))
+            }
+            guard loadID == documentLoadID else { return }
+            documentContent = content
+        }
+    }
+
+    private func closeDocument() {
+        documentLoadID &+= 1
+        documentArtifact = nil
+        documentContent = .loading
     }
 
     private func closeViewer() {

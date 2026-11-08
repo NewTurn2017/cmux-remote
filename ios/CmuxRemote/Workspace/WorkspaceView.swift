@@ -52,8 +52,11 @@ struct WorkspaceView: View {
                 : proxy.safeAreaInsets.top + headerHeight + 10
             ZStack(alignment: .bottom) {
                 if let placeholder = placeholderSurface {
-                    NonTerminalSurfaceCard(
+                    NonTerminalSurfaceContent(
                         surface: placeholder,
+                        workspaceID: activeWorkspaceId,
+                        remoteFiles: remoteFiles,
+                        connection: workspaceStore.connection,
                         topContentInset: terminalTopInset,
                         bottomContentInset: terminalBottomInset
                     )

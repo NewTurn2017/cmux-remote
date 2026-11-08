@@ -21,6 +21,12 @@ enum SurfaceSelectionPolicy {
         return .terminal
     }
 
+    /// Placeholder surfaces open the document viewer only for markdown tabs on a
+    /// relay that advertises `surface.document.v1`; everything else keeps the card.
+    static func showsDocument(for surface: Surface, documentsEnabled: Bool) -> Bool {
+        documentsEnabled && SurfaceKind(surface) == .markdown
+    }
+
     static func notTerminalSurfaceId(in event: EventFrame) -> String? {
         guard event.category == .surface, event.name == notTerminalCode,
               case .object(let payload) = event.payload,

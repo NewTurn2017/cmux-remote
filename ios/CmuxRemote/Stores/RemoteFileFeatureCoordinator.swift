@@ -7,10 +7,14 @@ import SharedKit
 final class RemoteFileFeatureCoordinator {
     let attachments: AttachmentCoordinator
     let terminalArtifacts: TerminalArtifactStore
+    let documents: SurfaceDocumentStore
 
     private let routingRPC: OfflineRPCDispatch
 
     private(set) var capabilities = HostCapabilitiesResult(capabilities: [])
+    /// Survives disconnects so a document tab keeps its error screen instead of
+    /// falling back to the card; only a capability answer or an account purge changes it.
+    private(set) var documentRoutingEnabled = false
     private(set) var hostGeneration = 0
     private(set) var hostID = "offline"
     private(set) var accountScope = "offline"
@@ -25,6 +29,7 @@ final class RemoteFileFeatureCoordinator {
         self.routingRPC = routingRPC
         self.attachments = attachments
         self.terminalArtifacts = terminalArtifacts
+        self.documents = SurfaceDocumentStore(rpc: routingRPC)
     }
 
     func connect(
@@ -37,6 +42,7 @@ final class RemoteFileFeatureCoordinator {
         self.hostID = hostID
         self.accountScope = accountScope
         capabilities = HostCapabilitiesResult(capabilities: [])
+        documents.reset()
         await routingRPC.install(rpc)
         await attachments.setHostGeneration(generation)
         await terminalArtifacts.activate(identity: nil)
@@ -48,9 +54,11 @@ final class RemoteFileFeatureCoordinator {
             let nextCapabilities = try response.decodeResult(HostCapabilitiesResult.self)
             guard generation == hostGeneration else { return }
             capabilities = nextCapabilities
+            documentRoutingEnabled = nextCapabilities.supportsSurfaceDocumentV1
         } catch {
             guard generation == hostGeneration else { return }
             capabilities = HostCapabilitiesResult(capabilities: [])
+            documentRoutingEnabled = false
         }
     }
 
@@ -61,6 +69,8 @@ final class RemoteFileFeatureCoordinator {
         capabilities = HostCapabilitiesResult(capabilities: [])
         qaState = nil
         releaseStaleFixtureResponse = nil
+        documents.reset()
+        if purgeAccountCache { documentRoutingEnabled = false }
         await routingRPC.removeTarget()
         await attachments.setHostGeneration(hostGeneration)
         if purgeAccountCache {

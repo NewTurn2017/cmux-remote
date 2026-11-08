@@ -35,6 +35,7 @@ public actor DemoRPCDispatch: RPCDispatch {
     private var thumbnailContinuation: CheckedContinuation<RPCResponse, Never>?
     private var shouldGateThumbnail: Bool
     private var uploadSequence = 0
+    private var documentOpenCount = 0
     private var intentionallyFailedAttachmentNames: Set<String> = []
     private var blockedAttachmentUploadID: String?
     private var blockedAttachmentChunk: CheckedContinuation<RPCResponse, Never>?
@@ -309,10 +310,19 @@ public actor DemoRPCDispatch: RPCDispatch {
             return try encodedResponse(HostCapabilitiesResult(capabilities: [
                 HostCapabilities.chunkUploadV2,
                 HostCapabilities.terminalArtifactsV1,
+                HostCapabilities.surfaceDocumentV1,
             ]))
 
         case .surfaceDocumentOpen:
-            return errorResponse(code: .methodNotFound, message: "Document surfaces are unavailable")
+            let request = try params.decode(SurfaceDocumentOpenRequest.self)
+            guard request.surfaceId == DemoContent.documentSurfaceID else {
+                return errorResponse(code: .surfaceNotDocument, message: "The surface is not a document")
+            }
+            documentOpenCount += 1
+            return try encodedResponse(TerminalArtifactScanResult(
+                generation: DemoContent.fileFeatureScanGeneration + documentOpenCount,
+                artifacts: [DemoContent.documentReadmeArtifact(openCount: documentOpenCount)]
+            ))
 
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
@@ -459,11 +469,15 @@ public actor DemoRPCDispatch: RPCDispatch {
                 image.revision = activeImageRevision
                 var document = DemoContent.fileFeatureDocumentArtifact
                 document.revision = fixtureRevision(document.revision)
+                var artifacts = [image, document]
+                if artifactScenario == "documents" {
+                    artifacts.append(DemoContent.documentNotesArtifact)
+                }
                 let response = try encodedResponse(TerminalArtifactScanResult(
                     generation: replacement
                         ? DemoContent.fileFeatureScanGeneration + 1
                         : DemoContent.fileFeatureScanGeneration,
-                    artifacts: [image, document]
+                    artifacts: artifacts
                 ))
                 if staleFeatureResponseGateEnabled,
                    request.surfaceId == DemoContent.fileFeatureHappySurfaceID
@@ -550,6 +564,19 @@ public actor DemoRPCDispatch: RPCDispatch {
 
         case .artifactFetch:
             let request = try params.decode(TerminalArtifactFetchRequest.self)
+            if let document = DemoContent.documentFixture(artifactID: request.artifactId) {
+                guard request.offset <= document.data.count else {
+                    return errorResponse(code: .invalidOffset, message: "The deterministic document offset is invalid")
+                }
+                return try encodedResponse(TerminalArtifactFetchResult(
+                    artifactId: request.artifactId,
+                    offset: request.offset,
+                    totalBytes: document.data.count,
+                    revision: document.revision,
+                    dataBase64: Data(document.data.dropFirst(request.offset)).base64EncodedString(),
+                    eof: true
+                ))
+            }
             if let artifact = committedArtifacts[request.artifactId],
                request.offset <= artifact.data.count
             {
