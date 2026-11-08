@@ -311,6 +311,9 @@ public actor DemoRPCDispatch: RPCDispatch {
                 HostCapabilities.terminalArtifactsV1,
             ]))
 
+        case .surfaceDocumentOpen:
+            return errorResponse(code: .methodNotFound, message: "Document surfaces are unavailable")
+
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
             uploadSequence += 1

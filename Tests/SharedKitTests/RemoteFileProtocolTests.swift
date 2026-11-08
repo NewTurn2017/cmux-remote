@@ -165,6 +165,41 @@ struct RemoteFileProtocolTests {
         #expect(RemoteRPCMethod.artifactThumbnail.rawValue == "terminal.artifact.thumbnail")
     }
 
+    @Test func surfaceDocumentContractRoundTripsWithoutPathFields() throws {
+        let request = SurfaceDocumentOpenRequest(
+            workspaceId: "56D5FC9A-0897-418B-8811-82FB5388B38F",
+            surfaceId: "FB3FCE15-51F7-4606-860D-22AFAFEC6C3B"
+        )
+        let envelope = try RPCRequest(id: "doc", method: RemoteRPCMethod.surfaceDocumentOpen.rawValue, payload: request)
+
+        #expect(RemoteRPCMethod.surfaceDocumentOpen.rawValue == "surface.document.open")
+        #expect(RemoteRPCMethod(rawValue: "surface.document.open") == .surfaceDocumentOpen)
+        #expect(envelope.params == .object([
+            "workspace_id": .string("56D5FC9A-0897-418B-8811-82FB5388B38F"),
+            "surface_id": .string("FB3FCE15-51F7-4606-860D-22AFAFEC6C3B"),
+        ]))
+        let snakeData = try SharedKitJSON.snakeCaseEncoder.encode(request)
+        #expect(try SharedKitJSON.snakeCaseDecoder.decode(SurfaceDocumentOpenRequest.self, from: snakeData) == request)
+        #expect(try JSONDecoder().decode(SurfaceDocumentOpenRequest.self, from: JSONEncoder().encode(request)) == request)
+
+        let withClientPath = Data(#"{"workspace_id":"w","surface_id":"s","path":"/etc/hosts","file_path":"/etc/hosts","filename":"hosts"}"#.utf8)
+        let decoded = try SharedKitJSON.snakeCaseDecoder.decode(SurfaceDocumentOpenRequest.self, from: withClientPath)
+        #expect(decoded == SurfaceDocumentOpenRequest(workspaceId: "w", surfaceId: "s"))
+        let reencoded = try JSONSerialization.jsonObject(with: SharedKitJSON.snakeCaseEncoder.encode(decoded)) as? [String: Any]
+        #expect(Set(reencoded?.keys.map { $0 } ?? []) == ["workspace_id", "surface_id"])
+
+        #expect(HostCapabilities.surfaceDocumentV1 == "surface.document.v1")
+        #expect(HostCapabilitiesResult.surfaceDocumentV1Capability == "surface.document.v1")
+        #expect(HostCapabilitiesResult(capabilities: ["surface.document.v1"]).supportsSurfaceDocumentV1)
+        #expect(!HostCapabilitiesResult(capabilities: ["terminal.artifact.v1"]).supportsSurfaceDocumentV1)
+
+        #expect(RemoteErrorCode.surfaceNotDocument.rawValue == "surface_not_document")
+        #expect(RemoteErrorCode(rawValue: "surface_not_document") == .surfaceNotDocument)
+        let encodedCode = try JSONEncoder().encode(RemoteErrorCode.surfaceNotDocument)
+        #expect(String(decoding: encodedCode, as: UTF8.self) == #""surface_not_document""#)
+        #expect(try JSONDecoder().decode(RemoteErrorCode.self, from: encodedCode) == .surfaceNotDocument)
+    }
+
     @Test func lockedBoundaryConstantsAreExact() {
         #expect(ChunkUploadLimits.rawChunkBytes == 512 * 1024)
         #expect(ChunkUploadLimits.maxFileBytes == 100 * 1024 * 1024)

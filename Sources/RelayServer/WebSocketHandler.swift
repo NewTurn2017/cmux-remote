@@ -341,6 +341,13 @@ public actor WSProtocolMachine {
                     mimeType: "image/jpeg",
                     dataBase64: thumbnail.data.base64EncodedString()
                 ))
+
+            case .surfaceDocumentOpen:
+                return Self.encode(Self.errorResponse(
+                    id: req.id,
+                    code: RemoteErrorCode.methodNotFound.rawValue,
+                    message: "surface.document.open is not available yet"
+                ))
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {
