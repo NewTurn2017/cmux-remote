@@ -65,6 +65,96 @@ struct TextArtifactLoaderTests {
         #expect(await rpc.callCount(method: fetch) == 1)
     }
 
+    /// The relay sends at most 720 KiB per fetch so one frame stays under 1 MiB.
+    private static let relayChunkBytes = 737_280
+
+    private func fetchOffsets(_ rpc: DocumentRPCStub) async -> [Int64?] {
+        await rpc.params(method: fetch).map { params -> Int64? in
+            if case .object(let object) = params, case .int(let offset)? = object["offset"] { return offset }
+            return nil
+        }
+    }
+
+    /// Enqueues `total` bytes as consecutive relay-budget chunks, all of `body`.
+    private func enqueueRelayChunks(_ body: Data, total: Int, into rpc: DocumentRPCStub, count: Int) async {
+        var offset = 0
+        for _ in 0..<count {
+            let size = min(Self.relayChunkBytes, total - offset)
+            let chunk = body.subdata(in: offset..<(offset + size))
+            let eof = offset + size == total
+            await rpc.enqueue(.response(DocumentFixtures.fetchResponse(offset: offset, total: total, data: chunk, eof: eof)), for: fetch)
+            offset += size
+        }
+    }
+
+    @Test
+    func testJoinsRelayBudgetChunksUpToDisplayLimit() async throws {
+        let rpc = DocumentRPCStub()
+        let total = 3 * 1024 * 1024
+        let body = Data(repeating: UInt8(ascii: "a"), count: total)
+        await enqueueRelayChunks(body, total: total, into: rpc, count: 3)
+
+        let document = try await TextArtifactLoader(rpc: rpc).load(DocumentFixtures.artifact(bytes: total))
+
+        #expect(document.displayedBytes == TextArtifactLoader.displayLimitBytes)
+        #expect(document.isTruncated)
+        #expect(document.totalBytes == total)
+        #expect(await rpc.callCount(method: fetch) == 3)
+        #expect(await fetchOffsets(rpc) == [0, 737_280, 1_474_560])
+    }
+
+    @Test
+    func testDocumentUnderDisplayLimitAcrossChunksIsNotTruncated() async throws {
+        let rpc = DocumentRPCStub()
+        let total = 2 * Self.relayChunkBytes + 102_400
+        let body = Data((0..<total).map { UInt8(ascii: "a") + UInt8($0 % 26) })
+        await enqueueRelayChunks(body, total: total, into: rpc, count: 3)
+
+        let document = try await TextArtifactLoader(rpc: rpc).load(DocumentFixtures.artifact(bytes: total))
+
+        #expect(!document.isTruncated)
+        #expect(document.rawPrefix == body)
+        #expect(await fetchOffsets(rpc) == [0, 737_280, 1_474_560])
+    }
+
+    @Test
+    func testExactlyDisplayLimitAcrossChunksIsNotTruncated() async throws {
+        let rpc = DocumentRPCStub()
+        let total = TextArtifactLoader.displayLimitBytes
+        let body = Data(repeating: UInt8(ascii: "b"), count: total)
+        await enqueueRelayChunks(body, total: total, into: rpc, count: 3)
+
+        let document = try await TextArtifactLoader(rpc: rpc).load(DocumentFixtures.artifact(bytes: total))
+
+        #expect(!document.isTruncated)
+        #expect(document.displayedBytes == total)
+        #expect(await rpc.callCount(method: fetch) == 3)
+    }
+
+    @Test
+    func testCancellationBetweenChunksRequestsNoNextChunk() async throws {
+        let rpc = DocumentRPCStub()
+        let total = 3 * Self.relayChunkBytes
+        let body = Data(repeating: UInt8(ascii: "c"), count: total)
+        await rpc.enqueue(.response(DocumentFixtures.fetchResponse(
+            offset: 0, total: total, data: body.prefix(Self.relayChunkBytes), eof: false
+        )), for: fetch)
+        await rpc.enqueue(.gate("second"), for: fetch)
+
+        let loading = Task { try await TextArtifactLoader(rpc: rpc).load(DocumentFixtures.artifact(bytes: total)) }
+        await rpc.waitUntilReached("second")
+        loading.cancel()
+        await rpc.release("second", with: DocumentFixtures.fetchResponse(
+            offset: Self.relayChunkBytes,
+            total: total,
+            data: body.subdata(in: Self.relayChunkBytes..<(2 * Self.relayChunkBytes)),
+            eof: false
+        ))
+
+        await #expect(throws: CancellationError.self) { _ = try await loading.value }
+        #expect(await rpc.callCount(method: fetch) == 2)
+    }
+
     @Test
     func testDefaultDisplayLimitIsTwoMebibytes() {
         #expect(TextArtifactLoader.displayLimitBytes == 2 * 1024 * 1024)

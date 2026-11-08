@@ -117,6 +117,37 @@ struct TerminalArtifactStoreTests {
     }
 
     @Test @MainActor
+    func testImageFetchJoinsRelayBudgetChunksUntilEOF() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let chunkBytes = 737_280
+        let total = 2 * chunkBytes + 125_440
+        let payload = Data((0..<total).map { UInt8($0 % 251) })
+        await fixture.rpc.enqueue(.response(Self.scanResponse(revision: "r1", bytes: total)), for: "terminal.artifact.scan")
+        await fixture.rpc.enqueue(.response(Self.statResponse(revision: "r1", bytes: total, width: 1, height: 1)), for: "terminal.artifact.stat")
+        for offset in stride(from: 0, to: total, by: chunkBytes) {
+            let end = min(offset + chunkBytes, total)
+            await fixture.rpc.enqueue(.response(Self.fetchResponse(
+                offset: offset, total: total, revision: "r1", data: payload.subdata(in: offset..<end), eof: end == total
+            )), for: "terminal.artifact.fetch")
+        }
+        let store = fixture.makeStore()
+        await store.activate(identity: Self.identity())
+        let artifact = try #require(store.artifacts.first)
+
+        let url = try await store.openViewer(for: artifact)
+
+        #expect(try Data(contentsOf: url) == payload)
+        #expect(await fixture.cache.partialFileCount() == 0)
+        #expect(await fixture.cache.fullEntryCount() == 1)
+        let offsets = await fixture.rpc.recordedCalls(method: "terminal.artifact.fetch").map { call -> Int64? in
+            if case .object(let object) = call.params, case .int(let offset)? = object["offset"] { return offset }
+            return nil
+        }
+        #expect(offsets == [0, 737_280, 1_474_560])
+    }
+
+    @Test @MainActor
     func testRejectsMalformedFetchStreams() async throws {
         for malformed in MalformedFetchCase.allCases {
             let fixture = try StoreFixture()

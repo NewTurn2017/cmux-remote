@@ -2,11 +2,11 @@ import Foundation
 import Testing
 @testable import CmuxRemote
 
-/// Records, without changing it, the receive limit of the WebSocket task the app creates.
+/// The WebSocket task the app creates accepts messages up to 4 MiB on both creation paths.
 @Suite("URLSessionWebSocketCharacterizationTests")
 struct URLSessionWebSocketCharacterizationTests {
     @Test
-    func characterizesDefaultMaximumMessageSizeOfAppWebSocketTask() async throws {
+    func appWebSocketTaskAllowsFourMebibyteMessages() async throws {
         let url = try #require(URL(string: "ws://127.0.0.1:9/ws"))
         let factory = URLSessionWebSocketConnectionFactory()
         var sizes: [String: Int] = [:]
@@ -24,8 +24,8 @@ struct URLSessionWebSocketCharacterizationTests {
             sizes[path] = task.maximumMessageSize
             await connection.cancel()
         }
-        print("characterization: URLSessionWebSocketTask.maximumMessageSize request=\(sizes["request"] ?? -1) protocols=\(sizes["protocols"] ?? -1)")
-        #expect(sizes["request"] == 1_048_576)
-        #expect(sizes["protocols"] == 1_048_576)
+        #expect(URLSessionWebSocketConnectionFactory.maximumMessageBytes == 4_194_304)
+        #expect(sizes["request"] == URLSessionWebSocketConnectionFactory.maximumMessageBytes)
+        #expect(sizes["protocols"] == URLSessionWebSocketConnectionFactory.maximumMessageBytes)
     }
 }

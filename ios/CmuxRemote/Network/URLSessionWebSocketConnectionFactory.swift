@@ -1,6 +1,9 @@
 import Foundation
 
 struct URLSessionWebSocketConnectionFactory: WSClientConnectionFactory {
+    /// Largest WebSocket message the app accepts. URLSession's default is 1 MiB.
+    static let maximumMessageBytes = 4 * 1024 * 1024
+
     func makeConnection(
         url: URL,
         headers: [String: String],
@@ -29,6 +32,7 @@ struct URLSessionWebSocketConnectionFactory: WSClientConnectionFactory {
         } else {
             task = session.webSocketTask(with: url, protocols: protocols)
         }
+        task.maximumMessageSize = Self.maximumMessageBytes
         return URLSessionWebSocketConnection(session: session, task: task)
     }
 }
