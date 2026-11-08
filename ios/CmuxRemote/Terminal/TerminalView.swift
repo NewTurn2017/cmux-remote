@@ -114,6 +114,18 @@ struct TerminalView: View {
                                         controller: selectionController
                                     )
                                 }
+                                .background {
+                                    // Lives inside the vertical scroll content so it can
+                                    // attach to its nearest enclosing UIScrollView.
+                                    TerminalOverscrollObserver(
+                                        activeScreen: activeScreen,
+                                        interactionBlocked: !selectionController.allowsScrolling
+                                            || pinchAnchorFontSize != nil,
+                                        onPage: onPageRequest,
+                                        onHint: { pagingHint = $0 }
+                                    )
+                                    .allowsHitTesting(false)
+                                }
 
                                 Color.clear
                                     .frame(width: contentWidth, height: bottomScrollPadding)
@@ -162,15 +174,6 @@ struct TerminalView: View {
 
                     Color.clear.frame(height: bottomInset)
                 }
-
-                TerminalOverscrollObserver(
-                    activeScreen: activeScreen,
-                    interactionBlocked: !selectionController.allowsScrolling || pinchAnchorFontSize != nil,
-                    onPage: onPageRequest,
-                    onHint: { pagingHint = $0 }
-                )
-                .frame(width: 1, height: 1)
-                .allowsHitTesting(false)
 
                 pagingHintOverlay(topInset: topInset, bottomInset: bottomInset)
                     .animation(.easeOut(duration: 0.15), value: pagingHint)

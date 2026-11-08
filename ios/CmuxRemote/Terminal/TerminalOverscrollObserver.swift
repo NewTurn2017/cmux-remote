@@ -81,21 +81,17 @@ final class TerminalOverscrollObserverView: UIView {
         }
     }
 
+    /// The nearest enclosing `UIScrollView`, which is the vertical terminal
+    /// viewport because this view sits inside its content.
+    ///
+    /// Matching the SwiftUI `accessibilityIdentifier` instead only worked under
+    /// XCUITest: on an iPhone (iOS 26.6.2) no scroll view carried the identifier,
+    /// so the observer never attached and no pull ever paged.
     private func findViewport() -> UIScrollView? {
         var ancestor = superview
         while let current = ancestor {
-            if let found = Self.viewport(in: current) { return found }
+            if let scrollView = current as? UIScrollView { return scrollView }
             ancestor = current.superview
-        }
-        return nil
-    }
-
-    private static func viewport(in view: UIView) -> UIScrollView? {
-        if let scrollView = view as? UIScrollView, scrollView.accessibilityIdentifier == "TerminalViewport" {
-            return scrollView
-        }
-        for subview in view.subviews {
-            if let found = viewport(in: subview) { return found }
         }
         return nil
     }
