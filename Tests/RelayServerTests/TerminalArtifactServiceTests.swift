@@ -30,10 +30,12 @@ struct TerminalArtifactServiceTests {
         private var terminalGrid: [String]
         private var terminalRevision: Int
         private let operationHook: @Sendable (String) -> Void
+        private let workspaceList: TerminalArtifactService.NativeResult?
 
         init(
             nativeScan: TerminalArtifactService.NativeResult = .failure(code: "method_not_found"),
             nativeOperations: [String: TerminalArtifactService.NativeResult] = [:],
+            workspaceList: TerminalArtifactService.NativeResult? = nil,
             terminalText: String,
             cwd: String?,
             grid: [String]? = nil,
@@ -42,6 +44,7 @@ struct TerminalArtifactServiceTests {
         ) {
             self.nativeScan = nativeScan
             self.nativeOperations = nativeOperations
+            self.workspaceList = workspaceList
             self.terminalText = terminalText
             self.cwd = cwd
             self.terminalGrid = grid ?? terminalText.split(separator: "\n").map(String.init)
@@ -57,6 +60,7 @@ struct TerminalArtifactServiceTests {
                 terminalRevision &+= 1
             }
             if method == "mobile.terminal.artifact.scan" { return nativeScan }
+            if method == "mobile.workspace.list", let workspaceList { return workspaceList }
             if let response = nativeOperations[method] { return response }
             if method == "surface.read_text" {
                 return .success(.object(["text": .string(terminalText)]))
@@ -880,6 +884,221 @@ struct TerminalArtifactServiceTests {
                 generation: scan.generation, artifactID: item.id
             )
         }
+    }
+
+    @Test("document open registers the cmux markdown path and fetch returns its bytes")
+    func documentOpenRegistersMarkdownPath() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let content = Data("# Probe\n\nhello **md**\n".utf8)
+        let document = try write(content, named: "probe.md", in: root)
+        let dispatcher = Dispatcher(
+            workspaceList: workspaceListing(workspaceID: "WORKSPACE", surfaces: [
+                surfaceEntry(id: "terminal-surface", kind: "terminal", filePath: nil),
+                surfaceEntry(filePath: document.path),
+            ]),
+            terminalText: "",
+            cwd: nil
+        )
+        let service = makeService(dispatcher: dispatcher)
+
+        let opened = try await service.openDocument(scope: scope())
+        let artifact = try #require(opened.artifacts.first)
+        let chunk = try await service.fetch(deviceID: "device", artifactID: artifact.id, offset: 0)
+
+        #expect(opened.artifacts.count == 1)
+        #expect(opened.generation == 1)
+        #expect(opened.source == .surfaceDocument)
+        #expect(artifact.displayName == "probe.md")
+        #expect(artifact.mimeType == "text/markdown")
+        #expect(artifact.kind == "text")
+        #expect(artifact.size == Int64(content.count))
+        #expect(!artifact.id.contains(root.path))
+        #expect(chunk.data == content && chunk.eof)
+        #expect(chunk.totalSize == artifact.size && chunk.revision == artifact.revision)
+        #expect(await dispatcher.snapshotCalls().map(\.method) == ["mobile.workspace.list"])
+        #expect(await dispatcher.snapshotCalls().first?.params == .object([:]))
+        await #expect(throws: TerminalArtifactService.Error.forbidden) {
+            _ = try await service.stat(
+                scope: scope(surfaceID: "terminal-surface"),
+                generation: opened.generation, artifactID: artifact.id
+            )
+        }
+    }
+
+    @Test(
+        "document open refuses surfaces that are not cmux markdown documents",
+        arguments: [
+            "terminal-kind", "browser-kind", "null-file-path", "relative-file-path",
+            "missing-workspace", "missing-surface", "no-workspaces-key", "non-object-result",
+        ]
+    )
+    func documentOpenRejectsNonDocumentSurfaces(variant: String) async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let document = try write(Data("# x".utf8), named: "doc.md", in: root)
+        let listing: TerminalArtifactService.NativeResult
+        switch variant {
+        case "terminal-kind":
+            listing = workspaceListing(surfaces: [surfaceEntry(kind: "terminal", filePath: document.path)])
+        case "browser-kind":
+            listing = workspaceListing(surfaces: [surfaceEntry(kind: "browser", filePath: document.path)])
+        case "null-file-path":
+            listing = workspaceListing(surfaces: [surfaceEntry(filePath: nil)])
+        case "relative-file-path":
+            listing = workspaceListing(surfaces: [surfaceEntry(filePath: "doc.md")])
+        case "missing-workspace":
+            listing = workspaceListing(workspaceID: "other", surfaces: [surfaceEntry(filePath: document.path)])
+        case "missing-surface":
+            listing = workspaceListing(surfaces: [surfaceEntry(id: "other", filePath: document.path)])
+        case "no-workspaces-key":
+            listing = .success(.object(["groups": .array([])]))
+        default:
+            listing = .success(.array([]))
+        }
+        let dispatcher = Dispatcher(workspaceList: listing, terminalText: "", cwd: nil)
+
+        await #expect(throws: TerminalArtifactService.Error.surfaceNotDocument) {
+            _ = try await makeService(dispatcher: dispatcher).openDocument(scope: scope())
+        }
+        #expect(await dispatcher.snapshotCalls().map(\.method) == ["mobile.workspace.list"])
+    }
+
+    @Test("document open maps an unsupported workspace list to surface_not_document and keeps other cmux failures")
+    func documentOpenMapsMethodNotFoundToSurfaceNotDocument() async throws {
+        let unsupported = Dispatcher(
+            workspaceList: .failure(code: "method_not_found"), terminalText: "", cwd: nil
+        )
+        await #expect(throws: TerminalArtifactService.Error.surfaceNotDocument) {
+            _ = try await makeService(dispatcher: unsupported).openDocument(scope: scope())
+        }
+        let failing = Dispatcher(workspaceList: .failure(code: "internal_error"), terminalText: "", cwd: nil)
+        await #expect(throws: TerminalArtifactService.Error.native("internal_error")) {
+            _ = try await makeService(dispatcher: failing).openDocument(scope: scope())
+        }
+    }
+
+    @Test("document open reports a missing file as not found and an oversized file as size limit exceeded")
+    func documentOpenMissingAndOversizedFiles() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let missing = root.appendingPathComponent("gone.md").path
+        let missingDispatcher = Dispatcher(
+            workspaceList: workspaceListing(surfaces: [surfaceEntry(filePath: missing)]),
+            terminalText: "", cwd: nil
+        )
+        await #expect(throws: TerminalArtifactService.Error.fileNotFound) {
+            _ = try await makeService(dispatcher: missingDispatcher).openDocument(scope: scope())
+        }
+
+        let exact = try write(Data(repeating: 0x61, count: 10), named: "exact.md", in: root)
+        let over = try write(Data(repeating: 0x61, count: 11), named: "over.md", in: root)
+        let exactService = makeService(dispatcher: Dispatcher(
+            workspaceList: workspaceListing(surfaces: [surfaceEntry(filePath: exact.path)]),
+            terminalText: "", cwd: nil
+        ))
+        let overService = makeService(dispatcher: Dispatcher(
+            workspaceList: workspaceListing(surfaces: [surfaceEntry(filePath: over.path)]),
+            terminalText: "", cwd: nil
+        ))
+
+        #expect(try await exactService.openDocument(scope: scope(), maximumBytes: 10).artifacts.count == 1)
+        await #expect(throws: TerminalArtifactService.Error.sizeLimitExceeded) {
+            _ = try await overService.openDocument(scope: scope(), maximumBytes: 10)
+        }
+        #expect(TerminalArtifactService.maximumDocumentBytes == 16 * 1_024 * 1_024)
+    }
+
+    @Test("document open follows only the /tmp alias and still rejects other symlinks")
+    func documentOpenFollowsPrivateTmpAliasOnly() async throws {
+        let name = "cmux-document-\(UUID().uuidString)"
+        let real = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: real) }
+        let content = Data("# tmp alias\n".utf8)
+        _ = try write(content, named: "doc.md", in: real)
+        try FileManager.default.createSymbolicLink(
+            at: real.appendingPathComponent("link.md"),
+            withDestinationURL: real.appendingPathComponent("doc.md")
+        )
+        let nestedDirectory = real.appendingPathComponent("real", isDirectory: true)
+        try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: false)
+        _ = try write(Data("# nested".utf8), named: "nested.md", in: nestedDirectory)
+        try FileManager.default.createSymbolicLink(
+            at: real.appendingPathComponent("linked"), withDestinationURL: nestedDirectory
+        )
+        func service(for cmuxPath: String) -> TerminalArtifactService {
+            makeService(dispatcher: Dispatcher(
+                workspaceList: workspaceListing(surfaces: [surfaceEntry(filePath: cmuxPath)]),
+                terminalText: "", cwd: nil
+            ))
+        }
+
+        let aliased = service(for: "/tmp/\(name)/doc.md")
+        let opened = try await aliased.openDocument(scope: scope())
+        let artifact = try #require(opened.artifacts.first)
+        let chunk = try await aliased.fetch(deviceID: "device", artifactID: artifact.id, offset: 0)
+
+        #expect(artifact.displayName == "doc.md")
+        #expect(chunk.data == content && chunk.eof)
+        await #expect(throws: TerminalArtifactService.Error.unsupportedMedia) {
+            _ = try await service(for: "/tmp/\(name)/link.md").openDocument(scope: scope())
+        }
+        await #expect(throws: TerminalArtifactService.Error.fileNotFound) {
+            _ = try await service(for: "/tmp/\(name)/linked/nested.md").openDocument(scope: scope())
+        }
+    }
+
+    @Test("bare relative terminal paths resolve against the surface cwd and register only existing files")
+    func bareRelativePathsUseSurfaceWorkingDirectory() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let docs = root.appendingPathComponent("docs", isDirectory: true)
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: false)
+        _ = try write(Data("plan".utf8), named: "plan.md", in: docs)
+        _ = try write(Data("readme".utf8), named: "README.md", in: root)
+        let source = root.appendingPathComponent("src/a", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        _ = try write(Data("let x = 1".utf8), named: "b.swift", in: source)
+        let text = "see docs/plan.md and README.md, missing/none.md, src/a/b.swift:12:3 v1.2.3 example.com"
+
+        let withCwd = try await makeService(dispatcher: Dispatcher(terminalText: text, cwd: root.path))
+            .scan(scope: scope())
+        let withoutCwd = try await makeService(dispatcher: Dispatcher(terminalText: text, cwd: nil))
+            .scan(scope: scope())
+
+        #expect(withCwd.artifacts.map(\.displayName) == ["plan.md", "README.md", "b.swift"])
+        #expect(withoutCwd.artifacts.isEmpty)
+    }
+
+    private func workspaceListing(
+        workspaceID: String = "workspace",
+        surfaces: [JSONValue]
+    ) -> TerminalArtifactService.NativeResult {
+        .success(.object([
+            "groups": .array([]),
+            "workspaces": .array([.object([
+                "id": .string(workspaceID),
+                "title": .string("w2 probe"),
+                "current_directory": .string("/private/tmp"),
+                "surfaces": .array(surfaces),
+            ])]),
+        ]))
+    }
+
+    private func surfaceEntry(
+        id: String = "surface",
+        kind: String = "markdown",
+        filePath: String?
+    ) -> JSONValue {
+        .object([
+            "surface_id": .string(id),
+            "kind": .string(kind),
+            "file_path": filePath.map(JSONValue.string) ?? .null,
+            "is_focused": .bool(false),
+            "title": .string("document"),
+        ])
     }
 
     private func makeService(

@@ -214,8 +214,116 @@ final class WebSocketHandlerTests: XCTestCase {
         let response = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
         let capabilities = try response.decodeResult(HostCapabilitiesResult.self)
 
-        expect(capabilities.capabilities == ["file.upload.v2", "terminal.artifact.v1"])
+        expect(capabilities.capabilities == ["file.upload.v2", "terminal.artifact.v1", "surface.document.v1"])
+        expect(capabilities.supportsSurfaceDocumentV1)
         expect(await cmux.snapshot() == [])
+    }
+
+    func testSurfaceDocumentOpenIgnoresClientSuppliedPath() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let content = Data("# Probe\n\nhello **md**\n".utf8)
+        let document = directory.appendingPathComponent("probe.md")
+        try content.write(to: document)
+        let cmux = RecordingCMUXFacade()
+        let machine = WSProtocolMachine(
+            cmux: cmux,
+            authenticatedDeviceID: "document-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: documentArtifactService(surfaces: [
+                "S": .object(["kind": .string("markdown"), "file_path": .string(document.path)]),
+            ])
+        )
+        _ = await hello(machine)
+
+        let response = try await rpc(machine, id: "doc", method: RemoteRPCMethod.surfaceDocumentOpen.rawValue, params: .object([
+            "workspace_id": .string("W"),
+            "surface_id": .string("S"),
+            "path": .string("/etc/hosts"),
+            "file_path": .string("/etc/hosts"),
+            "filename": .string("hosts"),
+        ]))
+        let opened = try response.decodeResult(TerminalArtifactScanResult.self)
+        let artifact = try require(opened.artifacts.first)
+        let chunk = try await typedRPC(
+            machine,
+            id: "doc-fetch",
+            method: RemoteRPCMethod.artifactFetch.rawValue,
+            payload: TerminalArtifactFetchRequest(artifactId: artifact.artifactId, offset: 0),
+            result: TerminalArtifactFetchResult.self
+        )
+
+        XCTAssertEqual(opened.artifacts.count, 1)
+        XCTAssertEqual(artifact.filename, "probe.md")
+        XCTAssertEqual(artifact.mimeType, "text/markdown")
+        XCTAssertEqual(artifact.bytes, content.count)
+        XCTAssertFalse(artifact.isImage)
+        XCTAssertEqual(try chunk.decodedBytes(), content)
+        XCTAssertEqual(chunk.totalBytes, artifact.bytes)
+        XCTAssertEqual(chunk.revision, artifact.revision)
+        XCTAssertTrue(chunk.eof)
+        expect(await cmux.snapshot() == [])
+    }
+
+    func testSurfaceDocumentOpenErrorCodesOnWire() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let oversized = directory.appendingPathComponent("large.md")
+        XCTAssertTrue(FileManager.default.createFile(atPath: oversized.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: oversized)
+        try handle.truncate(atOffset: UInt64(TerminalArtifactService.maximumDocumentBytes + 1))
+        try handle.close()
+        let machine = WSProtocolMachine(
+            cmux: RecordingCMUXFacade(),
+            authenticatedDeviceID: "document-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: documentArtifactService(surfaces: [
+                "terminal": .object(["kind": .string("terminal"), "file_path": .null]),
+                "missing": .object([
+                    "kind": .string("markdown"),
+                    "file_path": .string(directory.appendingPathComponent("gone.md").path),
+                ]),
+                "large": .object(["kind": .string("markdown"), "file_path": .string(oversized.path)]),
+            ])
+        )
+        _ = await hello(machine)
+        func open(_ surface: String, workspace: String = "W") async throws -> RPCResponse {
+            try await rpc(machine, id: "doc-\(surface)", method: RemoteRPCMethod.surfaceDocumentOpen.rawValue, params: .object([
+                "workspace_id": .string(workspace), "surface_id": .string(surface),
+            ]))
+        }
+
+        let terminal = try await open("terminal")
+        let unknown = try await open("unknown")
+        let missing = try await open("missing")
+        let large = try await open("large")
+        let emptyWorkspace = try await open("terminal", workspace: "")
+        let unsupportedMachine = WSProtocolMachine(
+            cmux: RecordingCMUXFacade(),
+            authenticatedDeviceID: "document-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: TerminalArtifactService(dispatchNative: { _, _ in .failure(code: "method_not_found") })
+        )
+        _ = await hello(unsupportedMachine)
+        let unsupported = try await rpc(unsupportedMachine, id: "doc-old", method: RemoteRPCMethod.surfaceDocumentOpen.rawValue, params: .object([
+            "workspace_id": .string("W"), "surface_id": .string("S"),
+        ]))
+
+        XCTAssertEqual(terminal.error?.code, "surface_not_document")
+        XCTAssertEqual(terminal.error?.data, .object(["field": .string("surface_id")]))
+        XCTAssertEqual(unknown.error?.code, "surface_not_document")
+        XCTAssertEqual(unsupported.error?.code, "surface_not_document")
+        XCTAssertEqual(missing.error?.code, "not_found")
+        XCTAssertEqual(large.error?.code, "size_limit_exceeded")
+        XCTAssertEqual(large.error?.data, .object([
+            "field": .string("bytes"), "max_bytes": .int(16 * 1_024 * 1_024),
+        ]))
+        XCTAssertEqual(emptyWorkspace.error?.code, "invalid_field")
+        for response in [terminal, unknown, unsupported, missing, large, emptyWorkspace] {
+            XCTAssertEqual(response.ok, false)
+            XCTAssertFalse(response.error?.message.contains(directory.path) ?? true)
+            XCTAssertFalse(response.error?.message.contains("/") ?? true)
+        }
     }
 
     func testAuthenticatedDeviceCanUploadMultipleChunksCommitAndCancel() async throws {
@@ -735,6 +843,20 @@ final class WebSocketHandlerTests: XCTestCase {
             .appendingPathComponent("cmux-ws-protocol-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         return url
+    }
+
+    private func documentArtifactService(surfaces: [String: JSONValue]) -> TerminalArtifactService {
+        let entries: [JSONValue] = surfaces.keys.sorted().map { id in
+            guard case .object(var fields) = surfaces[id] else { return .null }
+            fields["surface_id"] = .string(id)
+            return .object(fields)
+        }
+        let listing = JSONValue.object([
+            "workspaces": .array([.object(["id": .string("W"), "surfaces": .array(entries)])]),
+        ])
+        return TerminalArtifactService(dispatchNative: { method, _ in
+            method == "mobile.workspace.list" ? .success(listing) : .failure(code: "method_not_found")
+        })
     }
 
     private func inertArtifactService(cmux: any CMUXFacade) -> TerminalArtifactService {

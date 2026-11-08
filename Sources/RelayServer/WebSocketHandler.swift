@@ -200,6 +200,7 @@ public actor WSProtocolMachine {
                     HostCapabilitiesResult(capabilities: [
                         HostCapabilitiesResult.chunkUploadV2Capability,
                         HostCapabilitiesResult.terminalArtifactsV1Capability,
+                        HostCapabilitiesResult.surfaceDocumentV1Capability,
                     ])
                 )
 
@@ -278,19 +279,7 @@ public actor WSProtocolMachine {
                     workspaceID: request.workspaceId,
                     surfaceID: request.surfaceId
                 ), trustedUploadedPaths: recentUploads.map(\.path))
-                result = try Self.jsonValue(TerminalArtifactScanResult(
-                    generation: scan.generation,
-                    artifacts: scan.artifacts.map {
-                        TerminalArtifact(
-                            artifactId: $0.id,
-                            filename: $0.displayName,
-                            mimeType: $0.mimeType ?? "application/octet-stream",
-                            bytes: Int($0.size),
-                            revision: $0.revision,
-                            isImage: $0.kind == "image"
-                        )
-                    }
-                ))
+                result = try Self.scanResultValue(scan)
 
             case .artifactStat:
                 let request = try Self.decode(TerminalArtifactStatRequest.self, from: req.params)
@@ -343,11 +332,19 @@ public actor WSProtocolMachine {
                 ))
 
             case .surfaceDocumentOpen:
-                return Self.encode(Self.errorResponse(
-                    id: req.id,
-                    code: RemoteErrorCode.methodNotFound.rawValue,
-                    message: "surface.document.open is not available yet"
+                let request = try Self.decode(SurfaceDocumentOpenRequest.self, from: req.params)
+                guard !request.workspaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("workspace_id")
+                }
+                guard !request.surfaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("surface_id")
+                }
+                let document = try await artifactService.openDocument(scope: .init(
+                    deviceID: authenticatedDeviceID,
+                    workspaceID: request.workspaceId,
+                    surfaceID: request.surfaceId
                 ))
+                result = try Self.scanResultValue(document)
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {
@@ -372,6 +369,22 @@ public actor WSProtocolMachine {
     ) throws -> Value {
         let data = try JSONEncoder().encode(params)
         return try SharedKitJSON.snakeCaseDecoder.decode(type, from: data)
+    }
+
+    private static func scanResultValue(_ scan: TerminalArtifactService.ScanResult) throws -> JSONValue {
+        try jsonValue(TerminalArtifactScanResult(
+            generation: scan.generation,
+            artifacts: scan.artifacts.map {
+                TerminalArtifact(
+                    artifactId: $0.id,
+                    filename: $0.displayName,
+                    mimeType: $0.mimeType ?? "application/octet-stream",
+                    bytes: Int($0.size),
+                    revision: $0.revision,
+                    isImage: $0.kind == "image"
+                )
+            }
+        ))
     }
 
     private static func jsonValue<Value: Encodable>(_ value: Value) throws -> JSONValue {
@@ -442,6 +455,23 @@ public actor WSProtocolMachine {
             return errorResponse(id: id, code: "invalid_field", message: "Artifact request parameters are invalid")
         case .unsupportedMedia:
             return errorResponse(id: id, code: "unsupported_media", message: "Artifact media is unsupported", field: "artifact_id")
+        case .surfaceNotDocument:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.surfaceNotDocument.rawValue,
+                message: "Surface is not an open document",
+                field: "surface_id"
+            )
+        case .sizeLimitExceeded:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.sizeLimitExceeded.rawValue,
+                message: "Document exceeds the relay size limit",
+                data: .object([
+                    "field": .string("bytes"),
+                    "max_bytes": .int(TerminalArtifactService.maximumDocumentBytes),
+                ])
+            )
         case .native(let code):
             let mapped: String
             switch code {

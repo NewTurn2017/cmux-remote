@@ -17,6 +17,7 @@ actor ArtifactAuthorizationStore {
     enum Source: String, Sendable, Equatable {
         case native
         case relayFallback = "relay_fallback"
+        case surfaceDocument = "surface_document"
     }
 
     struct FileIdentity: Sendable, Equatable {
