@@ -6,6 +6,9 @@ import SharedKit
 /// them a populated, navigable surface to evaluate the app against).
 enum DemoContent {
     static let documentSurfaceID = "SF-DEMO-TABS-MD"
+    static let browserSurfaceID = "SF-DEMO-TABS-WEB"
+    static let browserURL = "http://localhost:3000/"
+    static let browserTitlePrefix = "cmux Remote demo · #"
     static let documentReadmeArtifactPrefix = "demo-document-readme-"
     static let documentNotesBytes = Data("""
     # Release notes

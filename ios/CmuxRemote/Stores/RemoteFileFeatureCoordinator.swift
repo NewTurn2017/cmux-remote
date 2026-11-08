@@ -8,6 +8,7 @@ final class RemoteFileFeatureCoordinator {
     let attachments: AttachmentCoordinator
     let terminalArtifacts: TerminalArtifactStore
     let documents: SurfaceDocumentStore
+    let browsers: SurfaceBrowserStore
 
     private let routingRPC: OfflineRPCDispatch
 
@@ -15,6 +16,8 @@ final class RemoteFileFeatureCoordinator {
     /// Survives disconnects so a document tab keeps its error screen instead of
     /// falling back to the card; only a capability answer or an account purge changes it.
     private(set) var documentRoutingEnabled = false
+    /// Same lifetime as `documentRoutingEnabled`, for `surface.browser.v1`.
+    private(set) var browserRoutingEnabled = false
     private(set) var hostGeneration = 0
     private(set) var hostID = "offline"
     private(set) var accountScope = "offline"
@@ -24,12 +27,14 @@ final class RemoteFileFeatureCoordinator {
     init(
         routingRPC: OfflineRPCDispatch,
         attachments: AttachmentCoordinator,
-        terminalArtifacts: TerminalArtifactStore
+        terminalArtifacts: TerminalArtifactStore,
+        browserRefreshSeconds: Double = BrowserRefreshPolicy.defaultIntervalSeconds
     ) {
         self.routingRPC = routingRPC
         self.attachments = attachments
         self.terminalArtifacts = terminalArtifacts
         self.documents = SurfaceDocumentStore(rpc: routingRPC)
+        self.browsers = SurfaceBrowserStore(rpc: routingRPC, baseIntervalSeconds: browserRefreshSeconds)
     }
 
     func connect(
@@ -43,6 +48,7 @@ final class RemoteFileFeatureCoordinator {
         self.accountScope = accountScope
         capabilities = HostCapabilitiesResult(capabilities: [])
         documents.reset()
+        browsers.reset()
         await routingRPC.install(rpc)
         await attachments.setHostGeneration(generation)
         await terminalArtifacts.activate(identity: nil)
@@ -55,10 +61,12 @@ final class RemoteFileFeatureCoordinator {
             guard generation == hostGeneration else { return }
             capabilities = nextCapabilities
             documentRoutingEnabled = nextCapabilities.supportsSurfaceDocumentV1
+            browserRoutingEnabled = nextCapabilities.supportsSurfaceBrowserV1
         } catch {
             guard generation == hostGeneration else { return }
             capabilities = HostCapabilitiesResult(capabilities: [])
             documentRoutingEnabled = false
+            browserRoutingEnabled = false
         }
     }
 
@@ -70,7 +78,11 @@ final class RemoteFileFeatureCoordinator {
         qaState = nil
         releaseStaleFixtureResponse = nil
         documents.reset()
-        if purgeAccountCache { documentRoutingEnabled = false }
+        browsers.reset()
+        if purgeAccountCache {
+            documentRoutingEnabled = false
+            browserRoutingEnabled = false
+        }
         await routingRPC.removeTarget()
         await attachments.setHostGeneration(hostGeneration)
         if purgeAccountCache {

@@ -2336,6 +2336,214 @@
           }
         }
       }
+    },
+    "browser.error.not_browser": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This tab can't be viewed. It may have been closed, or it isn't a browser tab."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 탭을 볼 수 없습니다. 닫혔거나 브라우저 탭이 아닙니다."
+          }
+        }
+      }
+    },
+    "browser.error.temporarily_unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Mac didn't answer in time. Retrying shortly."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "맥이 제때 응답하지 않았습니다. 잠시 뒤 다시 시도합니다."
+          }
+        }
+      }
+    },
+    "browser.error.disconnected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnected from the relay. Reconnect, then try again."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "relay와 연결이 끊겼습니다. 다시 연결한 뒤 시도하세요."
+          }
+        }
+      }
+    },
+    "browser.error.too_large": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This page's screenshot is too large to show."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "페이지 화면이 너무 커서 보일 수 없습니다."
+          }
+        }
+      }
+    },
+    "browser.error.invalid_image": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The page screenshot couldn't be displayed."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "페이지 화면을 표시할 수 없습니다."
+          }
+        }
+      }
+    },
+    "browser.error.generic": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The page screenshot couldn't be updated."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "페이지 화면을 갱신하지 못했습니다."
+          }
+        }
+      }
+    },
+    "browser.viewer.no_url": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No address"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "주소 없음"
+          }
+        }
+      }
+    },
+    "browser.viewer.updated": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 갱신"
+          }
+        }
+      }
+    },
+    "browser.viewer.refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh page screenshot"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "페이지 화면 새로고침"
+          }
+        }
+      }
+    },
+    "browser.viewer.stale": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't update. Showing the last capture."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "갱신 실패 · 마지막 화면을 보여 줍니다."
+          }
+        }
+      }
+    },
+    "browser.viewer.image_label": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screenshot of %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 화면"
+          }
+        }
+      }
+    },
+    "browser.viewer.loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading page…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "페이지 불러오는 중…"
+          }
+        }
+      }
+    },
+    "browser.viewer.retry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try again"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다시 시도"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

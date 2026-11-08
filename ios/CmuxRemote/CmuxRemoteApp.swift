@@ -37,8 +37,23 @@ struct CmuxRemoteApp: App {
         _remoteFiles = State(initialValue: RemoteFileFeatureCoordinator(
             routingRPC: routingRPC,
             attachments: attachments,
-            terminalArtifacts: terminalArtifacts
+            terminalArtifacts: terminalArtifacts,
+            browserRefreshSeconds: Self.browserRefreshSeconds()
         ))
+    }
+
+    /// UI tests may stretch the browser refresh interval so a manual refresh is observable on its own.
+    private static func browserRefreshSeconds() -> Double {
+        #if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["CMUX_UI_TEST_FILE_FEATURE_FIXTURES"] == "1",
+           let seconds = environment["CMUX_UI_TEST_BROWSER_REFRESH_SECONDS"].flatMap(Double.init),
+           seconds > 0
+        {
+            return seconds
+        }
+        #endif
+        return BrowserRefreshPolicy.defaultIntervalSeconds
     }
 
     var body: some Scene {

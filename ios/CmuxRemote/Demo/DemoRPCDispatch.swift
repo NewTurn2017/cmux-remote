@@ -36,6 +36,7 @@ public actor DemoRPCDispatch: RPCDispatch {
     private var shouldGateThumbnail: Bool
     private var uploadSequence = 0
     private var documentOpenCount = 0
+    private var browserCaptureCount = 0
     private var intentionallyFailedAttachmentNames: Set<String> = []
     private var blockedAttachmentUploadID: String?
     private var blockedAttachmentChunk: CheckedContinuation<RPCResponse, Never>?
@@ -311,6 +312,7 @@ public actor DemoRPCDispatch: RPCDispatch {
                 HostCapabilities.chunkUploadV2,
                 HostCapabilities.terminalArtifactsV1,
                 HostCapabilities.surfaceDocumentV1,
+                HostCapabilities.surfaceBrowserV1,
             ]))
 
         case .surfaceDocumentOpen:
@@ -325,7 +327,23 @@ public actor DemoRPCDispatch: RPCDispatch {
             ))
 
         case .surfaceBrowserCapture:
-            return errorResponse(code: .methodNotFound, message: "Browser surfaces are unavailable")
+            let request = try params.decode(SurfaceBrowserCaptureRequest.self)
+            guard request.surfaceId == DemoContent.browserSurfaceID else {
+                return errorResponse(code: .surfaceNotBrowser, message: "The surface is not a browser")
+            }
+            browserCaptureCount += 1
+            let jpeg = DemoBrowserCapture.jpegData(captureNumber: browserCaptureCount)
+            return try encodedResponse(SurfaceBrowserCaptureResult(
+                imageBase64: jpeg.base64EncodedString(),
+                mimeType: "image/jpeg",
+                width: DemoBrowserCapture.width,
+                height: DemoBrowserCapture.height,
+                sourceWidth: DemoBrowserCapture.sourceWidth,
+                sourceHeight: DemoBrowserCapture.sourceHeight,
+                url: DemoContent.browserURL,
+                title: "\(DemoContent.browserTitlePrefix)\(browserCaptureCount)",
+                capturedAt: Int64(Date().timeIntervalSince1970 * 1000)
+            ))
 
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)

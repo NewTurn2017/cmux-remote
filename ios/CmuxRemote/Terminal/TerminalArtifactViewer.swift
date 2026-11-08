@@ -14,7 +14,7 @@ struct TerminalArtifactViewer: View {
                 .ignoresSafeArea()
 
             if let image {
-                TerminalArtifactZoomImage(image: image, filename: filename)
+                ZoomableImageView(image: image, accessibilityLabel: filename, configuration: .artifactViewer)
                     .ignoresSafeArea(.container, edges: .bottom)
             } else {
                 VStack(spacing: 12) {
@@ -74,92 +74,5 @@ struct TerminalArtifactViewer: View {
             image = UIImage(contentsOfFile: url.path)
         }
         .accessibilityAction(.escape, onClose)
-    }
-}
-
-private struct TerminalArtifactZoomImage: UIViewRepresentable {
-    let image: UIImage
-    let filename: String
-
-    func makeUIView(context: Context) -> TerminalArtifactZoomScrollView {
-        let view = TerminalArtifactZoomScrollView()
-        view.setImage(image, filename: filename)
-        return view
-    }
-
-    func updateUIView(_ view: TerminalArtifactZoomScrollView, context: Context) {
-        view.setImage(image, filename: filename)
-    }
-}
-
-private final class TerminalArtifactZoomScrollView: UIScrollView, UIScrollViewDelegate {
-    private let artifactImageView = UIImageView()
-    private var sourceSize: CGSize = .zero
-    private var laidOutBounds: CGSize = .zero
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        delegate = self
-        showsHorizontalScrollIndicator = false
-        showsVerticalScrollIndicator = false
-        bouncesZoom = true
-        decelerationRate = .fast
-        backgroundColor = .clear
-        contentInsetAdjustmentBehavior = .never
-
-        artifactImageView.contentMode = .scaleAspectFit
-        artifactImageView.isAccessibilityElement = true
-        artifactImageView.accessibilityIdentifier = "TerminalArtifactViewerImage"
-        addSubview(artifactImageView)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func setImage(_ image: UIImage, filename: String) {
-        guard artifactImageView.image !== image || artifactImageView.accessibilityLabel != filename else { return }
-        artifactImageView.image = image
-        artifactImageView.accessibilityLabel = filename
-        artifactImageView.accessibilityValue = "\(Int(image.size.width))x\(Int(image.size.height))"
-        sourceSize = image.size
-        laidOutBounds = .zero
-        setNeedsLayout()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        guard bounds.width > 0, bounds.height > 0, sourceSize.width > 0, sourceSize.height > 0 else { return }
-        if laidOutBounds != bounds.size {
-            let headerClearance: CGFloat = 68
-            let available = CGSize(width: bounds.width, height: max(1, bounds.height - headerClearance))
-            let fit = min(available.width / sourceSize.width, available.height / sourceSize.height)
-            let fitted = CGSize(width: sourceSize.width * fit, height: sourceSize.height * fit)
-            minimumZoomScale = 1
-            maximumZoomScale = 6
-            zoomScale = 1
-            artifactImageView.frame = CGRect(origin: .zero, size: fitted)
-            contentSize = fitted
-            contentInset = UIEdgeInsets(top: headerClearance, left: 0, bottom: 0, right: 0)
-            laidOutBounds = bounds.size
-        }
-        centerImage()
-    }
-
-    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-        artifactImageView
-    }
-
-    func scrollViewDidZoom(_ scrollView: UIScrollView) {
-        centerImage()
-    }
-
-    private func centerImage() {
-        let headerClearance: CGFloat = 68
-        let availableHeight = max(0, bounds.height - headerClearance)
-        let horizontal = max(0, (bounds.width - contentSize.width) / 2)
-        let vertical = max(0, (availableHeight - contentSize.height) / 2) + headerClearance
-        contentInset = UIEdgeInsets(top: vertical, left: horizontal, bottom: 0, right: horizontal)
     }
 }

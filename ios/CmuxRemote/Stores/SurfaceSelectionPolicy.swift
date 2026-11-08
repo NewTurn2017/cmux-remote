@@ -27,6 +27,12 @@ enum SurfaceSelectionPolicy {
         documentsEnabled && SurfaceKind(surface) == .markdown
     }
 
+    /// Placeholder surfaces open the browser viewer only for browser tabs on a relay that
+    /// advertises `surface.browser.v1`; everything else keeps the card.
+    static func showsBrowser(for surface: Surface, browsersEnabled: Bool) -> Bool {
+        browsersEnabled && SurfaceKind(surface) == .browser
+    }
+
     static func notTerminalSurfaceId(in event: EventFrame) -> String? {
         guard event.category == .surface, event.name == notTerminalCode,
               case .object(let payload) = event.payload,

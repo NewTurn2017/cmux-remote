@@ -21,6 +21,17 @@ struct NonTerminalSurfaceContent: View {
                 topContentInset: topContentInset,
                 bottomContentInset: bottomContentInset
             )
+        } else if let workspaceID,
+                  SurfaceSelectionPolicy.showsBrowser(for: surface, browsersEnabled: remoteFiles.browserRoutingEnabled)
+        {
+            SurfaceBrowserView(
+                surface: surface,
+                workspaceID: workspaceID,
+                remoteFiles: remoteFiles,
+                connection: connection,
+                topContentInset: topContentInset,
+                bottomContentInset: bottomContentInset
+            )
         } else {
             NonTerminalSurfaceCard(
                 surface: surface,
