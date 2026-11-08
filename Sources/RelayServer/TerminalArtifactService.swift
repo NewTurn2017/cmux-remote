@@ -12,11 +12,15 @@ actor TerminalArtifactService {
     typealias Scope = ArtifactAuthorizationStore.Scope
     typealias Source = ArtifactAuthorizationStore.Source
 
-    static let minimumFetchBytes = 1 * 1_024 * 1_024
-    static let maximumFetchBytes = 3 * 1_024 * 1_024
+    /// Raw bytes per fetch chunk or thumbnail, so one base64 response frame stays under the
+    /// 1 MiB WebSocket message limit of every shipped app (same budget as browser capture).
+    static let maximumResponsePayloadBytes = 737_280
+    static let maximumFetchBytes = maximumResponsePayloadBytes
     static let maximumImageBytes: Int64 = 32 * 1_024 * 1_024
     static let maximumImagePixels: Int64 = 40_000_000
-    static let maximumThumbnailBytes = 4 * 1_024 * 1_024
+    static let maximumThumbnailBytes = maximumResponsePayloadBytes
+    /// cmux's own thumbnail is only compared with the relay's, never sent, so it keeps the old bound.
+    static let maximumNativeThumbnailBytes = 4 * 1_024 * 1_024
     static let maximumDocumentBytes: Int64 = 16 * 1_024 * 1_024
 
     private static let documentLogger = Logger(label: "cmux-relay.document")
@@ -680,9 +684,8 @@ actor TerminalArtifactService {
         offset: Int64,
         length: Int
     ) async throws -> FetchChunk {
-        guard length >= Self.minimumFetchBytes, length <= Self.maximumFetchBytes, offset >= 0 else {
-            throw Error.invalidParams
-        }
+        guard length > 0, offset >= 0 else { throw Error.invalidParams }
+        let length = min(length, Self.maximumFetchBytes)
         let authorization = try await resolveAndRevalidate(
             scope: scope, generation: generation, artifactID: artifactID, revision: revision
         )
@@ -1036,7 +1039,7 @@ actor TerminalArtifactService {
         }
         guard case .string(let encoded)? = fields["data_b64"],
               let data = Data(base64Encoded: encoded), data.base64EncodedString() == encoded,
-              data.count <= Self.maximumThumbnailBytes,
+              data.count <= Self.maximumNativeThumbnailBytes,
               data.starts(with: [0xFF, 0xD8]),
               case .int(let width)? = fields["pixel_width"], width > 0, width <= 1_024,
               case .int(let height)? = fields["pixel_height"], height > 0, height <= 1_024,

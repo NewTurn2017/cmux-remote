@@ -250,6 +250,12 @@ struct TerminalArtifactServiceTests {
             "mobile.terminal.artifact.fetch",
             "mobile.terminal.artifact.thumbnail",
         ])
+        let fetchParams = await dispatcher.snapshotCalls().first { $0.method == "mobile.terminal.artifact.fetch" }?.params
+        guard case .object(let fetchFields)? = fetchParams else {
+            Issue.record("native fetch was not called with object params")
+            return
+        }
+        #expect(fetchFields["length"] == .int(Int64(TerminalArtifactService.maximumFetchBytes)))
     }
 
     @Test("method_not_found and capability absence fall back, but forbidden never does")
@@ -374,7 +380,7 @@ struct TerminalArtifactServiceTests {
         }
     }
 
-    @Test("fetch requires exact revision offset and 1 through 3 MiB request chunks")
+    @Test("fetch requires exact revision and offset and caps request chunks at 720 KiB")
     func exactFetchChunks() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -393,14 +399,24 @@ struct TerminalArtifactServiceTests {
             revision: item.revision, offset: Int64(first.data.count), length: 1 * 1_024 * 1_024
         )
 
+        let oversized = try await service.fetch(
+            scope: scope(), generation: scan.generation, artifactID: item.id,
+            revision: item.revision, offset: 1, length: 3 * 1_024 * 1_024 + 1
+        )
+
         #expect(first.offset == 0 && !first.eof)
+        #expect(first.data.count == TerminalArtifactService.maximumFetchBytes)
         #expect(second.offset == Int64(first.data.count) && second.eof)
         #expect(first.data + second.data == bytes)
-        await #expect(throws: TerminalArtifactService.Error.invalidParams) {
-            _ = try await service.fetch(
-                scope: scope(), generation: scan.generation, artifactID: item.id,
-                revision: item.revision, offset: 1, length: 3 * 1_024 * 1_024 + 1
-            )
+        #expect(oversized.offset == 1 && !oversized.eof)
+        #expect(oversized.data == bytes[1..<(1 + TerminalArtifactService.maximumFetchBytes)])
+        for (offset, length) in [(Int64(0), 0), (Int64(-1), 1_024), (Int64(bytes.count + 1), 1_024)] {
+            await #expect(throws: TerminalArtifactService.Error.invalidParams) {
+                _ = try await service.fetch(
+                    scope: scope(), generation: scan.generation, artifactID: item.id,
+                    revision: item.revision, offset: offset, length: length
+                )
+            }
         }
         await #expect(throws: TerminalArtifactService.Error.fileChanged) {
             _ = try await service.fetch(
@@ -408,6 +424,78 @@ struct TerminalArtifactServiceTests {
                 revision: "stale", offset: 0, length: 1 * 1_024 * 1_024
             )
         }
+    }
+
+    @Test("oversized length requests read the file in 720 KiB chunks through eof")
+    func chunkedFetchReachesEOFAt720KiB() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bytes = Data((0..<(2 * 1_024 * 1_024)).map { UInt8($0 % 251) })
+        let file = try write(bytes, named: "large.bin", in: root)
+        let service = makeService(dispatcher: Dispatcher(terminalText: file.path, cwd: root.path))
+        let scan = try await service.scan(scope: scope())
+        let item = try #require(scan.artifacts.first)
+
+        var chunks: [TerminalArtifactService.FetchChunk] = []
+        var offset: Int64 = 0
+        while chunks.count < 8 {
+            let chunk = try await service.fetch(
+                scope: scope(), generation: scan.generation, artifactID: item.id,
+                revision: item.revision, offset: offset, length: 3 * 1_024 * 1_024
+            )
+            chunks.append(chunk)
+            offset += Int64(chunk.data.count)
+            if chunk.eof { break }
+        }
+
+        #expect(chunks.map(\.data.count) == [737_280, 737_280, 622_592])
+        #expect(chunks.map(\.offset) == [0, 737_280, 1_474_560])
+        #expect(chunks.map(\.eof) == [false, false, true])
+        #expect(chunks.allSatisfy { $0.revision == item.revision && $0.totalSize == Int64(bytes.count) })
+        #expect(chunks.reduce(Data()) { $0 + $1.data } == bytes)
+    }
+
+    @Test("a 1024 px noise thumbnail fits the 720 KiB response budget, even when cmux's own is larger")
+    func largeThumbnailFitsTheResponseBudget() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let noise = try write(
+            BrowserCaptureTestImages.png(width: 1_024, height: 1_024, noise: true), named: "noise.png", in: root
+        )
+        let relayService = makeService(dispatcher: Dispatcher(terminalText: noise.path, cwd: root.path))
+        let relayScan = try await relayService.scan(scope: scope())
+        let relayItem = try #require(relayScan.artifacts.first)
+        let relayThumbnail = try await relayService.thumbnail(
+            scope: scope(), generation: relayScan.generation, artifactID: relayItem.id,
+            revision: relayItem.revision, maxDimension: 1_024
+        )
+
+        let noiseBytes = try Data(contentsOf: noise)
+        let nativeJPEG = try BrowserCaptureImageEncoder.encode(
+            png: noiseBytes, maxImageBytes: .max, ladder: [.init(maxDimension: 1_024, quality: 0.95)]
+        ).jpeg
+        let nativeDispatcher = Dispatcher(
+            nativeScan: nativeScanResponse(path: noise.path, size: noiseBytes.count),
+            nativeOperations: ["mobile.terminal.artifact.thumbnail": nativeThumbnailResponse(
+                data: nativeJPEG, width: 1_024, height: 1_024
+            )],
+            terminalText: "must not be read", cwd: nil
+        )
+        let nativeService = makeService(dispatcher: nativeDispatcher)
+        let nativeScan = try await nativeService.scan(scope: scope())
+        let nativeItem = try #require(nativeScan.artifacts.first)
+        let nativeResult = try await nativeService.thumbnail(
+            scope: scope(), generation: nativeScan.generation, artifactID: nativeItem.id,
+            revision: nativeItem.revision, maxDimension: 1_024
+        )
+
+        #expect(relayThumbnail.data.starts(with: [0xFF, 0xD8]))
+        #expect(relayThumbnail.pixelWidth == 1_024 && relayThumbnail.pixelHeight == 1_024)
+        #expect(relayThumbnail.data.count <= 737_280)
+        #expect(nativeJPEG.count > TerminalArtifactService.maximumThumbnailBytes)
+        #expect(nativeJPEG.count <= TerminalArtifactService.maximumNativeThumbnailBytes)
+        #expect(nativeResult.pixelWidth == 1_024 && nativeResult.pixelHeight == 1_024)
+        #expect(nativeResult.data.count <= 737_280)
     }
 
     @Test("real PNG thumbnail is bounded JPEG with expected dimensions and leaves terminal state unchanged")
@@ -438,7 +526,7 @@ struct TerminalArtifactServiceTests {
         #expect(thumbnail.data.starts(with: [0xFF, 0xD8]))
         #expect(thumbnail.pixelWidth == 64)
         #expect(thumbnail.pixelHeight == 32)
-        #expect(thumbnail.data.count <= 4 * 1_024 * 1_024)
+        #expect(thumbnail.data.count <= TerminalArtifactService.maximumThumbnailBytes)
         #expect(fetched.data == original && fetched.eof)
         #expect(before.grid == after.grid && before.revision == after.revision)
     }

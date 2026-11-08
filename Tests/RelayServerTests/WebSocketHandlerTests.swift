@@ -854,6 +854,57 @@ final class WebSocketHandlerTests: XCTestCase {
         expect(await cmux.snapshot() == [])
     }
 
+    func testArtifactFetchFramesStayUnderOneMiBAndReachEOFLikeShippedApps() async throws {
+        let cmux = RecordingCMUXFacade()
+        let fixture = Data((0..<(2 * 1_024 * 1_024)).map { UInt8($0 % 251) })
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let machine = WSProtocolMachine(
+            cmux: cmux,
+            authenticatedDeviceID: "owner-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: makeArtifactService(cmux: cmux, bytes: fixture)
+        )
+        _ = await hello(machine)
+        let scan = try await typedRPC(
+            machine, id: "scan", method: "terminal.artifact.scan",
+            payload: TerminalArtifactScanRequest(workspaceId: "workspace", surfaceId: "surface"),
+            result: TerminalArtifactScanResult.self
+        )
+        let artifact = try require(scan.artifacts.first)
+
+        var received = Data()
+        var sizes: [Int] = []
+        var offset = 0
+        while sizes.count < 8 {
+            let request = try RPCRequest(
+                id: "fetch-\(offset)", method: RemoteRPCMethod.artifactFetch.rawValue,
+                payload: TerminalArtifactFetchRequest(artifactId: artifact.artifactId, offset: offset)
+            )
+            let actions = await machine.processText(try require(String(data: JSONEncoder().encode(request), encoding: .utf8)))
+            guard actions.count == 1, case .sendText(let responseText) = actions[0] else {
+                return XCTFail("expected one fetch response")
+            }
+            XCTAssertLessThan(try WebSocketFramedSize(text: responseText).totalBytes, 1_048_576)
+            let chunk = try JSONDecoder().decode(RPCResponse.self, from: Data(responseText.utf8))
+                .decodeResult(TerminalArtifactFetchResult.self)
+            let data = try chunk.decodedBytes()
+            let next = offset + data.count
+            XCTAssertEqual(chunk.artifactId, artifact.artifactId)
+            XCTAssertEqual(chunk.offset, offset)
+            XCTAssertEqual(chunk.totalBytes, fixture.count)
+            XCTAssertTrue(chunk.eof || !data.isEmpty)
+            XCTAssertEqual(chunk.eof, next == fixture.count)
+            received.append(data)
+            sizes.append(data.count)
+            offset = next
+            if chunk.eof { break }
+        }
+
+        XCTAssertEqual(sizes, [737_280, 737_280, 622_592])
+        XCTAssertEqual(received, fixture)
+    }
+
     func testArtifactMethodsUseAuthenticatedIdentityAndRemainLiveAfterUnauthorizedRequest() async throws {
         let cmux = RecordingCMUXFacade()
         let fixture = Data("artifact bytes".utf8)
