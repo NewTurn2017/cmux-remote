@@ -214,8 +214,9 @@ final class WebSocketHandlerTests: XCTestCase {
         let response = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
         let capabilities = try response.decodeResult(HostCapabilitiesResult.self)
 
-        expect(capabilities.capabilities == ["file.upload.v2", "terminal.artifact.v1", "surface.document.v1"])
+        expect(capabilities.capabilities == ["file.upload.v2", "terminal.artifact.v1", "surface.document.v1", "surface.browser.v1"])
         expect(capabilities.supportsSurfaceDocumentV1)
+        expect(capabilities.supportsSurfaceBrowserV1)
         expect(await cmux.snapshot() == [])
     }
 
@@ -324,6 +325,120 @@ final class WebSocketHandlerTests: XCTestCase {
             XCTAssertFalse(response.error?.message.contains(directory.path) ?? true)
             XCTAssertFalse(response.error?.message.contains("/") ?? true)
         }
+    }
+
+    func testSurfaceBrowserCaptureReturnsTheContractResultAndIgnoresClientFields() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cmux = FakeBrowserCMUX(screenshots: [
+            "S": FakeBrowserCMUX.screenshot(png: BrowserCaptureTestImages.png(width: 2318, height: 2640), path: nil),
+        ])
+        let machine = browserMachine(directory: directory, cmux: cmux)
+        _ = await hello(machine)
+        let request = RPCRequest(id: "cap-1", method: RemoteRPCMethod.surfaceBrowserCapture.rawValue, params: .object([
+            "workspace_id": .string("W"), "surface_id": .string("S"), "path": .string("/etc/hosts"),
+        ]))
+
+        let response = try await rpc(machine, id: request.id, method: request.method, params: request.params)
+        let result = try response.decodeResult(SurfaceBrowserCaptureResult.self)
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(result.mimeType, "image/jpeg")
+        XCTAssertEqual(result.width, 1405)
+        XCTAssertEqual(result.height, 1600)
+        XCTAssertEqual(result.sourceWidth, 2318)
+        XCTAssertEqual(result.sourceHeight, 2640)
+        XCTAssertEqual(result.url, FakeBrowserCMUX.pageURL)
+        XCTAssertEqual(result.title, FakeBrowserCMUX.pageTitle)
+        XCTAssertEqual(result.capturedAt, 1_794_240_000_000)
+        XCTAssertLessThanOrEqual(try result.decodedImage().count, SurfaceBrowserCaptureLimits.maxImageBytes)
+        let screenshotCall = await cmux.calls.first
+        XCTAssertEqual(screenshotCall?.method, "browser.screenshot")
+        XCTAssertEqual(screenshotCall?.params, JSONValue.object(["workspace_id": .string("W"), "surface_id": .string("S")]))
+        try printBrowserWireSample("request", request)
+        try printBrowserWireSample("success", response)
+    }
+
+    func testSurfaceBrowserCaptureErrorCodesOnWire() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cmux = FakeBrowserCMUX(screenshots: [
+            "terminal": .failure(code: "invalid_params"),
+            "limited": .failure(code: "rate_limited"),
+            "tiny": FakeBrowserCMUX.screenshot(png: BrowserCaptureTestImages.png(width: 64, height: 64), path: nil),
+        ])
+        let machine = WSProtocolMachine(
+            cmux: RecordingCMUXFacade(),
+            authenticatedDeviceID: "browser-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: inertArtifactService(cmux: RecordingCMUXFacade()),
+            browserCaptureService: BrowserCaptureService(dispatch: cmux.dispatch, maxImageBytes: 10)
+        )
+        _ = await hello(machine)
+        func capture(_ params: [String: JSONValue], id: String) async throws -> RPCResponse {
+            try await rpc(machine, id: id, method: RemoteRPCMethod.surfaceBrowserCapture.rawValue, params: .object(params))
+        }
+
+        let terminal = try await capture(["workspace_id": .string("W"), "surface_id": .string("terminal")], id: "cap-2")
+        let unknown = try await capture(["workspace_id": .string("W"), "surface_id": .string("closed")], id: "cap-3")
+        let limited = try await capture(["workspace_id": .string("W"), "surface_id": .string("limited")], id: "cap-4")
+        let oversized = try await capture(["workspace_id": .string("W"), "surface_id": .string("tiny")], id: "cap-5")
+        let emptyWorkspace = try await capture(["workspace_id": .string(""), "surface_id": .string("S")], id: "cap-6")
+        let missingSurface = try await capture(["workspace_id": .string("W")], id: "cap-7")
+
+        XCTAssertEqual(terminal.error?.code, "surface_not_browser")
+        XCTAssertEqual(terminal.error?.data, .object(["field": .string("surface_id")]))
+        XCTAssertEqual(unknown.error?.code, "surface_not_browser")
+        XCTAssertEqual(limited.error?.code, "rate_limited")
+        XCTAssertEqual(oversized.error?.code, "size_limit_exceeded")
+        XCTAssertEqual(oversized.error?.data, .object([
+            "field": .string("image_base64"), "max_bytes": .int(737_280),
+        ]))
+        XCTAssertEqual(emptyWorkspace.error?.code, "invalid_field")
+        XCTAssertEqual(emptyWorkspace.error?.data, .object(["field": .string("workspace_id")]))
+        XCTAssertEqual(missingSurface.error?.code, "invalid_request")
+        for response in [terminal, unknown, limited, oversized, emptyWorkspace, missingSurface] {
+            XCTAssertEqual(response.ok, false)
+            let message = response.error?.message ?? "/"
+            XCTAssertFalse(message.contains("/"))
+            XCTAssertFalse(message.contains(FakeBrowserCMUX.pageURL))
+            XCTAssertFalse(message.contains(FakeBrowserCMUX.pageTitle))
+        }
+        try printBrowserWireSample("surface_not_browser", terminal)
+        try printBrowserWireSample("rate_limited", limited)
+        try printBrowserWireSample("size_limit_exceeded", oversized)
+    }
+
+    func testSurfaceBrowserCaptureDeadlineAnswersAndLaterFramesStillRun() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
+        let browser = FakeBrowserCMUX(
+            screenshots: ["S": FakeBrowserCMUX.screenshot(png: BrowserCaptureTestImages.png(width: 64, height: 64), path: nil)],
+            gate: gate.stream
+        )
+        let facade = RecordingCMUXFacade()
+        let machine = WSProtocolMachine(
+            cmux: facade,
+            authenticatedDeviceID: "browser-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: inertArtifactService(cmux: facade),
+            browserCaptureService: BrowserCaptureService(dispatch: browser.dispatch),
+            relayOwnedTimeout: .milliseconds(100)
+        )
+        _ = await hello(machine)
+
+        let blocked = try await rpc(machine, id: "cap-8", method: RemoteRPCMethod.surfaceBrowserCapture.rawValue, params: .object([
+            "workspace_id": .string("W"), "surface_id": .string("S"),
+        ]))
+        let next = try await rpc(machine, id: "after", method: "workspace.list", params: .object([:]))
+
+        XCTAssertEqual(blocked.error?.code, WSProtocolMachine.temporarilyUnavailableCode)
+        XCTAssertEqual(blocked.error?.message, "Browser capture did not finish in time")
+        XCTAssertEqual(next.ok, true)
+        expect(await facade.snapshot() == [.init(method: "workspace.list")])
+        try printBrowserWireSample("temporarily_unavailable", blocked)
     }
 
     func testAuthenticatedDeviceCanUploadMultipleChunksCommitAndCancel() async throws {
@@ -843,6 +958,31 @@ final class WebSocketHandlerTests: XCTestCase {
             .appendingPathComponent("cmux-ws-protocol-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         return url
+    }
+
+    private func browserMachine(directory: URL, cmux: FakeBrowserCMUX) -> WSProtocolMachine {
+        let facade = RecordingCMUXFacade()
+        return WSProtocolMachine(
+            cmux: facade,
+            authenticatedDeviceID: "browser-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: inertArtifactService(cmux: facade),
+            browserCaptureService: BrowserCaptureService(
+                dispatch: cmux.dispatch,
+                clock: { Date(timeIntervalSince1970: 1_794_240_000) }
+            )
+        )
+    }
+
+    /// Prints a wire sample for APP-CONTRACT-NOTES with the JPEG body replaced by its length.
+    private func printBrowserWireSample<Frame: Encodable>(_ label: String, _ frame: Frame) throws {
+        var object = try require(JSONSerialization.jsonObject(with: JSONEncoder().encode(frame)) as? [String: Any])
+        if var result = object["result"] as? [String: Any], let image = result["image_base64"] as? String {
+            result["image_base64"] = "<\(image.count) base64 chars>"
+            object["result"] = result
+        }
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        print("BROWSER_CAPTURE_WIRE_SAMPLE \(label) \(String(decoding: data, as: UTF8.self))")
     }
 
     private func documentArtifactService(surfaces: [String: JSONValue]) -> TerminalArtifactService {

@@ -36,6 +36,7 @@ public final class HTTPServer: @unchecked Sendable {
     public let cmux: CMUXFacade
     private let uploadService: ChunkedFileUploadService
     private let artifactService: TerminalArtifactService
+    private let browserCaptureService: BrowserCaptureService
     public let logger = Logger(label: "HTTPServer")
 
     public init(group: MultiThreadedEventLoopGroup,
@@ -61,6 +62,7 @@ public final class HTTPServer: @unchecked Sendable {
                 return .failure(code: "internal_error")
             }
         })
+        self.browserCaptureService = BrowserCaptureService(cmux: cmux)
     }
 
     init(group: MultiThreadedEventLoopGroup,
@@ -70,7 +72,8 @@ public final class HTTPServer: @unchecked Sendable {
          sessionManager: SessionManager,
          cmux: CMUXFacade,
          uploadService: ChunkedFileUploadService,
-         artifactService: TerminalArtifactService)
+         artifactService: TerminalArtifactService,
+         browserCaptureService: BrowserCaptureService? = nil)
     {
         self.group = group
         self.routes = routes
@@ -80,6 +83,7 @@ public final class HTTPServer: @unchecked Sendable {
         self.cmux = cmux
         self.uploadService = uploadService
         self.artifactService = artifactService
+        self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
     }
 
     /// Bind the server and return the listening channel. The caller is
@@ -98,6 +102,7 @@ public final class HTTPServer: @unchecked Sendable {
         )
         let uploadService = self.uploadService
         let artifactService = self.artifactService
+        let browserCaptureService = self.browserCaptureService
 
         let bs = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
@@ -149,7 +154,8 @@ public final class HTTPServer: @unchecked Sendable {
                                 sessionManager: manager,
                                 cmuxClient: cmux,
                                 uploadService: uploadService,
-                                artifactService: artifactService
+                                artifactService: artifactService,
+                                browserCaptureService: browserCaptureService
                             )
                             return channel.pipeline.addHandler(handler)
                         }

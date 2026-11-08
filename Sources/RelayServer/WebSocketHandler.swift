@@ -42,6 +42,7 @@ public actor WSProtocolMachine {
     private let authenticatedDeviceID: String
     private let uploadService: ChunkedFileUploadService
     private let artifactService: TerminalArtifactService
+    private let browserCaptureService: BrowserCaptureService
     private let uploadIDSource: @Sendable () -> UUID
     private let relayOwnedTimeout: Duration
     private var helloed = false
@@ -55,6 +56,7 @@ public actor WSProtocolMachine {
                 await Self.dispatchNative(cmux: cmux, method: method, params: params)
             }
         )
+        self.browserCaptureService = BrowserCaptureService(cmux: cmux)
         self.uploadIDSource = { UUID() }
         self.relayOwnedTimeout = BoundedRelayWork.defaultTimeout
     }
@@ -64,6 +66,7 @@ public actor WSProtocolMachine {
         authenticatedDeviceID: String,
         uploadService: ChunkedFileUploadService,
         artifactService: TerminalArtifactService,
+        browserCaptureService: BrowserCaptureService? = nil,
         uploadIDSource: @escaping @Sendable () -> UUID = { UUID() },
         relayOwnedTimeout: Duration = BoundedRelayWork.defaultTimeout
     ) {
@@ -71,6 +74,7 @@ public actor WSProtocolMachine {
         self.authenticatedDeviceID = authenticatedDeviceID
         self.uploadService = uploadService
         self.artifactService = artifactService
+        self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
         self.uploadIDSource = uploadIDSource
         self.relayOwnedTimeout = relayOwnedTimeout
     }
@@ -163,9 +167,10 @@ public actor WSProtocolMachine {
     /// Stable code for relay-owned file work that missed its deadline.
     static let temporarilyUnavailableCode = "temporarily_unavailable"
 
-    /// Answers a relay-owned file RPC by its deadline so the frames queued behind it still run.
+    /// Answers a relay-owned RPC by its deadline so the frames queued behind it still run.
     private func bounded(
         _ req: RPCRequest,
+        timeoutMessage: String = "Mac file access did not finish in time; check for a pending privacy prompt on the Mac",
         _ work: @escaping @Sendable () async -> String
     ) async -> String {
         switch await BoundedRelayWork.run(timeout: relayOwnedTimeout, work) {
@@ -175,7 +180,7 @@ public actor WSProtocolMachine {
             return Self.encode(Self.errorResponse(
                 id: req.id,
                 code: Self.temporarilyUnavailableCode,
-                message: "Mac file access did not finish in time; check for a pending privacy prompt on the Mac"
+                message: timeoutMessage
             ))
         }
     }
@@ -184,6 +189,11 @@ public actor WSProtocolMachine {
         guard let method = RemoteRPCMethod(rawValue: req.method) else { return nil }
         guard method != .hostCapabilities else {
             return await relayOwnedResponseBody(method: method, req: req)
+        }
+        if method == .surfaceBrowserCapture {
+            return await bounded(req, timeoutMessage: "Browser capture did not finish in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
         }
         return await bounded(req) { [self] in
             await self.relayOwnedResponseBody(method: method, req: req)
@@ -201,6 +211,7 @@ public actor WSProtocolMachine {
                         HostCapabilitiesResult.chunkUploadV2Capability,
                         HostCapabilitiesResult.terminalArtifactsV1Capability,
                         HostCapabilitiesResult.surfaceDocumentV1Capability,
+                        HostCapabilitiesResult.surfaceBrowserV1Capability,
                     ])
                 )
 
@@ -347,10 +358,16 @@ public actor WSProtocolMachine {
                 result = try Self.scanResultValue(document)
 
             case .surfaceBrowserCapture:
-                return Self.encode(Self.errorResponse(
-                    id: req.id,
-                    code: RemoteErrorCode.methodNotFound.rawValue,
-                    message: "surface.browser.capture is not available yet"
+                let request = try Self.decode(SurfaceBrowserCaptureRequest.self, from: req.params)
+                guard !request.workspaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("workspace_id")
+                }
+                guard !request.surfaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("surface_id")
+                }
+                result = try Self.jsonValue(try await browserCaptureService.capture(
+                    workspaceID: request.workspaceId,
+                    surfaceID: request.surfaceId
                 ))
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
@@ -360,6 +377,8 @@ public actor WSProtocolMachine {
             return Self.encode(Self.uploadErrorResponse(id: req.id, error: error))
         } catch let error as TerminalArtifactService.Error {
             return Self.encode(Self.artifactErrorResponse(id: req.id, error: error))
+        } catch let error as BrowserCaptureService.Error {
+            return Self.encode(Self.browserCaptureErrorResponse(id: req.id, error: error))
         } catch {
             return Self.encode(Self.errorResponse(
                 id: req.id,
@@ -487,6 +506,39 @@ public actor WSProtocolMachine {
             default: mapped = code
             }
             return errorResponse(id: id, code: mapped, message: "cmux artifact operation failed")
+        }
+    }
+
+    private static func browserCaptureErrorResponse(
+        id: String,
+        error: BrowserCaptureService.Error
+    ) -> RPCResponse {
+        switch error {
+        case .surfaceNotBrowser:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.surfaceNotBrowser.rawValue,
+                message: "Surface is not an open browser",
+                field: "surface_id"
+            )
+        case .sizeLimitExceeded:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.sizeLimitExceeded.rawValue,
+                message: "Browser capture exceeds the relay size limit",
+                data: .object([
+                    "field": .string("image_base64"),
+                    "max_bytes": .int(Int64(SurfaceBrowserCaptureLimits.maxImageBytes)),
+                ])
+            )
+        case .unsupportedImage:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.unsupportedMedia.rawValue,
+                message: "Browser capture image is unsupported"
+            )
+        case .native(let code):
+            return errorResponse(id: id, code: code, message: "cmux browser capture failed")
         }
     }
 
@@ -655,6 +707,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         cmuxClient: CMUXFacade,
         uploadService: ChunkedFileUploadService,
         artifactService: TerminalArtifactService,
+        browserCaptureService: BrowserCaptureService? = nil,
         maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes,
         maximumOutstandingInboundActions: Int = WebSocketHandler.defaultMaximumOutstandingInboundActions,
         maximumOutstandingInboundBytes: Int = WebSocketHandler.defaultMaximumOutstandingInboundBytes
@@ -667,7 +720,8 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                 cmux: cmuxClient,
                 authenticatedDeviceID: deviceId,
                 uploadService: uploadService,
-                artifactService: artifactService
+                artifactService: artifactService,
+                browserCaptureService: browserCaptureService
             ),
             maximumQueuedOutputBytes: maximumQueuedOutputBytes,
             maximumOutstandingInboundActions: maximumOutstandingInboundActions,
