@@ -22,6 +22,8 @@ public enum RemoteRPCMethod: String, Codable, Sendable, Equatable {
     case artifactThumbnail = "terminal.artifact.thumbnail"
     /// Authorizes the file behind a cmux document surface for artifact fetches.
     case surfaceDocumentOpen = "surface.document.open"
+    /// Captures the current page image of a cmux browser surface.
+    case surfaceBrowserCapture = "surface.browser.capture"
 }
 
 /// Capability identifiers exchanged by ``HostCapabilitiesResult``.
@@ -32,6 +34,8 @@ public struct HostCapabilities: Codable, Sendable, Equatable {
     public static let terminalArtifactsV1 = "terminal.artifact.v1"
     /// The capability identifier for opening cmux document surfaces.
     public static let surfaceDocumentV1 = "surface.document.v1"
+    /// The capability identifier for capturing cmux browser surfaces.
+    public static let surfaceBrowserV1 = "surface.browser.v1"
 }
 
 /// Empty parameters for `host.capabilities`.
@@ -51,6 +55,8 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     public static let terminalArtifactsV1Capability = HostCapabilities.terminalArtifactsV1
     /// The document-surface capability identifier.
     public static let surfaceDocumentV1Capability = HostCapabilities.surfaceDocumentV1
+    /// The browser-surface capture capability identifier.
+    public static let surfaceBrowserV1Capability = HostCapabilities.surfaceBrowserV1
 
     /// Creates a capability result.
     ///
@@ -72,6 +78,11 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     /// Whether `surface.document.open` is supported.
     public var supportsSurfaceDocumentV1: Bool {
         capabilities.contains(Self.surfaceDocumentV1Capability)
+    }
+
+    /// Whether `surface.browser.capture` is supported.
+    public var supportsSurfaceBrowserV1: Bool {
+        capabilities.contains(Self.surfaceBrowserV1Capability)
     }
 }
 
@@ -129,6 +140,8 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
     case unsupportedMedia
     /// The surface is not a document surface with a file path.
     case surfaceNotDocument
+    /// The surface is not an open cmux browser surface.
+    case surfaceNotBrowser
     /// A code unknown to this client version.
     case unknown(String)
 
@@ -153,6 +166,7 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case .expired: return "expired"
         case .unsupportedMedia: return "unsupported_media"
         case .surfaceNotDocument: return "surface_not_document"
+        case .surfaceNotBrowser: return "surface_not_browser"
         case .unknown(let rawValue): return rawValue
         }
     }
@@ -180,6 +194,7 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case "expired": self = .expired
         case "unsupported_media": self = .unsupportedMedia
         case "surface_not_document": self = .surfaceNotDocument
+        case "surface_not_browser": self = .surfaceNotBrowser
         default: self = .unknown(rawValue)
         }
     }

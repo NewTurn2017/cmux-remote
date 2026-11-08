@@ -324,6 +324,9 @@ public actor DemoRPCDispatch: RPCDispatch {
                 artifacts: [DemoContent.documentReadmeArtifact(openCount: documentOpenCount)]
             ))
 
+        case .surfaceBrowserCapture:
+            return errorResponse(code: .methodNotFound, message: "Browser surfaces are unavailable")
+
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
             uploadSequence += 1

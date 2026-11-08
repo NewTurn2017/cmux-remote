@@ -345,6 +345,13 @@ public actor WSProtocolMachine {
                     surfaceID: request.surfaceId
                 ))
                 result = try Self.scanResultValue(document)
+
+            case .surfaceBrowserCapture:
+                return Self.encode(Self.errorResponse(
+                    id: req.id,
+                    code: RemoteErrorCode.methodNotFound.rawValue,
+                    message: "surface.browser.capture is not available yet"
+                ))
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {
