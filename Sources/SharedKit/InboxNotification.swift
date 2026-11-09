@@ -32,6 +32,9 @@ public enum InboxNotification {
     public static let createdEventName = "notification.created"
     public static let readEventName = "notification.read"
     public static let removedEventName = "notification.removed"
+    /// Sent after `notification.clear_requested` when the Mac clears notifications; its
+    /// `notification_ids` lists every card that went away.
+    public static let clearedEventName = "notification.cleared"
     public static let requestedEventName = "notification.requested"
     /// Title a cmux notification gets when its content was not available (still redacted).
     public static let fallbackTitle = "cmux notification"
@@ -46,9 +49,9 @@ public enum InboxNotification {
     }
 
     /// Classifies an event. Only `notification.created` and the agent needs-input heuristic
-    /// make cards; `notification.read`/`notification.removed` change existing cards; every
-    /// other `notification.*` event (the `notification.requested` socket audit,
-    /// `notification.clear_requested`, unknown names) is ignored.
+    /// make cards; `notification.read`/`notification.removed`/`notification.cleared` change
+    /// existing cards; every other `notification.*` event (the `notification.requested` socket
+    /// audit, `notification.clear_requested`, unknown names) is ignored.
     public static func effect(
         for event: EventFrame,
         now: Int64 = Int64(Date().timeIntervalSince1970)
@@ -71,6 +74,9 @@ public enum InboxNotification {
         case removedEventName:
             guard let id = event.payloadObject?.notificationId else { return .ignore }
             return .remove(ids: [id])
+        case clearedEventName:
+            let ids = event.payloadObject?.stringArray(for: "notification_ids") ?? []
+            return ids.isEmpty ? .ignore : .remove(ids: ids)
         default:
             guard !event.name.hasPrefix("notification."), event.isNeedsInputEvent,
                   let record = buildRecord(from: event, now: now)

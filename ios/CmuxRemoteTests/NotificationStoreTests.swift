@@ -102,6 +102,39 @@ final class NotificationStoreTests: XCTestCase {
         XCTAssertEqual(store.unreadCount, 1)
     }
 
+    func testClearedOnTheMacRemovesTheListedCardsOnly() throws {
+        let (store, banners) = makeStore()
+        for id in ["N-0001", "N-0002", "N-0003"] {
+            store.ingest(.event(try NotificationEventFixture.created(id: id, replacing: [])))
+        }
+        XCTAssertEqual(store.unreadCount, 3)
+
+        store.ingest(.event(NotificationEventFixture.clearRequested()))
+        XCTAssertEqual(store.items.count, 3)
+
+        store.ingest(.event(NotificationEventFixture.cleared(ids: ["N-0001", "N-0003"])))
+
+        XCTAssertEqual(store.items.map(\.id), ["N-0002"])
+        XCTAssertEqual(store.unreadCount, 1)
+        XCTAssertEqual(banners(), ["N-0001", "N-0002", "N-0003"])
+    }
+
+    func testClearedWithoutIdsChangesNothing() throws {
+        let (store, banners) = makeStore()
+        store.ingest(.event(try NotificationEventFixture.event("notification.created")))
+
+        store.ingest(.event(NotificationEventFixture.cleared(ids: [])))
+        store.ingest(.event(EventFrame(
+            category: .notification,
+            name: "notification.cleared",
+            payload: .object(["count": .int(0)])
+        )))
+
+        XCTAssertEqual(store.items.map(\.id), ["N-0001"])
+        XCTAssertEqual(store.unreadCount, 1)
+        XCTAssertEqual(banners(), ["N-0001"])
+    }
+
     func testClearRequestedAndOtherNotificationEventsAreIgnored() {
         let (store, _) = makeStore()
         for name in ["notification.clear_requested", "notification.updated"] {
@@ -167,6 +200,27 @@ enum NotificationEventFixture {
         payload["replaced_notification_ids"] = .array(replacing.map(JSONValue.string))
         event.payload = .object(payload)
         return event
+    }
+
+    /// `cmux clear-notifications` events with the key shape the PM measured on cmux build 113
+    /// (`clear_requested`: `args`, `command`; `cleared`: `count`, `notification_ids`).
+    static func clearRequested() -> EventFrame {
+        EventFrame(
+            category: .notification,
+            name: "notification.clear_requested",
+            payload: .object(["args": .string(""), "command": .string("clear_notifications")])
+        )
+    }
+
+    static func cleared(ids: [String]) -> EventFrame {
+        EventFrame(
+            category: .notification,
+            name: "notification.cleared",
+            payload: .object([
+                "count": .int(Int64(ids.count)),
+                "notification_ids": .array(ids.map(JSONValue.string)),
+            ])
+        )
     }
 
     static func filledCreated() throws -> EventFrame {

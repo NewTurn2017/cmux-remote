@@ -137,6 +137,29 @@ final class InboxNotificationTests: XCTestCase {
         XCTAssertNil(InboxNotification.record(from: try InboxFixture.event("notification.read"), now: 42))
     }
 
+    func testClearedRemovesEveryListedCardAndMakesNoCardOrPush() throws {
+        let cleared = try InboxClearFixture.event("notification.cleared")
+
+        XCTAssertEqual(InboxNotification.effect(for: cleared, now: 42), .remove(ids: ["N-0001", "N-0002"]))
+        XCTAssertFalse(InboxNotification.isInboxEvent(cleared))
+        XCTAssertNil(InboxNotification.record(from: cleared, now: 42))
+
+        let requested = try InboxClearFixture.event("notification.clear_requested")
+        XCTAssertEqual(InboxNotification.effect(for: requested, now: 42), .ignore)
+        XCTAssertNil(InboxNotification.record(from: requested, now: 42))
+    }
+
+    func testClearedWithoutIdsChangesNothing() throws {
+        for ids: JSONValue? in [nil, .array([]), .array([.string("")])] {
+            var event = try InboxClearFixture.event("notification.cleared")
+            guard case .object(var payload) = event.payload else { return XCTFail("object payload") }
+            payload["notification_ids"] = ids
+            event.payload = .object(payload)
+
+            XCTAssertEqual(InboxNotification.effect(for: event, now: 42), .ignore, "\(String(describing: ids))")
+        }
+    }
+
     func testStateEventsWithoutIdAndOtherNotificationEventsAreIgnored() {
         for name in ["notification.read", "notification.removed", "notification.clear_requested", "notification.updated"] {
             let event = EventFrame(
@@ -217,5 +240,24 @@ enum InboxFixture {
         payload["redacted_fields"] = nil
         event.payload = .object(payload)
         return event
+    }
+}
+
+/// `cmux clear-notifications` events. Key shape measured by the PM on cmux build 113
+/// (`clear_requested` from `socket.v1` with `args`/`command`, then `cleared` from
+/// `notification.store` with `count`/`notification_ids`, no `removed`); values invented.
+enum InboxClearFixture {
+    static let eventsJSON = #"""
+    [
+     {"type":"event","category":"notification","name":"notification.clear_requested","source":"socket.v1","id":"evt-5","seq":105,
+      "payload":{"args":"","command":"clear_notifications"}},
+     {"type":"event","category":"notification","name":"notification.cleared","source":"notification.store","id":"evt-6","seq":106,
+      "payload":{"count":2,"notification_ids":["N-0001","N-0002"]}}
+    ]
+    """#
+
+    static func event(_ name: String) throws -> EventFrame {
+        let events = try JSONDecoder().decode([EventFrame].self, from: Data(eventsJSON.utf8))
+        return try XCTUnwrap(events.first { $0.name == name })
     }
 }
