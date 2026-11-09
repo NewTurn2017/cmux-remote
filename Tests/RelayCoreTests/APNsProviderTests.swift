@@ -4,7 +4,7 @@ import XCTest
 @testable import SharedKit
 
 final class APNsProviderTests: XCTestCase {
-    func testPrepareRequestBuildsAPNsPostWithJwtHeadersAndPrivacyLimitedPayload() throws {
+    func testPrepareRequestBuildsAPNsPostWithJwtHeadersAndNotificationContentAlert() throws {
         let keyURL = try writeTestPrivateKey()
         let config = RelayConfig.APNs(
             keyPath: keyURL.path,
@@ -25,9 +25,9 @@ final class APNsProviderTests: XCTestCase {
                 id: "n1",
                 workspaceId: "w1",
                 surfaceId: "s1",
-                title: "terminal output SECRET_TOKEN must not be sent",
-                subtitle: "workspace",
-                body: "terminal output SECRET_TOKEN must not be sent",
+                title: "Claude Code",
+                subtitle: "agent-lab",
+                body: "Claude is waiting for your input",
                 ts: 42,
                 threadId: "workspace-w1"
             )
@@ -50,12 +50,90 @@ final class APNsProviderTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: request.body) as? [String: Any])
         let aps = try XCTUnwrap(object["aps"] as? [String: Any])
         let alert = try XCTUnwrap(aps["alert"] as? [String: Any])
-        XCTAssertEqual(alert["title"] as? String, "cmux needs attention")
-        XCTAssertEqual(alert["body"] as? String, "Open cmux Remote to review this inbox item.")
+        XCTAssertEqual(alert["title"] as? String, "Claude Code")
+        XCTAssertEqual(alert["subtitle"] as? String, "agent-lab")
+        XCTAssertEqual(alert["body"] as? String, "Claude is waiting for your input")
+        XCTAssertEqual(request.headers["apns-collapse-id"], "n1")
         XCTAssertEqual(object["workspace_id"] as? String, "w1")
         XCTAssertEqual(object["surface_id"] as? String, "s1")
         XCTAssertEqual(object["notification_id"] as? String, "n1")
-        XCTAssertFalse(String(data: request.body, encoding: .utf8)?.contains("SECRET_TOKEN") ?? true)
+    }
+
+    func testNotificationWithoutContentFallsBackToGenericAlert() throws {
+        for title in ["", "   ", InboxNotification.fallbackTitle] {
+            let alert = APNsProviderClient.alert(for: NotificationRecord(
+                id: "n1", workspaceId: "w1", surfaceId: nil, title: title,
+                subtitle: nil, body: "", ts: 42, threadId: "workspace-w1"
+            ))
+            XCTAssertEqual(alert, [
+                "title": APNsProviderClient.genericAlertTitle,
+                "body": APNsProviderClient.genericAlertBody,
+            ], title)
+        }
+    }
+
+    func testAlertCapsTitleSubtitleAndBody() {
+        let alert = APNsProviderClient.alert(for: NotificationRecord(
+            id: "n1", workspaceId: "w1", surfaceId: nil,
+            title: String(repeating: "제", count: 300),
+            subtitle: String(repeating: "s", count: 300),
+            body: String(repeating: "본", count: 5_000),
+            ts: 42, threadId: "workspace-w1"
+        ))
+
+        XCTAssertEqual(alert["title"]?.count, APNsProviderClient.alertTitleLimit)
+        XCTAssertEqual(alert["subtitle"]?.count, APNsProviderClient.alertSubtitleLimit)
+        XCTAssertEqual(alert["body"]?.count, APNsProviderClient.alertBodyLimit)
+        XCTAssertEqual(alert["body"]?.last, "…")
+    }
+
+    func testOversizedBodyShrinksToFitPayloadLimit() throws {
+        let keyURL = try writeTestPrivateKey()
+        let config = RelayConfig.APNs(
+            keyPath: keyURL.path, keyId: "KEY1234567", teamId: "TEAM123456",
+            topic: "com.genie.CmuxRemote", env: "sandbox"
+        )
+        let client = APNsProviderClient(
+            config: { config },
+            transport: RecordingAPNsTransport(),
+            now: { Date(timeIntervalSince1970: 1_700_000_000) }
+        )
+        // Escaped control characters take six bytes each, so 1,024 of them overflow 4 KiB.
+        let push = APNsPushAlert(
+            deviceToken: "abcdef1234",
+            environment: "sandbox",
+            notification: NotificationRecord(
+                id: "n1", workspaceId: "w1", surfaceId: nil, title: "Build",
+                subtitle: nil, body: String(repeating: "\u{01}", count: 2_000),
+                ts: 42, threadId: "workspace-w1"
+            )
+        )
+
+        let request = try client.prepareRequest(push)
+
+        XCTAssertLessThanOrEqual(request.body.count, APNsProviderClient.maximumPayloadBytes)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: request.body) as? [String: Any])
+        let alert = try XCTUnwrap((object["aps"] as? [String: Any])?["alert"] as? [String: Any])
+        XCTAssertEqual(alert["title"] as? String, "Build")
+        let body = try XCTUnwrap(alert["body"] as? String)
+        XCTAssertLessThan(body.count, APNsProviderClient.alertBodyLimit)
+    }
+
+    func testLongNotificationIdOmitsCollapseId() throws {
+        let keyURL = try writeTestPrivateKey()
+        let config = RelayConfig.APNs(
+            keyPath: keyURL.path, keyId: "KEY1234567", teamId: "TEAM123456",
+            topic: "com.genie.CmuxRemote", env: "sandbox"
+        )
+        let client = APNsProviderClient(
+            config: { config },
+            transport: RecordingAPNsTransport(),
+            now: { Date(timeIntervalSince1970: 1_700_000_000) }
+        )
+        var push = samplePush()
+        push.notification.id = String(repeating: "n", count: 65)
+
+        XCTAssertNil(try client.prepareRequest(push).headers["apns-collapse-id"])
     }
 
     func testDisabledConfigDoesNotHitTransport() async throws {

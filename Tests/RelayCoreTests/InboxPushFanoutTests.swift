@@ -60,6 +60,59 @@ final class InboxPushFanoutTests: XCTestCase {
         XCTAssertTrue(pushes.isEmpty)
     }
 
+    func testInternalNotificationEventsAreNeverPushed() async throws {
+        let store = try emptyStore()
+        _ = try store.register(deviceId: "d1", loginName: "a", hostname: "iPhone", apnsToken: nil)
+        try store.setAPNsToken(deviceId: "d1", token: "token-1", env: "sandbox")
+        let sender = RecordingAPNsSender()
+        let fanout = InboxPushFanout(deviceStore: store, sender: sender, config: { testAPNsConfig })
+        let statePayload: JSONValue = .object([
+            "notification_id": .string("N-0001"),
+            "workspace_id": .string("WS-AAAA"),
+            "title": .null,
+            "redacted_fields": .array([.string("title"), .string("subtitle"), .string("body")]),
+        ])
+
+        for name in ["notification.requested", "notification.read", "notification.removed", "notification.clear_requested"] {
+            await fanout.deliver(event: EventFrame(category: .notification, name: name, payload: statePayload))
+        }
+
+        let pushes = await sender.recordedPushes()
+        XCTAssertTrue(pushes.isEmpty)
+    }
+
+    func testFilledCreatedNotificationPushesItsContent() async throws {
+        let store = try emptyStore()
+        _ = try store.register(deviceId: "d1", loginName: "a", hostname: "iPhone", apnsToken: nil)
+        try store.setAPNsToken(deviceId: "d1", token: "token-1", env: "sandbox")
+        let sender = RecordingAPNsSender()
+        let fanout = InboxPushFanout(deviceStore: store, sender: sender, config: { testAPNsConfig })
+
+        await fanout.deliver(event: EventFrame(
+            category: .notification,
+            name: "notification.created",
+            payload: .object([
+                "notification_id": .string("N-0001"),
+                "workspace_id": .string("WS-AAAA"),
+                "surface_id": .string("SF-1111"),
+                "title": .string("Claude Code"),
+                "subtitle": .string("agent-lab"),
+                "body": .string("Claude is waiting for your input"),
+                "tab_title": .string("claude"),
+            ])
+        ))
+
+        let pushes = await sender.recordedPushes()
+        XCTAssertEqual(pushes.count, 1)
+        let notification = try XCTUnwrap(pushes.first?.notification)
+        XCTAssertEqual(notification.id, "N-0001")
+        XCTAssertEqual(APNsProviderClient.alert(for: notification), [
+            "title": "Claude Code",
+            "subtitle": "agent-lab",
+            "body": "Claude is waiting for your input",
+        ])
+    }
+
     func testInvalidTokenResponseClearsStoredToken() async throws {
         let store = try emptyStore()
         _ = try store.register(deviceId: "d1", loginName: "a", hostname: "iPhone", apnsToken: nil)

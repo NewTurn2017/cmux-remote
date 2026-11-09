@@ -54,6 +54,15 @@ struct Serve: AsyncParsableCommand {
             sender: apnsProvider,
             config: { store.current.apns }
         )
+        let enricher = NotificationContentEnricher(
+            dispatch: { method, params in try await facade.dispatch(method: method, params: params) },
+            log: { line in logger.info("\(line)") }
+        )
+        let notificationPipeline = NotificationEventPipeline(
+            enrich: { await enricher.fill($0) },
+            broadcast: { await manager.broadcastToAll(frame: $0) },
+            push: { await apnsFanout.deliver(event: $0) }
+        )
         conn.onReset = {
             Task { await manager.broadcastReset() }
         }
@@ -68,8 +77,7 @@ struct Serve: AsyncParsableCommand {
                         {
                             conn.observe(bootInfo: boot)
                         }
-                        Task { await manager.broadcastToAll(frame: .event(event)) }
-                        Task { await apnsFanout.deliver(event: event) }
+                        notificationPipeline.submit(event)
                     }
                     await stream.start(categories: EventCategory.allCases)
                     logger.info("cmux event stream attached")
