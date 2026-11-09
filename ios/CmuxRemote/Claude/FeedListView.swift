@@ -7,21 +7,9 @@ struct FeedListView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                if let notice = store.notice {
-                    noticeBanner(notice)
-                }
-                if let failure = visibleFailure {
-                    statusBanner(failure.message, color: failure == .disconnected ? CmuxTheme.muted : CmuxTheme.accentYellow)
-                        .accessibilityIdentifier(failure == .disconnected ? "FeedDisconnectedBanner" : "FeedErrorBanner")
-                }
-                CmuxRule(title: "pending")
-                content
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                page(now: context.date)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-            .padding(.bottom, 40)
         }
         .refreshable { await store.refresh(fresh: true) }
         .background(CmuxTheme.canvas)
@@ -34,12 +22,30 @@ struct FeedListView: View {
         .accessibilityIdentifier("FeedListView")
     }
 
-    private var header: some View {
+    private func page(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header(liveCount: store.liveCount(at: now))
+            if let notice = store.notice {
+                noticeBanner(notice)
+            }
+            if let failure = visibleFailure {
+                statusBanner(failure.message, color: failure == .disconnected ? CmuxTheme.muted : CmuxTheme.accentYellow)
+                    .accessibilityIdentifier(failure == .disconnected ? "FeedDisconnectedBanner" : "FeedErrorBanner")
+            }
+            CmuxRule(title: "pending")
+            content(now: now)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 40)
+    }
+
+    private func header(liveCount: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(verbatim: "claude")
+            Text(verbatim: "agents")
                 .cmuxDisplay(28)
                 .foregroundStyle(CmuxTheme.ink)
-            Text(verbatim: "[\(store.pendingCount)]")
+            Text(verbatim: "[\(liveCount)]")
                 .cmuxDisplay(14)
                 .foregroundStyle(CmuxTheme.muted)
                 .accessibilityIdentifier("FeedPendingCount")
@@ -54,13 +60,19 @@ struct FeedListView: View {
     }
 
     @ViewBuilder
-    private var content: some View {
-        if store.items.isEmpty {
+    private func content(now: Date) -> some View {
+        let entries = store.entries(at: now)
+        if entries.isEmpty {
             emptyCard
         } else {
             LazyVStack(spacing: 12) {
-                ForEach(store.items, id: \.requestId) { item in
-                    FeedItemCard(item: item, store: store, isConnected: isConnected)
+                ForEach(entries) { entry in
+                    switch entry {
+                    case .live(let item):
+                        FeedItemCard(item: item, store: store, isConnected: isConnected, now: now)
+                    case .departed(let departed):
+                        FeedDepartedCard(departed: departed)
+                    }
                 }
                 if store.omittedCount > 0 {
                     Text(String(
@@ -81,7 +93,7 @@ struct FeedListView: View {
             Text(emptyTitle)
                 .cmuxDisplay(13)
                 .foregroundStyle(CmuxTheme.muted)
-            Text(String(localized: "feed.list.empty_detail", defaultValue: "Questions, permission requests and plans from Claude appear here."))
+            Text(String(localized: "feed.list.empty_detail", defaultValue: "Questions, permission requests and plans from your agents appear here."))
                 .cmuxMono(11)
                 .foregroundStyle(CmuxTheme.muted)
                 .multilineTextAlignment(.center)

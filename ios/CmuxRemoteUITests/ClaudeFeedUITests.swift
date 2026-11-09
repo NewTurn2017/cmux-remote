@@ -7,6 +7,7 @@ final class ClaudeFeedUITests: XCTestCase {
     private let planID = "demo-feed-plan"
     private let multiSelectID = "demo-feed-multi-select"
     private let answerOnMacID = "demo-feed-answer-on-mac"
+    private let expiringID = "demo-feed-expiring"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -14,9 +15,9 @@ final class ClaudeFeedUITests: XCTestCase {
 
     func testClaudeTabShowsBadgeAndAllCardKinds() throws {
         let app = launch(scenario: "pending")
-        let badge = app.staticTexts["ClaudeFeedPendingBadge"]
+        let badge = app.staticTexts["AgentsFeedPendingBadge"]
         wait(for: badge, "exists == true AND label BEGINSWITH '5 '", in: app)
-        retainScreenshot(named: "claude-tab-badge-workspaces")
+        retainScreenshot(named: "agents-tab-badge-workspaces")
 
         openFeed(in: app)
         wait(for: app.staticTexts["FeedPendingCount"], "label == '[5]'", in: app)
@@ -106,25 +107,26 @@ final class ClaudeFeedUITests: XCTestCase {
         let legacy = launch(scenario: nil)
         XCTAssertTrue(legacy.buttons["agent-lab"].waitForExistence(timeout: 5), legacy.debugDescription)
         XCTAssertTrue(legacy.buttons["Inbox"].exists)
-        XCTAssertFalse(legacy.buttons["Claude"].exists)
+        XCTAssertFalse(legacy.buttons["Agents"].exists)
         retainScreenshot(named: "tab-bar-without-feed")
         legacy.terminate()
 
         let unsupported = launch(scenario: "method-not-found")
         XCTAssertTrue(unsupported.buttons["agent-lab"].waitForExistence(timeout: 5), unsupported.debugDescription)
-        wait(for: unsupported.buttons["Claude"], "exists == false", in: unsupported, timeout: 10)
+        wait(for: unsupported.buttons["Agents"], "exists == false", in: unsupported, timeout: 10)
         XCTAssertFalse(unsupported.descendants(matching: .any)["FeedErrorBanner"].exists)
         XCTAssertTrue(unsupported.buttons["Inbox"].exists)
     }
 
     func testFiveTabsFitNarrowIPhoneWidth() throws {
         let app = launch(scenario: "pending", narrowWidth: 375)
-        let claude = app.buttons["Claude"]
-        wait(for: claude, "exists == true AND hittable == true", in: app)
+        let agents = app.buttons["Agents"]
+        wait(for: agents, "exists == true AND hittable == true", in: app)
 
         let tabBar = app.otherElements["FloatingTabBar"]
         XCTAssertLessThanOrEqual(tabBar.frame.width, 375, "tab bar is wider than the 375pt layout")
-        let tabs = ["Workspaces", "Active", "Claude", "Inbox", "Settings"].map { app.buttons[$0] }
+        XCTAssertFalse(app.buttons["Claude"].exists)
+        let tabs = ["Workspaces", "Active", "Agents", "Inbox", "Settings"].map { app.buttons[$0] }
         var previousMaxX = tabBar.frame.minX
         for tab in tabs {
             XCTAssertTrue(tab.isHittable, "\(tab.label) is not hittable")
@@ -155,6 +157,31 @@ final class ClaudeFeedUITests: XCTestCase {
         retainScreenshot(named: "workspace-command-panel-without-tab-bar")
     }
 
+    func testExpiringCardDisablesRepliesThenShowsExpiredNotice() throws {
+        let app = launch(scenario: "expiring")
+        openFeed(in: app)
+        XCTAssertTrue(app.staticTexts["Feed-\(permissionID)-Remaining"].exists)
+        let remaining = app.staticTexts["Feed-\(expiringID)-Remaining"]
+        scrollUntilHittable(app.buttons["Feed-\(expiringID)-allowOnce"], in: app)
+        XCTAssertTrue(remaining.exists)
+        XCTAssertTrue(app.buttons["Feed-\(expiringID)-allowOnce"].isEnabled)
+        retainScreenshot(named: "feed-remaining-time")
+
+        wait(for: app.staticTexts["Feed-\(expiringID)-Expired"], "exists == true", in: app, timeout: 30)
+        XCTAssertFalse(app.buttons["Feed-\(expiringID)-allowOnce"].isEnabled)
+        XCTAssertFalse(app.buttons["Feed-\(expiringID)-deny"].isEnabled)
+        XCTAssertFalse(remaining.exists)
+        retainScreenshot(named: "feed-expired-card")
+
+        let reason = app.staticTexts["FeedDeparted-\(expiringID)-Reason"]
+        wait(for: reason, "exists == true AND value == 'expired'", in: app, timeout: 10)
+        XCTAssertFalse(card(expiringID, in: app).exists)
+        wait(for: app.staticTexts["FeedPendingCount"], "label == '[5]'", in: app)
+        retainScreenshot(named: "feed-departed-expired")
+
+        wait(for: reason, "exists == false", in: app, timeout: 15)
+    }
+
     // MARK: helpers
 
     private func launch(scenario: String?, narrowWidth: Int? = nil) -> XCUIApplication {
@@ -179,9 +206,9 @@ final class ClaudeFeedUITests: XCTestCase {
     }
 
     private func openFeed(in app: XCUIApplication) {
-        let claude = app.buttons["Claude"]
-        wait(for: claude, "exists == true AND hittable == true", in: app)
-        claude.tap()
+        let agents = app.buttons["Agents"]
+        wait(for: agents, "exists == true AND hittable == true", in: app)
+        agents.tap()
         wait(for: card(permissionID, in: app), "exists == true", in: app)
     }
 

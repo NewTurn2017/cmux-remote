@@ -8,17 +8,33 @@ enum DemoFeedFixtures {
     static let planRequestID = "demo-feed-plan"
     static let multiSelectRequestID = "demo-feed-multi-select"
     static let answerOnMacRequestID = "demo-feed-answer-on-mac"
+    static let expiringRequestID = "demo-feed-expiring"
+    /// Seconds the `expiring` scenario's request has left when the list is first built.
+    static let expiringSecondsLeft: Int64 = 20
 
-    static func pendingItems(nowMilliseconds now: Int64) -> [FeedPendingItem] {
-        let minute: Int64 = 60_000
-        return [
+    static func pendingItems(nowMilliseconds now: Int64, includeExpiring: Bool = false) -> [FeedPendingItem] {
+        let second: Int64 = 1_000
+        let expiring = FeedPendingItem(
+            id: "feed-item-0",
+            requestId: expiringRequestID,
+            kind: .permission,
+            source: "claude",
+            workstreamId: "demo-workstream-4",
+            createdAt: now - (Int64(FeedPendingWindow.expectedSeconds) - expiringSecondsLeft) * second,
+            title: "Clear the build cache",
+            cwd: "/Users/demo/dev/agent-lab",
+            toolName: "Bash",
+            toolInput: "{\"command\":\"rm -rf .build/cache\"}",
+            availableModes: FeedLimits.permissionModes
+        )
+        return (includeExpiring ? [expiring] : []) + [
             FeedPendingItem(
                 id: "feed-item-1",
                 requestId: permissionRequestID,
                 kind: .permission,
                 source: "claude",
                 workstreamId: "demo-workstream-1",
-                createdAt: now - minute,
+                createdAt: now - 10 * second,
                 title: "Run the test suite",
                 cwd: "/Users/demo/dev/agent-lab",
                 toolName: "Bash",
@@ -31,7 +47,7 @@ enum DemoFeedFixtures {
                 kind: .question,
                 source: "claude",
                 workstreamId: "demo-workstream-2",
-                createdAt: now - 3 * minute,
+                createdAt: now - 20 * second,
                 title: "Pick a database",
                 cwd: "/Users/demo/dev/notes-api",
                 questions: [
@@ -48,7 +64,7 @@ enum DemoFeedFixtures {
                 kind: .plan,
                 source: "claude",
                 workstreamId: "demo-workstream-1",
-                createdAt: now - 5 * minute,
+                createdAt: now - 30 * second,
                 title: "Plan: cache the session list",
                 cwd: "/Users/demo/dev/agent-lab",
                 availableModes: FeedLimits.planModes,
@@ -69,7 +85,7 @@ enum DemoFeedFixtures {
                 kind: .question,
                 source: "claude",
                 workstreamId: "demo-workstream-3",
-                createdAt: now - 8 * minute,
+                createdAt: now - 40 * second,
                 title: "Choose checks",
                 cwd: "/Users/demo/dev/site",
                 questions: [
@@ -86,7 +102,7 @@ enum DemoFeedFixtures {
                 kind: .question,
                 source: "claude",
                 workstreamId: "demo-workstream-3",
-                createdAt: now - 12 * minute,
+                createdAt: now - 50 * second,
                 title: "Release details",
                 cwd: "/Users/demo/dev/site",
                 questions: [

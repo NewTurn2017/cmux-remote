@@ -290,6 +290,72 @@ struct FeedStoreTests {
         #expect(await rpc.callCount(method: list) == 2)
     }
 
+    // MARK: expiry and departed cards
+
+    @Test @MainActor
+    func testDepartedItemsShowReasonByAgeThenLeaveAfterTenSeconds() async throws {
+        let rpc = DocumentRPCStub()
+        let clock = FeedTestClock()
+        let store = FeedStore(rpc: rpc, sleeper: FakeBrowserRefreshSleeper(), now: { clock.now })
+        let start = clock.now
+        let old = FeedFixtures.permission("old", createdAt: FeedFixtures.createdAt(secondsBefore: start, 112))
+        let young = FeedFixtures.permission("young", createdAt: FeedFixtures.createdAt(secondsBefore: start, 20))
+        let stay = FeedFixtures.permission("stay", createdAt: FeedFixtures.createdAt(secondsBefore: start, 5))
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([stay, young, old])), for: list)
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([stay])), for: list)
+        await store.refresh()
+        await store.refresh()
+
+        #expect(store.items.map(\.requestId) == ["stay"])
+        #expect(store.departed.map(\.item.requestId) == ["young", "old"])
+        #expect(store.departed.map(\.reason) == [.handledElsewhere, .expired])
+        #expect(store.pendingCount == 1)
+        #expect(store.entries(at: start.addingTimeInterval(9)).map(\.id) == ["stay", "young", "old"])
+        #expect(store.entries(at: start.addingTimeInterval(10)).map(\.id) == ["stay"])
+
+        clock.advance(seconds: 10)
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([stay])), for: list)
+        await store.refresh()
+        #expect(store.departed.isEmpty)
+    }
+
+    @Test @MainActor
+    func testAnsweredItemDoesNotBecomeDepartedCard() async throws {
+        let rpc = DocumentRPCStub()
+        let store = makeStore(rpc)
+        let permission = FeedFixtures.permission()
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([permission])), for: list)
+        await store.refresh()
+
+        await rpc.enqueue(.response(try FeedFixtures.replyResponse("perm", kind: .permission)), for: reply)
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([])), for: list)
+        await store.reply(FeedReplyPolicy.request(for: .allowOnce, item: permission))
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([])), for: list)
+        await store.refresh()
+
+        #expect(store.items.isEmpty)
+        #expect(store.departed.isEmpty)
+        #expect(store.entries(at: BrowserFixtures.fixedNow).isEmpty)
+    }
+
+    @Test @MainActor
+    func testBadgeCountsOnlyLiveItems() async throws {
+        let rpc = DocumentRPCStub()
+        let store = makeStore(rpc)
+        let now = BrowserFixtures.fixedNow
+        let timedOut = FeedFixtures.permission("timed-out", createdAt: FeedFixtures.createdAt(secondsBefore: now, 120))
+        let live = FeedFixtures.permission("live", createdAt: FeedFixtures.createdAt(secondsBefore: now, 10))
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([live, timedOut], truncated: true, omittedCount: 1)), for: list)
+        await store.refresh()
+        #expect(store.pendingCount == 2)
+
+        await rpc.enqueue(.response(try FeedFixtures.listResponse([live])), for: list)
+        await store.refresh()
+        #expect(store.departed.map(\.reason) == [.expired])
+        #expect(store.pendingCount == 1)
+        #expect(store.entries(at: now).count == 2)
+    }
+
     @Test @MainActor
     func testRejectedReplyKeepsItemAndAllowsRetry() async throws {
         let rpc = DocumentRPCStub()

@@ -3,6 +3,21 @@ import Observation
 import SharedKit
 @testable import CmuxRemote
 
+final class FeedTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(_ start: Date = BrowserFixtures.fixedNow) {
+        current = start
+    }
+
+    var now: Date { lock.withLock { current } }
+
+    func advance(seconds: Double) {
+        lock.withLock { current = current.addingTimeInterval(seconds) }
+    }
+}
+
 /// Suspends until `condition` holds, waking only when an observed property it reads changes.
 @MainActor
 func waitUntil(_ condition: @escaping @MainActor () -> Bool) async {
@@ -21,14 +36,25 @@ enum FeedFixtures {
     static let list = RemoteRPCMethod.feedPendingList.rawValue
     static let reply = RemoteRPCMethod.feedReply.rawValue
 
-    static func permission(_ requestID: String = "perm", availableModes: [String]? = FeedLimits.permissionModes) -> FeedPendingItem {
+    /// Ten seconds before ``BrowserFixtures/fixedNow``, well inside the pending window.
+    static let recentCreatedAt: Int64 = Int64(BrowserFixtures.fixedNow.timeIntervalSince1970 * 1_000) - 10_000
+
+    static func createdAt(secondsBefore now: Date, _ seconds: Double) -> Int64 {
+        Int64((now.timeIntervalSince1970 - seconds) * 1_000)
+    }
+
+    static func permission(
+        _ requestID: String = "perm",
+        availableModes: [String]? = FeedLimits.permissionModes,
+        createdAt: Int64? = recentCreatedAt
+    ) -> FeedPendingItem {
         FeedPendingItem(
             id: "item-\(requestID)",
             requestId: requestID,
             kind: .permission,
             source: "claude",
             workstreamId: "ws-1",
-            createdAt: 1_000,
+            createdAt: createdAt,
             title: "Run tests",
             cwd: "/tmp/project",
             toolName: "Bash",

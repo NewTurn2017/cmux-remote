@@ -85,6 +85,7 @@ enum FeedReplyFailure: Equatable {
 @Observable
 final class FeedStore {
     private(set) var items: [FeedPendingItem] = []
+    private(set) var departed: [FeedDepartedItem] = []
     private(set) var omittedCount = 0
     private(set) var state: FeedListState = .idle
     private(set) var sendingRequestIDs: Set<String> = []
@@ -114,8 +115,24 @@ final class FeedStore {
         self.now = now
     }
 
-    var pendingCount: Int { items.count + omittedCount }
+    var pendingCount: Int { liveCount(at: now()) }
     var isUnsupported: Bool { state == .unsupported }
+
+    /// Requests still answerable at `now`: listed items whose window has not run out, plus
+    /// the older ones the relay left out. Dimmed departed cards are not counted.
+    func liveCount(at now: Date) -> Int {
+        items.filter { !FeedPendingWindow.isExpired($0, now: now) }.count + omittedCount
+    }
+
+    /// Listed items and still-visible departed cards, newest first like the relay's list.
+    func entries(at now: Date) -> [FeedEntry] {
+        let entries = items.map(FeedEntry.live) + departed.filter { $0.isVisible(at: now) }.map(FeedEntry.departed)
+        return entries.enumerated().sorted { lhs, rhs in
+            let left = lhs.element.createdAt ?? .min
+            let right = rhs.element.createdAt ?? .min
+            return left == right ? lhs.offset < rhs.offset : left > right
+        }.map(\.element)
+    }
 
     func isBusy(_ requestID: String) -> Bool {
         sendingRequestIDs.contains(requestID) || verifying[requestID] != nil
@@ -223,6 +240,7 @@ final class FeedStore {
         replyFailures = [:]
         verifying = [:]
         answeredAt = [:]
+        departed = []
         notice = nil
         consecutiveFailures = 0
     }
@@ -284,6 +302,13 @@ final class FeedStore {
             }
         }
         if verifying.isEmpty, notice == .verifying { notice = nil }
+        let departing = items.filter { item in
+            !pendingIDs.contains(item.requestId)
+                && answeredAt[item.requestId] == nil
+                && verifying[item.requestId] == nil
+        }
+        departed = departed.filter { $0.isVisible(at: current) && !pendingIDs.contains($0.item.requestId) }
+            + departing.map { FeedDepartedItem(item: $0, reason: FeedDepartedItem.reason(for: $0, now: current), departedAt: current) }
         items = result.items.filter { answeredAt[$0.requestId] == nil }
         omittedCount = result.truncated ? (result.omittedCount ?? 0) : 0
         let visibleIDs = Set(items.map(\.requestId))
@@ -304,6 +329,7 @@ final class FeedStore {
     private func markUnsupported() {
         state = .unsupported
         items = []
+        departed = []
         omittedCount = 0
         sendingRequestIDs = []
         verifying = [:]

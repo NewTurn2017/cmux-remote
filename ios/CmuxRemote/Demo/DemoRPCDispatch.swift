@@ -663,16 +663,25 @@ public actor DemoRPCDispatch: RPCDispatch {
         return "/Users/demo/Drop/\(ordinal)-it's \(filename)"
     }
 
+    /// Like cmux, fixture requests leave the list after ``FeedPendingWindow/expectedSeconds``;
+    /// these extra seconds keep the expired card on screen long enough for UI tests to see it.
+    private static let feedFixtureDropDelaySeconds: Int64 = 4
+
     /// Scenarios: `pending` answers replies once (a second reply is not pending),
-    /// `already-handled` treats every reply as answered on the Mac first, and
+    /// `already-handled` treats every reply as answered on the Mac first,
+    /// `expiring` adds a request about to time out, and
     /// `method-not-found` advertises `feed.v1` but answers like a relay without it.
     private func feedResponse(method: RemoteRPCMethod, params: JSONValue) throws -> RPCResponse {
         guard let feedScenario, feedScenario != "method-not-found" else {
             return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
         }
+        let nowMilliseconds = Int64(Date().timeIntervalSince1970 * 1000)
         var items = feedItems ?? DemoFeedFixtures.pendingItems(
-            nowMilliseconds: Int64(Date().timeIntervalSince1970 * 1000)
+            nowMilliseconds: nowMilliseconds,
+            includeExpiring: feedScenario == "expiring"
         )
+        let windowMilliseconds = (Int64(FeedPendingWindow.expectedSeconds) + Self.feedFixtureDropDelaySeconds) * 1_000
+        items.removeAll { ($0.createdAt ?? nowMilliseconds) + windowMilliseconds <= nowMilliseconds }
         defer { feedItems = items }
         switch method {
         case .feedPendingList:

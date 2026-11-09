@@ -2790,13 +2790,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Questions, permission requests and plans from Claude appear here."
+            "value": "Questions, permission requests and plans from your agents appear here."
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Claude의 질문, 권한 요청, 플랜 승인이 여기에 표시됩니다."
+            "value": "에이전트의 질문, 권한 요청, 플랜 승인이 여기에 표시됩니다."
           }
         }
       }
@@ -2902,7 +2902,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Approve the plan and let Claude accept edits without asking?"
+            "value": "Approve the plan and let the agent accept edits without asking?"
           }
         },
         "ko": {
@@ -3005,6 +3005,102 @@
           "stringUnit": {
             "state": "translated",
             "value": "접기"
+          }
+        }
+      }
+    },
+    "feed.remaining.minutes_seconds": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About %1$d min %2$d s left"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "약 %1$d분 %2$d초 남음"
+          }
+        }
+      }
+    },
+    "feed.remaining.minutes": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About %d min left"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "약 %d분 남음"
+          }
+        }
+      }
+    },
+    "feed.remaining.seconds": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About %d s left"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "약 %d초 남음"
+          }
+        }
+      }
+    },
+    "feed.item.expired": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time's up · Answer in the Mac terminal"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시간이 지났습니다 · 맥 터미널에서 답하세요"
+          }
+        }
+      }
+    },
+    "feed.departed.expired": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expired · Answer in the Mac terminal"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시간이 지나 만료됨 · 맥 터미널에서 답하세요"
+          }
+        }
+      }
+    },
+    "feed.departed.handled_elsewhere": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handled on the Mac or elsewhere"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "맥이나 다른 곳에서 처리됨"
           }
         }
       }

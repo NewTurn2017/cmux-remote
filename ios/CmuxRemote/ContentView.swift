@@ -33,7 +33,7 @@ struct ContentView: View {
                     preferredSurfaceId: $requestedSurfaceId,
                     onBack: { selectedTab = .workspaces }
                 )
-            case .claude:
+            case .agents:
                 FeedListView(store: remoteFiles.feed, isConnected: isConnected)
             case .inbox:
                 NotificationCenterView(store: notifStore) { notification in
@@ -54,7 +54,7 @@ struct ContentView: View {
         .task(id: feedLoopKey) {
             guard remoteFiles.feedEnabled, tabBarVisible else { return }
             await remoteFiles.feed.runRefreshLoop(
-                intervalSeconds: selectedTab == .claude
+                intervalSeconds: selectedTab == .agents
                     ? FeedRefreshPolicy.listIntervalSeconds
                     : FeedRefreshPolicy.badgeIntervalSeconds,
                 isConnected: isConnected,
@@ -66,7 +66,7 @@ struct ContentView: View {
             Task { await remoteFiles.feed.refresh() }
         }
         .onChange(of: remoteFiles.feedEnabled) { _, enabled in
-            if !enabled, selectedTab == .claude { selectedTab = .workspaces }
+            if !enabled, selectedTab == .agents { selectedTab = .workspaces }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -75,7 +75,7 @@ struct ContentView: View {
                     tabs: visibleTabs,
                     selectedTab: $selectedTab,
                     inboxCount: notifStore.unreadCount,
-                    claudePendingCount: remoteFiles.feed.pendingCount
+                    agentsPendingCount: remoteFiles.feed.pendingCount
                 )
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -92,7 +92,7 @@ struct ContentView: View {
     private var isConnected: Bool { workspaceStore.connection == .connected }
 
     private var visibleTabs: [AppTab] {
-        AppTab.allCases.filter { $0 != .claude || remoteFiles.feedEnabled }
+        AppTab.allCases.filter { $0 != .agents || remoteFiles.feedEnabled }
     }
 
     /// Restarting on any change also gives the immediate list when the app returns to the foreground.
@@ -103,7 +103,7 @@ struct ContentView: View {
             isConnected ? "connected" : "offline",
             scenePhase == .active ? "active" : "inactive",
             tabBarVisible ? "tab-bar" : "no-tab-bar",
-            selectedTab == .claude ? "list" : "badge",
+            selectedTab == .agents ? "list" : "badge",
         ].joined(separator: "|")
     }
 
@@ -140,7 +140,7 @@ struct ContentView: View {
 private enum AppTab: String, CaseIterable, Hashable {
     case workspaces = "Workspaces"
     case active = "Active"
-    case claude = "Claude"
+    case agents = "Agents"
     case inbox = "Inbox"
     case settings = "Settings"
 
@@ -148,7 +148,7 @@ private enum AppTab: String, CaseIterable, Hashable {
         switch self {
         case .workspaces: return "rectangle.stack.fill"
         case .active: return "terminal.fill"
-        case .claude: return "bubble.left.and.text.bubble.right.fill"
+        case .agents: return "bubble.left.and.text.bubble.right.fill"
         case .inbox: return "bell.fill"
         case .settings: return "gearshape.fill"
         }
@@ -159,7 +159,7 @@ private struct FloatingTabBar: View {
     let tabs: [AppTab]
     @Binding var selectedTab: AppTab
     let inboxCount: Int
-    let claudePendingCount: Int
+    let agentsPendingCount: Int
 
     var body: some View {
         HStack(spacing: 8) {
@@ -203,8 +203,8 @@ private struct FloatingTabBar: View {
                                 .accessibilityLabel("\(inboxCount) unread inbox notifications")
                         }
 
-                        if tab == .claude, claudePendingCount > 0 {
-                            Text(claudePendingCount > 99 ? "99+" : "\(claudePendingCount)")
+                        if tab == .agents, agentsPendingCount > 0 {
+                            Text(agentsPendingCount > 99 ? "99+" : "\(agentsPendingCount)")
                                 .cmuxDisplay(9)
                                 .foregroundStyle(CmuxTheme.canvas)
                                 .padding(.horizontal, 5)
@@ -213,9 +213,9 @@ private struct FloatingTabBar: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                                 .padding(.top, 4)
                                 .padding(.trailing, 10)
-                                .accessibilityIdentifier("ClaudeFeedPendingBadge")
-                                .accessibilityLabel("\(claudePendingCount) pending Claude requests")
-                                .accessibilityValue("\(claudePendingCount)")
+                                .accessibilityIdentifier("AgentsFeedPendingBadge")
+                                .accessibilityLabel("\(agentsPendingCount) pending agent requests")
+                                .accessibilityValue("\(agentsPendingCount)")
                         }
                     }
                 }

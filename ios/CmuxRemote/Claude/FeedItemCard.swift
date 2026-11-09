@@ -5,21 +5,25 @@ struct FeedItemCard: View {
     let item: FeedPendingItem
     @Bindable var store: FeedStore
     let isConnected: Bool
+    let now: Date
 
     @State private var draft: FeedQuestionDraft
     @State private var confirming: FeedReplyButton?
     @State private var detailExpanded = false
     @State private var planBlocks: [MarkdownBlock] = []
 
-    init(item: FeedPendingItem, store: FeedStore, isConnected: Bool) {
+    init(item: FeedPendingItem, store: FeedStore, isConnected: Bool, now: Date) {
         self.item = item
         self.store = store
         self.isConnected = isConnected
+        self.now = now
         _draft = State(initialValue: FeedQuestionDraft(questions: item.questions ?? []))
     }
 
     private var isBusy: Bool { store.isBusy(item.requestId) }
-    private var canReply: Bool { isConnected && !isBusy }
+    private var remainingSeconds: Int? { FeedPendingWindow.remainingSeconds(createdAt: item.createdAt, now: now) }
+    private var isExpired: Bool { remainingSeconds == 0 }
+    private var canReply: Bool { isConnected && !isBusy && !isExpired }
     private var idPrefix: String { "Feed-\(item.requestId)" }
 
     var body: some View {
@@ -81,10 +85,14 @@ struct FeedItemCard: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 4)
-                if let createdAt = item.createdAt {
-                    Text(verbatim: FeedTimeText.relative(milliseconds: createdAt))
-                        .cmuxMono(11)
-                        .foregroundStyle(CmuxTheme.muted)
+                if let remainingSeconds, remainingSeconds > 0 {
+                    Text(verbatim: FeedPendingWindow.remainingText(seconds: remainingSeconds))
+                        .cmuxMono(11, weight: FeedPendingWindow.isUrgent(remainingSeconds: remainingSeconds) ? .medium : .regular)
+                        .foregroundStyle(FeedPendingWindow.isUrgent(remainingSeconds: remainingSeconds) ? CmuxTheme.accentOrange : CmuxTheme.muted)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .accessibilityIdentifier("\(idPrefix)-Remaining")
+                        .accessibilityValue("\(remainingSeconds)")
                 }
             }
             if let title = item.title, !title.isEmpty {
@@ -120,7 +128,12 @@ struct FeedItemCard: View {
 
     @ViewBuilder
     private var footer: some View {
-        if store.sendingRequestIDs.contains(item.requestId) {
+        if isExpired, !isBusy {
+            Text(String(localized: "feed.item.expired", defaultValue: "Time's up · Answer in the Mac terminal"))
+                .cmuxMono(11, weight: .medium)
+                .foregroundStyle(CmuxTheme.accentOrange)
+                .accessibilityIdentifier("\(idPrefix)-Expired")
+        } else if store.sendingRequestIDs.contains(item.requestId) {
             footerStatus(String(localized: "feed.reply.sending", defaultValue: "Sending…"))
                 .accessibilityIdentifier("\(idPrefix)-Sending")
         } else if store.verifying[item.requestId] != nil {
@@ -363,7 +376,7 @@ struct FeedItemCard: View {
     private func confirmationTitle(_ button: FeedReplyButton) -> String {
         switch button {
         case .autoApprove:
-            return String(localized: "feed.confirm.auto_approve", defaultValue: "Approve the plan and let Claude accept edits without asking?")
+            return String(localized: "feed.confirm.auto_approve", defaultValue: "Approve the plan and let the agent accept edits without asking?")
         default:
             return String(localized: "feed.confirm.allow_always", defaultValue: "Always allow this tool without asking again?")
         }
@@ -375,11 +388,33 @@ struct FeedItemCard: View {
     }
 }
 
-enum FeedTimeText {
-    static func relative(milliseconds: Int64, now: Date = Date()) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1_000)
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: now)
+struct FeedDepartedCard: View {
+    let departed: FeedDepartedItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title = departed.item.title, !title.isEmpty {
+                Text(verbatim: title)
+                    .cmuxMono(14, weight: .medium)
+                    .foregroundStyle(CmuxTheme.inkDim)
+                    .lineLimit(2)
+            }
+            Text(departed.message)
+                .cmuxMono(12)
+                .foregroundStyle(departed.reason == .expired ? CmuxTheme.accentOrange : CmuxTheme.muted)
+                .accessibilityIdentifier("FeedDeparted-\(departed.item.requestId)-Reason")
+                .accessibilityValue(departed.reason.rawValue)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(CmuxTheme.surfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(CmuxTheme.divider, lineWidth: 1)
+        )
+        .opacity(0.55)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("FeedDeparted-\(departed.item.requestId)")
     }
 }
