@@ -35,6 +35,35 @@ final class SessionManagerTests: XCTestCase {
         XCTAssertEqual(inboxA.snapshot().count, 1)
         XCTAssertEqual(inboxB.snapshot().count, 1)
     }
+
+    func testActiveSessionCountObserverSeesAttachAndDetachInOrder() async throws {
+        let mgr = SessionManager(reader: SessionStaticReader([]),
+                                 defaultFps: 30, idleFps: 5)
+        let counts = SessionCountInbox()
+        await mgr.setActiveSessionCountObserver { counts.append($0) }
+
+        let sA = await mgr.attach(deviceId: "A") { _ in }
+        let sB = await mgr.attach(deviceId: "B") { _ in }
+        await mgr.detach(session: sA)
+        await mgr.detach(session: sB)
+
+        XCTAssertEqual(counts.snapshot(), [1, 2, 1, 0])
+        let remaining = await mgr.activeSessionCount
+        XCTAssertEqual(remaining, 0)
+    }
+}
+
+final class SessionCountInbox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts: [Int] = []
+    func append(_ count: Int) {
+        lock.lock(); defer { lock.unlock() }
+        counts.append(count)
+    }
+    func snapshot() -> [Int] {
+        lock.lock(); defer { lock.unlock() }
+        return counts
+    }
 }
 
 /// Thread-safe frame collector. The send closure is `@Sendable`, so the

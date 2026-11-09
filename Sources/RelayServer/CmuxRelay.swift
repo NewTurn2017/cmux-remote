@@ -48,6 +48,17 @@ struct Serve: AsyncParsableCommand {
         let manager = SessionManager(terminalReader: reader,
                                      defaultFps: store.current.defaultFps,
                                      idleFps: store.current.idleFps)
+        let relayUpdates = RelayUpdateService.fromEnvironment(
+            ProcessInfo.processInfo.environment,
+            log: { line in logger.warning("\(line)") }
+        )
+        let (sessionCounts, sessionCountSink) = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(8))
+        await manager.setActiveSessionCountObserver { count in sessionCountSink.yield(count) }
+        Task {
+            for await count in sessionCounts {
+                await relayUpdates.sessionCountChanged(count)
+            }
+        }
         let deviceStore = try DeviceStore(url: URL(fileURLWithPath: devicesStorePath()))
         let apnsProvider = APNsProviderClient(config: { store.current.apns })
         let apnsFanout = InboxPushFanout(
@@ -130,7 +141,8 @@ struct Serve: AsyncParsableCommand {
             sessionManager: manager,
             cmux: facade,
             uploadService: uploadService,
-            artifactService: artifactService
+            artifactService: artifactService,
+            relayUpdateService: relayUpdates
         )
 
         let (host, port) = parseListen(store.current.listen)
@@ -147,8 +159,11 @@ struct Serve: AsyncParsableCommand {
         sighup.resume()
         signal(SIGHUP, SIG_IGN)
 
-        logger.info("starting cmux-relay on \(host):\(port)")
-        try await server.run(host: host, port: port)
+        logger.info("starting cmux-relay \(CmuxRemoteVersion.marketing) on \(host):\(port)")
+        let listener = try await server.bind(host: host, port: port)
+        logger.info("listening on \(listener.localAddress?.description ?? "?")")
+        await relayUpdates.recordStartup()
+        try await listener.closeFuture.get()
     }
     static func shouldAutoAuthorizeSelfLogin(environment: [String: String]) -> Bool {
         // The installer always writes the variable ("0" = keep auto-authorise);

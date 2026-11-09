@@ -39,6 +39,7 @@ public final class HTTPServer: @unchecked Sendable {
     private let browserCaptureService: BrowserCaptureService
     private let feedService: FeedService
     private let claudeTranscriptService: ClaudeTranscriptService
+    private let relayUpdateService: RelayUpdateService
     public let logger = Logger(label: "HTTPServer")
 
     public init(group: MultiThreadedEventLoopGroup,
@@ -67,6 +68,7 @@ public final class HTTPServer: @unchecked Sendable {
         self.browserCaptureService = BrowserCaptureService(cmux: cmux)
         self.feedService = FeedService(cmux: cmux)
         self.claudeTranscriptService = ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = .unavailable()
     }
 
     init(group: MultiThreadedEventLoopGroup,
@@ -79,7 +81,8 @@ public final class HTTPServer: @unchecked Sendable {
          artifactService: TerminalArtifactService,
          browserCaptureService: BrowserCaptureService? = nil,
          feedService: FeedService? = nil,
-         claudeTranscriptService: ClaudeTranscriptService? = nil)
+         claudeTranscriptService: ClaudeTranscriptService? = nil,
+         relayUpdateService: RelayUpdateService? = nil)
     {
         self.group = group
         self.routes = routes
@@ -92,6 +95,7 @@ public final class HTTPServer: @unchecked Sendable {
         self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
         self.feedService = feedService ?? FeedService(cmux: cmux)
         self.claudeTranscriptService = claudeTranscriptService ?? ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = relayUpdateService ?? .unavailable()
     }
 
     /// Bind the server and return the listening channel. The caller is
@@ -113,6 +117,7 @@ public final class HTTPServer: @unchecked Sendable {
         let browserCaptureService = self.browserCaptureService
         let feedService = self.feedService
         let claudeTranscriptService = self.claudeTranscriptService
+        let relayUpdateService = self.relayUpdateService
 
         let bs = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
@@ -167,7 +172,8 @@ public final class HTTPServer: @unchecked Sendable {
                                 artifactService: artifactService,
                                 browserCaptureService: browserCaptureService,
                                 feedService: feedService,
-                                claudeTranscriptService: claudeTranscriptService
+                                claudeTranscriptService: claudeTranscriptService,
+                                relayUpdateService: relayUpdateService
                             )
                             return channel.pipeline.addHandler(handler)
                         }

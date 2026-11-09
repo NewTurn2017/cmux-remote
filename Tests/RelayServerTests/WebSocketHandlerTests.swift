@@ -216,6 +216,7 @@ final class WebSocketHandlerTests: XCTestCase {
 
         expect(capabilities.capabilities == [
             "file.upload.v2", "terminal.artifact.v1", "surface.document.v1", "surface.browser.v1", "feed.v1", "claude.transcript.v1",
+            "relay.info.v1",
         ])
         expect(capabilities.supportsSurfaceDocumentV1)
         expect(capabilities.supportsSurfaceBrowserV1)
@@ -224,29 +225,77 @@ final class WebSocketHandlerTests: XCTestCase {
         expect(await cmux.snapshot() == [])
     }
 
-    func testRelayUpdateRPCsAnswerMethodNotFoundUntilTheUpdaterShips() async throws {
-        let cmux = RecordingCMUXFacade()
-        let machine = WSProtocolMachine(cmux: cmux)
+    func testRelayInfoAndUpdateStartOnTheWire() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let home = try relayHome(in: directory, autoUpdate: true, state: #"{"schema_version":1,"state":"staged","latest_version":"2.0.1","last_checked_at_ms":1794218403000,"signing":"identity"}"#)
+        let kickstart = KickstartRecorder(result: true)
+        let facade = RecordingCMUXFacade()
+        let machine = relayUpdateMachine(directory: directory, facade: facade, home: home, kickstart: kickstart)
         _ = await hello(machine)
-
-        for method in [RemoteRPCMethod.relayInfo, .relayUpdateStart] {
-            let request = RPCRequest(id: method.rawValue, method: method.rawValue, params: .object([:]))
-            let actions = await machine.processText(try require(String(data: JSONEncoder().encode(request), encoding: .utf8)))
-            XCTAssertEqual(actions.count, 1)
-            guard case .sendText(let wire) = try require(actions.first) else {
-                return XCTFail("expected sendText, got \(actions)")
-            }
-            print("RELAY_UPDATE_WIRE_SAMPLE placeholder-\(method.rawValue) \(wire)")
-            let response = try JSONDecoder().decode(RPCResponse.self, from: Data(wire.utf8))
-            XCTAssertEqual(response.ok, false)
-            XCTAssertEqual(response.error?.code, RemoteErrorCode.methodNotFound.rawValue)
-        }
 
         let capabilities = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
             .decodeResult(HostCapabilitiesResult.self)
-        expect(!capabilities.supportsRelayInfoV1)
+        expect(capabilities.supportsRelayInfoV1)
+        expect(capabilities.supportsRelayUpdateV1)
+
+        let infoWire = try await rawRPC(machine, id: "r-1", method: RemoteRPCMethod.relayInfo.rawValue)
+        print("RELAY_UPDATE_WIRE_SAMPLE relay-info-staged \(infoWire)")
+        let info = try JSONDecoder().decode(RPCResponse.self, from: Data(infoWire.utf8)).decodeResult(RelayInfoResult.self)
+        XCTAssertEqual(info, RelayInfoResult(version: "2.0.0", update: RelayUpdateStatus(
+            autoUpdateEnabled: true, state: .staged, latestVersion: "2.0.1", lastCheckedAt: 1_794_218_403_000, restartPending: true
+        )))
+
+        let startWire = try await rawRPC(machine, id: "r-2", method: RemoteRPCMethod.relayUpdateStart.rawValue)
+        print("RELAY_UPDATE_WIRE_SAMPLE relay-update-start-staged \(startWire)")
+        let started = try JSONDecoder().decode(RPCResponse.self, from: Data(startWire.utf8)).decodeResult(RelayUpdateStatus.self)
+        XCTAssertEqual(started.state, .staged)
+        XCTAssertEqual(started.restartPending, true)
+        XCTAssertEqual(kickstart.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: home.appendingPathComponent("update/request.json").path))
+        expect(await facade.snapshot() == [])
+    }
+
+    func testRelayUpdateStartWhenTurnedOffAnswersUpdateDisabled() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let home = try relayHome(in: directory, autoUpdate: false, state: nil)
+        let kickstart = KickstartRecorder(result: true)
+        let machine = relayUpdateMachine(directory: directory, facade: RecordingCMUXFacade(), home: home, kickstart: kickstart)
+        _ = await hello(machine)
+
+        let capabilities = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
+            .decodeResult(HostCapabilitiesResult.self)
+        expect(capabilities.supportsRelayUpdateV1)
+        let info = try await rpc(machine, id: "r-1", method: RemoteRPCMethod.relayInfo.rawValue, params: .object([:]))
+            .decodeResult(RelayInfoResult.self)
+        XCTAssertEqual(info.update, RelayUpdateStatus(autoUpdateEnabled: false, state: .disabled))
+
+        let wire = try await rawRPC(machine, id: "r-2", method: RemoteRPCMethod.relayUpdateStart.rawValue)
+        print("RELAY_UPDATE_WIRE_SAMPLE relay-update-start-disabled \(wire)")
+        let response = try JSONDecoder().decode(RPCResponse.self, from: Data(wire.utf8))
+        XCTAssertEqual(response.error?.code, RemoteErrorCode.updateDisabled.rawValue)
+        XCTAssertEqual(kickstart.count, 0)
+    }
+
+    func testRelayWithoutUpdaterReportsUnavailable() async throws {
+        let machine = WSProtocolMachine(cmux: RecordingCMUXFacade())
+        _ = await hello(machine)
+
+        let capabilities = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
+            .decodeResult(HostCapabilitiesResult.self)
+        expect(capabilities.supportsRelayInfoV1)
         expect(!capabilities.supportsRelayUpdateV1)
-        expect(await cmux.snapshot() == [])
+
+        let infoWire = try await rawRPC(machine, id: "r-1", method: RemoteRPCMethod.relayInfo.rawValue)
+        print("RELAY_UPDATE_WIRE_SAMPLE relay-info-unavailable \(infoWire)")
+        let info = try JSONDecoder().decode(RPCResponse.self, from: Data(infoWire.utf8)).decodeResult(RelayInfoResult.self)
+        XCTAssertEqual(info, RelayInfoResult(version: CmuxRemoteVersion.marketing, update: RelayUpdateStatus(autoUpdateEnabled: false, state: .unavailable)))
+
+        let startWire = try await rawRPC(machine, id: "r-2", method: RemoteRPCMethod.relayUpdateStart.rawValue)
+        print("RELAY_UPDATE_WIRE_SAMPLE relay-update-start-unavailable \(startWire)")
+        let response = try JSONDecoder().decode(RPCResponse.self, from: Data(startWire.utf8))
+        XCTAssertEqual(response.error?.code, RemoteErrorCode.updateUnavailable.rawValue)
     }
 
     func testSurfaceDocumentOpenIgnoresClientSuppliedPath() async throws {
@@ -1224,6 +1273,48 @@ final class WebSocketHandlerTests: XCTestCase {
             throw TestFailure.unexpectedAction
         }
         return try JSONDecoder().decode(RPCResponse.self, from: Data(responseText.utf8))
+    }
+
+    private func rawRPC(_ machine: WSProtocolMachine, id: String, method: String) async throws -> String {
+        let request = RPCRequest(id: id, method: method, params: .object([:]))
+        let actions = await machine.processText(try require(String(data: JSONEncoder().encode(request), encoding: .utf8)))
+        expect(actions.count == 1)
+        guard case .sendText(let text) = try require(actions.first) else {
+            throw TestFailure.unexpectedAction
+        }
+        return text
+    }
+
+    private func relayHome(in directory: URL, autoUpdate: Bool, state: String?) throws -> URL {
+        let home = directory.appendingPathComponent("relay-home", isDirectory: true)
+        let update = home.appendingPathComponent("update", isDirectory: true)
+        try FileManager.default.createDirectory(at: update, withIntermediateDirectories: true)
+        try Data(#"{"schema_version":1,"auto_update":\#(autoUpdate),"origin":"https://github.com/NewTurn2017/cmux-remote.git"}"#.utf8)
+            .write(to: update.appendingPathComponent("config.json"))
+        if let state {
+            try Data(state.utf8).write(to: update.appendingPathComponent("state.json"))
+        }
+        return home
+    }
+
+    private func relayUpdateMachine(
+        directory: URL,
+        facade: RecordingCMUXFacade,
+        home: URL,
+        kickstart: KickstartRecorder
+    ) -> WSProtocolMachine {
+        WSProtocolMachine(
+            cmux: facade,
+            authenticatedDeviceID: "update-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: inertArtifactService(cmux: facade),
+            relayUpdateService: RelayUpdateService(
+                paths: RelayUpdatePaths(home: home),
+                version: "2.0.0",
+                now: { 1_794_218_500_000 },
+                kickstartUpdater: { kickstart.record() }
+            )
+        )
     }
 
     private func typedRPC<Request: Encodable, Result: Decodable>(

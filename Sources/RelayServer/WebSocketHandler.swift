@@ -45,6 +45,7 @@ public actor WSProtocolMachine {
     private let browserCaptureService: BrowserCaptureService
     private let feedService: FeedService
     private let claudeTranscriptService: ClaudeTranscriptService
+    private let relayUpdateService: RelayUpdateService
     private let uploadIDSource: @Sendable () -> UUID
     private let relayOwnedTimeout: Duration
     private var helloed = false
@@ -61,6 +62,7 @@ public actor WSProtocolMachine {
         self.browserCaptureService = BrowserCaptureService(cmux: cmux)
         self.feedService = FeedService(cmux: cmux)
         self.claudeTranscriptService = ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = .unavailable()
         self.uploadIDSource = { UUID() }
         self.relayOwnedTimeout = BoundedRelayWork.defaultTimeout
     }
@@ -73,6 +75,7 @@ public actor WSProtocolMachine {
         browserCaptureService: BrowserCaptureService? = nil,
         feedService: FeedService? = nil,
         claudeTranscriptService: ClaudeTranscriptService? = nil,
+        relayUpdateService: RelayUpdateService? = nil,
         uploadIDSource: @escaping @Sendable () -> UUID = { UUID() },
         relayOwnedTimeout: Duration = BoundedRelayWork.defaultTimeout
     ) {
@@ -83,6 +86,7 @@ public actor WSProtocolMachine {
         self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
         self.feedService = feedService ?? FeedService(cmux: cmux)
         self.claudeTranscriptService = claudeTranscriptService ?? ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = relayUpdateService ?? .unavailable()
         self.uploadIDSource = uploadIDSource
         self.relayOwnedTimeout = relayOwnedTimeout
     }
@@ -213,6 +217,11 @@ public actor WSProtocolMachine {
                 await self.relayOwnedResponseBody(method: method, req: req)
             }
         }
+        if method == .relayInfo || method == .relayUpdateStart {
+            return await bounded(req, timeoutMessage: "Relay update status did not answer in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
+        }
         return await bounded(req) { [self] in
             await self.relayOwnedResponseBody(method: method, req: req)
         }
@@ -232,7 +241,7 @@ public actor WSProtocolMachine {
                         HostCapabilitiesResult.surfaceBrowserV1Capability,
                         HostCapabilitiesResult.feedV1Capability,
                         HostCapabilitiesResult.claudeTranscriptV1Capability,
-                    ])
+                    ] + (await relayUpdateService.capabilities()))
                 )
 
             case .uploadBegin:
@@ -410,12 +419,13 @@ public actor WSProtocolMachine {
                 let request = try Self.decode(ClaudeTranscriptPageRequest.self, from: req.params)
                 result = try Self.jsonValue(try await claudeTranscriptService.page(request))
 
-            case .relayInfo, .relayUpdateStart:
-                return Self.encode(Self.errorResponse(
-                    id: req.id,
-                    code: RemoteErrorCode.methodNotFound.rawValue,
-                    message: "Relay update is not available yet"
-                ))
+            case .relayInfo:
+                _ = try Self.decode(RelayInfoRequest.self, from: req.params)
+                result = try Self.jsonValue(await relayUpdateService.info())
+
+            case .relayUpdateStart:
+                _ = try Self.decode(RelayUpdateStartRequest.self, from: req.params)
+                result = try Self.jsonValue(try await relayUpdateService.start())
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {
@@ -430,6 +440,8 @@ public actor WSProtocolMachine {
             return Self.encode(Self.feedErrorResponse(id: req.id, error: error))
         } catch let error as ClaudeTranscriptService.Error {
             return Self.encode(Self.claudeTranscriptErrorResponse(id: req.id, error: error))
+        } catch let error as RelayUpdateService.Error {
+            return Self.encode(Self.relayUpdateErrorResponse(id: req.id, error: error))
         } catch {
             return Self.encode(Self.errorResponse(
                 id: req.id,
@@ -695,6 +707,23 @@ public actor WSProtocolMachine {
         request.method == "surface.send_text" || request.method == "surface.send_key"
     }
 
+    private static func relayUpdateErrorResponse(id: String, error: RelayUpdateService.Error) -> RPCResponse {
+        switch error {
+        case .disabled:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.updateDisabled.rawValue,
+                message: "Relay auto-update is turned off on the Mac"
+            )
+        case .unavailable:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.updateUnavailable.rawValue,
+                message: "This relay cannot update itself"
+            )
+        }
+    }
+
     private static func okResponse(id: String) -> RPCResponse {
         RPCResponse(id: id, ok: true, result: .object([:]), error: nil)
     }
@@ -799,6 +828,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         browserCaptureService: BrowserCaptureService? = nil,
         feedService: FeedService? = nil,
         claudeTranscriptService: ClaudeTranscriptService? = nil,
+        relayUpdateService: RelayUpdateService? = nil,
         maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes,
         maximumOutstandingInboundActions: Int = WebSocketHandler.defaultMaximumOutstandingInboundActions,
         maximumOutstandingInboundBytes: Int = WebSocketHandler.defaultMaximumOutstandingInboundBytes
@@ -814,7 +844,8 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                 artifactService: artifactService,
                 browserCaptureService: browserCaptureService,
                 feedService: feedService,
-                claudeTranscriptService: claudeTranscriptService
+                claudeTranscriptService: claudeTranscriptService,
+                relayUpdateService: relayUpdateService
             ),
             maximumQueuedOutputBytes: maximumQueuedOutputBytes,
             maximumOutstandingInboundActions: maximumOutstandingInboundActions,
