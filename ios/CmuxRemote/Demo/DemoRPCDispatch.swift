@@ -364,6 +364,9 @@ public actor DemoRPCDispatch: RPCDispatch {
         case .claudeSessionsList, .claudeTranscriptPage:
             return try transcriptResponse(method: method, params: params)
 
+        case .relayInfo, .relayUpdateStart:
+            return errorResponse(code: .methodNotFound, message: "Relay update is unavailable")
+
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
             uploadSequence += 1

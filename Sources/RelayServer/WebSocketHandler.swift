@@ -409,6 +409,13 @@ public actor WSProtocolMachine {
             case .claudeTranscriptPage:
                 let request = try Self.decode(ClaudeTranscriptPageRequest.self, from: req.params)
                 result = try Self.jsonValue(try await claudeTranscriptService.page(request))
+
+            case .relayInfo, .relayUpdateStart:
+                return Self.encode(Self.errorResponse(
+                    id: req.id,
+                    code: RemoteErrorCode.methodNotFound.rawValue,
+                    message: "Relay update is not available yet"
+                ))
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {

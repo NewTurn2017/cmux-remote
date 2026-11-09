@@ -20,6 +20,7 @@ import Logging
 struct CmuxRelay: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "cmux-relay",
+        version: CmuxRemoteVersion.marketing,
         subcommands: [Serve.self, Devices.self],
         defaultSubcommand: Serve.self
     )

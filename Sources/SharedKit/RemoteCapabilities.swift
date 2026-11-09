@@ -32,6 +32,10 @@ public enum RemoteRPCMethod: String, Codable, Sendable, Equatable {
     case claudeSessionsList = "claude.sessions.list"
     /// Reads one page of a Claude session transcript, newest first.
     case claudeTranscriptPage = "claude.transcript.page"
+    /// Reads the relay version and self-update status.
+    case relayInfo = "relay.info"
+    /// Asks the relay to check for, build, and apply a newer release now.
+    case relayUpdateStart = "relay.update.start"
 }
 
 /// Capability identifiers exchanged by ``HostCapabilitiesResult``.
@@ -48,6 +52,10 @@ public struct HostCapabilities: Codable, Sendable, Equatable {
     public static let feedV1 = "feed.v1"
     /// The capability identifier for reading Claude session transcripts.
     public static let claudeTranscriptV1 = "claude.transcript.v1"
+    /// The capability identifier for `relay.info`.
+    public static let relayInfoV1 = "relay.info.v1"
+    /// The capability identifier for `relay.update.start`, advertised only when the relay's updater is installed.
+    public static let relayUpdateV1 = "relay.update.v1"
 }
 
 /// Empty parameters for `host.capabilities`.
@@ -73,6 +81,10 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     public static let feedV1Capability = HostCapabilities.feedV1
     /// The Claude transcript capability identifier.
     public static let claudeTranscriptV1Capability = HostCapabilities.claudeTranscriptV1
+    /// The relay-info capability identifier.
+    public static let relayInfoV1Capability = HostCapabilities.relayInfoV1
+    /// The relay-update capability identifier.
+    public static let relayUpdateV1Capability = HostCapabilities.relayUpdateV1
 
     /// Creates a capability result.
     ///
@@ -109,6 +121,16 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     /// Whether `claude.sessions.list` and `claude.transcript.page` are supported.
     public var supportsClaudeTranscriptV1: Bool {
         capabilities.contains(Self.claudeTranscriptV1Capability)
+    }
+
+    /// Whether `relay.info` is supported.
+    public var supportsRelayInfoV1: Bool {
+        capabilities.contains(Self.relayInfoV1Capability)
+    }
+
+    /// Whether `relay.update.start` is supported.
+    public var supportsRelayUpdateV1: Bool {
+        capabilities.contains(Self.relayUpdateV1Capability)
     }
 }
 
@@ -172,6 +194,10 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
     case feedRequestNotPending
     /// The Claude session is unknown or its transcript file is not allowed.
     case claudeSessionNotFound
+    /// Relay auto-update is turned off on the Mac.
+    case updateDisabled
+    /// The relay install cannot update itself: no updater, no install record, or the updater did not start.
+    case updateUnavailable
     /// A code unknown to this client version.
     case unknown(String)
 
@@ -199,6 +225,8 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case .surfaceNotBrowser: return "surface_not_browser"
         case .feedRequestNotPending: return "feed_request_not_pending"
         case .claudeSessionNotFound: return "claude_session_not_found"
+        case .updateDisabled: return "update_disabled"
+        case .updateUnavailable: return "update_unavailable"
         case .unknown(let rawValue): return rawValue
         }
     }
@@ -229,6 +257,8 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case "surface_not_browser": self = .surfaceNotBrowser
         case "feed_request_not_pending": self = .feedRequestNotPending
         case "claude_session_not_found": self = .claudeSessionNotFound
+        case "update_disabled": self = .updateDisabled
+        case "update_unavailable": self = .updateUnavailable
         default: self = .unknown(rawValue)
         }
     }

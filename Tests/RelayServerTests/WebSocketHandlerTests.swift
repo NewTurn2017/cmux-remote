@@ -224,6 +224,31 @@ final class WebSocketHandlerTests: XCTestCase {
         expect(await cmux.snapshot() == [])
     }
 
+    func testRelayUpdateRPCsAnswerMethodNotFoundUntilTheUpdaterShips() async throws {
+        let cmux = RecordingCMUXFacade()
+        let machine = WSProtocolMachine(cmux: cmux)
+        _ = await hello(machine)
+
+        for method in [RemoteRPCMethod.relayInfo, .relayUpdateStart] {
+            let request = RPCRequest(id: method.rawValue, method: method.rawValue, params: .object([:]))
+            let actions = await machine.processText(try require(String(data: JSONEncoder().encode(request), encoding: .utf8)))
+            XCTAssertEqual(actions.count, 1)
+            guard case .sendText(let wire) = try require(actions.first) else {
+                return XCTFail("expected sendText, got \(actions)")
+            }
+            print("RELAY_UPDATE_WIRE_SAMPLE placeholder-\(method.rawValue) \(wire)")
+            let response = try JSONDecoder().decode(RPCResponse.self, from: Data(wire.utf8))
+            XCTAssertEqual(response.ok, false)
+            XCTAssertEqual(response.error?.code, RemoteErrorCode.methodNotFound.rawValue)
+        }
+
+        let capabilities = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
+            .decodeResult(HostCapabilitiesResult.self)
+        expect(!capabilities.supportsRelayInfoV1)
+        expect(!capabilities.supportsRelayUpdateV1)
+        expect(await cmux.snapshot() == [])
+    }
+
     func testSurfaceDocumentOpenIgnoresClientSuppliedPath() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
