@@ -236,7 +236,8 @@ struct CmuxRemoteApp: App {
             attachmentScenario: processInfo.environment["CMUX_UI_TEST_ATTACHMENT_SCENARIO"],
             artifactScenario: processInfo.environment["CMUX_UI_TEST_ARTIFACT_SCENARIO"],
             fileFeatureCacheNamespace: processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_CACHE_NAMESPACE"],
-            feedScenario: processInfo.environment["CMUX_UI_TEST_FEED_SCENARIO"]
+            feedScenario: processInfo.environment["CMUX_UI_TEST_FEED_SCENARIO"],
+            transcriptScenario: processInfo.environment["CMUX_UI_TEST_TRANSCRIPT_SCENARIO"]
         )
         #else
         let rpc = DemoRPCDispatch()

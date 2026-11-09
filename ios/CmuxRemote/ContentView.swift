@@ -4,6 +4,7 @@ import SharedKit
 struct ContentView: View {
     @State private var selectedTab: AppTab = .workspaces
     @State private var requestedSurfaceId: String?
+    @State private var agentsSection: AgentsSection = .pending
     @Environment(\.scenePhase) private var scenePhase
 
     let workspaceStore: WorkspaceStore
@@ -34,7 +35,15 @@ struct ContentView: View {
                     onBack: { selectedTab = .workspaces }
                 )
             case .agents:
-                FeedListView(store: remoteFiles.feed, isConnected: isConnected)
+                AgentsView(
+                    feed: remoteFiles.feed,
+                    transcripts: remoteFiles.transcripts,
+                    feedEnabled: remoteFiles.feedEnabled,
+                    transcriptEnabled: remoteFiles.transcriptEnabled,
+                    isConnected: isConnected,
+                    hostGeneration: remoteFiles.hostGeneration,
+                    section: $agentsSection
+                )
             case .inbox:
                 NotificationCenterView(store: notifStore) { notification in
                     open(notification: notification)
@@ -54,7 +63,7 @@ struct ContentView: View {
         .task(id: feedLoopKey) {
             guard remoteFiles.feedEnabled, tabBarVisible else { return }
             await remoteFiles.feed.runRefreshLoop(
-                intervalSeconds: selectedTab == .agents
+                intervalSeconds: feedListVisible
                     ? FeedRefreshPolicy.listIntervalSeconds
                     : FeedRefreshPolicy.badgeIntervalSeconds,
                 isConnected: isConnected,
@@ -65,7 +74,7 @@ struct ContentView: View {
             guard phase == .active, !tabBarVisible, remoteFiles.feedEnabled, isConnected else { return }
             Task { await remoteFiles.feed.refresh() }
         }
-        .onChange(of: remoteFiles.feedEnabled) { _, enabled in
+        .onChange(of: remoteFiles.agentsEnabled) { _, enabled in
             if !enabled, selectedTab == .agents { selectedTab = .workspaces }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -92,7 +101,11 @@ struct ContentView: View {
     private var isConnected: Bool { workspaceStore.connection == .connected }
 
     private var visibleTabs: [AppTab] {
-        AppTab.allCases.filter { $0 != .agents || remoteFiles.feedEnabled }
+        AppTab.allCases.filter { $0 != .agents || remoteFiles.agentsEnabled }
+    }
+
+    private var feedListVisible: Bool {
+        selectedTab == .agents && (agentsSection == .pending || !remoteFiles.transcriptEnabled)
     }
 
     /// Restarting on any change also gives the immediate list when the app returns to the foreground.
@@ -103,7 +116,7 @@ struct ContentView: View {
             isConnected ? "connected" : "offline",
             scenePhase == .active ? "active" : "inactive",
             tabBarVisible ? "tab-bar" : "no-tab-bar",
-            selectedTab == .agents ? "list" : "badge",
+            feedListVisible ? "list" : "badge",
         ].joined(separator: "|")
     }
 

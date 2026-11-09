@@ -39,6 +39,8 @@ public actor DemoRPCDispatch: RPCDispatch {
     private var browserCaptureCount = 0
     private let feedScenario: String?
     private var feedItems: [FeedPendingItem]?
+    private let transcriptScenario: String?
+    private var transcriptLatestRequests: [String: Int] = [:]
     private var intentionallyFailedAttachmentNames: Set<String> = []
     private var blockedAttachmentUploadID: String?
     private var blockedAttachmentChunk: CheckedContinuation<RPCResponse, Never>?
@@ -60,7 +62,8 @@ public actor DemoRPCDispatch: RPCDispatch {
         attachmentScenario: String? = nil,
         artifactScenario: String? = nil,
         fileFeatureCacheNamespace: String? = nil,
-        feedScenario: String? = nil
+        feedScenario: String? = nil,
+        transcriptScenario: String? = nil
     ) {
         self.workspaces = DemoContent.workspaces
         #if DEBUG
@@ -78,6 +81,7 @@ public actor DemoRPCDispatch: RPCDispatch {
         )
         self.shouldGateThumbnail = artifactScenario == "source-states"
         self.feedScenario = feedScenario?.isEmpty == false ? feedScenario : nil
+        self.transcriptScenario = transcriptScenario?.isEmpty == false ? transcriptScenario : nil
         #else
         self.fileFeatureFixturesEnabled = false
         self.staleFeatureResponseGateEnabled = false
@@ -87,6 +91,7 @@ public actor DemoRPCDispatch: RPCDispatch {
         self.activeImageRevision = DemoContent.fileFeatureImageArtifact.revision
         self.shouldGateThumbnail = false
         self.feedScenario = nil
+        self.transcriptScenario = nil
         #endif
     }
 
@@ -320,6 +325,7 @@ public actor DemoRPCDispatch: RPCDispatch {
                 HostCapabilities.surfaceBrowserV1,
             ]
             if feedScenario != nil { capabilities.append(HostCapabilities.feedV1) }
+            if transcriptScenario != nil { capabilities.append(HostCapabilities.claudeTranscriptV1) }
             return try encodedResponse(HostCapabilitiesResult(capabilities: capabilities))
 
         case .surfaceDocumentOpen:
@@ -356,7 +362,7 @@ public actor DemoRPCDispatch: RPCDispatch {
             return try feedResponse(method: method, params: params)
 
         case .claudeSessionsList, .claudeTranscriptPage:
-            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+            return try transcriptResponse(method: method, params: params)
 
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
@@ -696,6 +702,57 @@ public actor DemoRPCDispatch: RPCDispatch {
                 return errorResponse(code: .feedRequestNotPending, message: "The request is no longer pending")
             }
             return try encodedResponse(FeedReplyResult(requestId: request.requestId, kind: request.kind))
+        default:
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+    }
+
+    /// Scenarios: `sessions` serves ``DemoClaudeTranscriptFixtures``; every newest-page request
+    /// after the first for the live session adds one entry, like a session that keeps writing.
+    /// `method-not-found` advertises `claude.transcript.v1` but answers like a relay without it.
+    private func transcriptResponse(method: RemoteRPCMethod, params: JSONValue) throws -> RPCResponse {
+        guard let transcriptScenario, transcriptScenario != "method-not-found" else {
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+        let nowMilliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+        switch method {
+        case .claudeSessionsList:
+            return try encodedResponse(ClaudeSessionListResult(
+                sessions: DemoClaudeTranscriptFixtures.sessions(nowMilliseconds: nowMilliseconds)
+            ))
+        case .claudeTranscriptPage:
+            let request = try params.decode(ClaudeTranscriptPageRequest.self)
+            let known = DemoClaudeTranscriptFixtures.sessions(nowMilliseconds: nowMilliseconds).map(\.sessionId)
+            guard known.contains(request.sessionId),
+                  request.sessionId != DemoClaudeTranscriptFixtures.missingSessionID
+            else {
+                return RPCResponse(id: "demo", ok: false, error: RPCError(
+                    code: RemoteErrorCode.claudeSessionNotFound.rawValue,
+                    message: "Claude session not found",
+                    data: .object(["field": .string("session_id")])
+                ))
+            }
+            var extraEntries = 0
+            if request.sessionId == DemoClaudeTranscriptFixtures.liveSessionID {
+                let latestRequests = transcriptLatestRequests[request.sessionId, default: 0]
+                if request.before == nil { transcriptLatestRequests[request.sessionId] = latestRequests + 1 }
+                extraEntries = max(0, transcriptLatestRequests[request.sessionId, default: 0] - 1)
+            }
+            let fileSize = Int64(DemoClaudeTranscriptFixtures.entryCount + extraEntries) * DemoClaudeTranscriptFixtures.bytesPerEntry
+            if let before = request.before, before > fileSize || before % DemoClaudeTranscriptFixtures.bytesPerEntry != 0 {
+                return RPCResponse(id: "demo", ok: false, error: RPCError(
+                    code: RemoteErrorCode.invalidField.rawValue,
+                    message: "Invalid field",
+                    data: .object(["field": .string("before")])
+                ))
+            }
+            return try encodedResponse(DemoClaudeTranscriptFixtures.page(
+                sessionID: request.sessionId,
+                before: request.before,
+                maxEntries: request.maxEntries,
+                extraEntries: extraEntries,
+                nowMilliseconds: nowMilliseconds
+            ))
         default:
             return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
         }

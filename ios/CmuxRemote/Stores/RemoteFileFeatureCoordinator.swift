@@ -10,6 +10,7 @@ final class RemoteFileFeatureCoordinator {
     let documents: SurfaceDocumentStore
     let browsers: SurfaceBrowserStore
     let feed: FeedStore
+    let transcripts: ClaudeTranscriptStore
 
     private let routingRPC: OfflineRPCDispatch
 
@@ -22,6 +23,8 @@ final class RemoteFileFeatureCoordinator {
     /// Same lifetime as `documentRoutingEnabled`, for `feed.v1`, so the Claude tab can show
     /// its disconnected state instead of vanishing while the relay reconnects.
     private(set) var feedRoutingEnabled = false
+    /// Same lifetime as `documentRoutingEnabled`, for `claude.transcript.v1`.
+    private(set) var transcriptRoutingEnabled = false
     private(set) var hostGeneration = 0
     private(set) var hostID = "offline"
     private(set) var accountScope = "offline"
@@ -40,9 +43,12 @@ final class RemoteFileFeatureCoordinator {
         self.documents = SurfaceDocumentStore(rpc: routingRPC)
         self.browsers = SurfaceBrowserStore(rpc: routingRPC, baseIntervalSeconds: browserRefreshSeconds)
         self.feed = FeedStore(rpc: routingRPC)
+        self.transcripts = ClaudeTranscriptStore(rpc: routingRPC)
     }
 
     var feedEnabled: Bool { feedRoutingEnabled && !feed.isUnsupported }
+    var transcriptEnabled: Bool { transcriptRoutingEnabled && !transcripts.isUnsupported }
+    var agentsEnabled: Bool { feedEnabled || transcriptEnabled }
 
     func connect(
         rpc: any RPCDispatch,
@@ -57,6 +63,7 @@ final class RemoteFileFeatureCoordinator {
         documents.reset()
         browsers.reset()
         feed.reset()
+        transcripts.reset()
         await routingRPC.install(rpc)
         await attachments.setHostGeneration(generation)
         await terminalArtifacts.activate(identity: nil)
@@ -71,12 +78,14 @@ final class RemoteFileFeatureCoordinator {
             documentRoutingEnabled = nextCapabilities.supportsSurfaceDocumentV1
             browserRoutingEnabled = nextCapabilities.supportsSurfaceBrowserV1
             feedRoutingEnabled = nextCapabilities.supportsFeedV1
+            transcriptRoutingEnabled = nextCapabilities.supportsClaudeTranscriptV1
         } catch {
             guard generation == hostGeneration else { return }
             capabilities = HostCapabilitiesResult(capabilities: [])
             documentRoutingEnabled = false
             browserRoutingEnabled = false
             feedRoutingEnabled = false
+            transcriptRoutingEnabled = false
         }
     }
 
@@ -90,10 +99,12 @@ final class RemoteFileFeatureCoordinator {
         documents.reset()
         browsers.reset()
         feed.reset()
+        transcripts.reset()
         if purgeAccountCache {
             documentRoutingEnabled = false
             browserRoutingEnabled = false
             feedRoutingEnabled = false
+            transcriptRoutingEnabled = false
         }
         await routingRPC.removeTarget()
         await attachments.setHostGeneration(hostGeneration)
