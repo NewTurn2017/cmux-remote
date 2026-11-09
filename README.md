@@ -15,21 +15,24 @@ cmux와 문서화된 JSON-RPC 프로토콜로만 통신하는 독립 네트워�
 
 ---
 
-## 이번 업데이트 — v1.0.8
+## 이번 업데이트 — v2.0.0
 
 <p align="center">
   <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote 브랜드마크" width="320">
 </p>
 
-v1.0.5 이후 새로 추가되거나 바뀐 점:
+v1.1.4 이후 새로 추가되거나 바뀐 점:
 
-- 🔔 **네이티브 푸시 알림 (APNs)** — cmux 이벤트와 Claude/Codex 계열 `needs input` 프롬프트를 relay가 APNs로 직접 보냅니다. relay에 `apns` 블록을 설정하면 앱이 백그라운드·종료 상태여도 배너가 도착하고, 설정하지 않으면 기존 로컬 알림으로 자동 폴백합니다.
-- ⌨️ **Ctrl-C 단축키** — 실행 중인 명령을 끊을 수 있도록 터미널 키보드 바에 전용 Ctrl-C 키를 추가했습니다.
-- 🖼️ **App Store 스크린샷 5장 전체 교체** — 최신 워크스페이스 · 터미널 · 키보드 · Inbox · 설정 화면을 반영했습니다.
-- 🔕 **알림 소음 줄이기** — 사용자 입력이 필요한 이벤트만 iOS 배너로 알리고, 나머지는 Inbox 기록과 안 읽음 배지로만 유지하는 설정을 추가했습니다.
-- 🇰🇷 **한글/CJK 겹침 렌더링 수정** — 넓은 pane에서 한글이 인접 글자와 겹쳐 보이던 문제를 실측 폰트 메트릭 + 셀 단위 클리핑으로 수정했습니다 ([#13](https://github.com/NewTurn2017/cmux-remote/issues/13)).
-- ➖ **`--` 입력 보호** — 커맨드 입력창에서 iOS 스마트 구두점이 `--`를 em dash로 바꿔 CLI 옵션이 깨지던 문제를 수정했습니다 ([#4](https://github.com/NewTurn2017/cmux-remote/issues/4)).
-- 🛠️ **(relay) 셋업 호환성** — cmux 0.64+ `socket-control-password` XDG state 경로 지원, GUI Tailscale.app CLI PATH 폴백, 연결 가이드 password 안내 교정. relay는 `git pull` 후 `./scripts/install-launchd.sh` 재실행으로 업데이트하세요.
+- 📝 **마크다운·텍스트 문서 보기** — cmux 마크다운 탭과 텍스트 파일을 폰에서 문서로 읽습니다(새로고침 버튼, 실시간 갱신 없음). 터미널에 찍힌 상대 경로 파일도 열 수 있습니다.
+- 🌐 **브라우저 탭 보기** — cmux 브라우저 탭을 폰에서 스크린샷으로 봅니다. 화면에 보이는 동안 약 2초마다 갱신되며 읽기 전용입니다(클릭·스크롤·이동 없음).
+- 🤖 **AGENTS 탭** — Mac에서 Claude 등이 기다리는 질문·권한 요청·플랜 승인에 폰으로 답하고(남은 시간·만료 표시), Claude 세션 대화를 읽기 전용으로 봅니다.
+- 🔔 **알림 본문** — 알림 제목·본문이 Inbox와 배너에 표시되고, Mac에서 알림을 지우면 폰 카드도 사라집니다. relay에 `apns` 블록이 있으면 푸시(APNs)에도 제목·본문이 들어가며 Apple 푸시 서버를 거칩니다([PRIVACY.md](PRIVACY.md)).
+- 📜 **전체 화면 터미널 페이지 넘김** — Claude Code 전체 화면처럼 스크롤 기록이 없는 화면에서 맨 위·아래를 넘겨 당기면 Page Up·Page Down이 전송됩니다. 터미널이 아닌 탭은 빈 터미널 대신 종류에 맞는 화면이나 안내 카드로 열립니다.
+- 🛠️ **(relay) 안정성** — 같은 화면이 반복 전송되던 문제, 파일 작업이 WebSocket을 막던 문제, 큰 이미지·문서(약 750 KB 초과)가 열리지 않거나 연결이 끊기던 문제를 고쳤습니다. 느린 RPC는 로그에 남고 `CMUX_RELAY_TRACE_RPC=1`로 전부 추적할 수 있습니다.
+- 🔄 **relay 자동 업데이트** — Mac relay가 GitHub의 정식 릴리스 태그(`vX.Y.Z`)만 따라가며, 새 태그가 나오면 스스로 받아 빌드·서명·설치합니다. 재시작은 폰이 하나도 연결돼 있지 않을 때만 합니다(설정의 [ UPDATE NOW ]로 직접 요청하면 바로 적용). 1.x에서 올라올 때는 처음 한 번만 수동 업데이트가 필요하고, 끄려면 `./scripts/install-launchd.sh --no-auto-update`입니다([자동 업데이트](#자동-업데이트)).
+- 🏷️ **버전 표시와 업데이트 안내** — 설정의 version 섹션에 앱 버전(`2.0.0 (22)` 형식)과 relay 버전·업데이트 상태가 보입니다. App Store에 새 버전이 있으면 설정 탭에 점이 뜨고 [ OPEN APP STORE ] 버튼으로 안내합니다. 앱은 하루 한 번 Apple에 번들 ID와 국가만 보내 최신 버전을 확인합니다([PRIVACY.md](PRIVACY.md)).
+- 🌐 **한글/영어 번역 점검** — 앱은 iOS 시스템 언어를 그대로 따릅니다(앱 안 언어 선택은 없음). 한국어 화면에서 번역이 빠져 있던 문구 49개를 번역하고, 영어 화면에 새던 한국어 데모 문구 1개를 고쳤습니다. 탭 이름 같은 디자인 라벨은 영어로 유지합니다.
+- 🧭 **탭 줄 유지** — 워크스페이스 화면에서 입력창을 눌러 키보드가 떠도 상단 surface 탭 줄(터미널·브라우저·마크다운)이 사라지지 않습니다.
 
 <table>
   <tr>
@@ -41,31 +44,39 @@ v1.0.5 이후 새로 추가되거나 바뀐 점:
   </tr>
 </table>
 
-> 1.0.5 이하 변경 내역은 아래 **변경 이력** 참고.
+> v1.1.4 이하 변경 내역은 아래 **변경 이력** 참고.
 
 ---
 
 ## 상태
 
-**얼리 프리뷰 (v1.0.9).** 다음이 됩니다:
+**얼리 프리뷰 (v2.0.0).** 다음이 됩니다:
 
 - cmux 작업공간 / surface 목록 보기, 생성, 이름 변경, 닫기
-- 임의의 터미널 surface를 실시간 미러링 (15Hz diff 폴링, 120줄 bounded history)
+- 임의의 터미널 surface를 실시간 미러링 (15Hz diff 폴링, 화면 높이 + 240줄 스크롤백)
 - 키 입력 / 키 조합 / 텍스트 / 커맨드 라인 / LIVE 즉시 입력 전송 · Ctrl-C 단축키
 - iOS 기기 클립보드 붙여넣기 + 사진 첨부 경로 삽입
 - 연결된 MacBook 배터리 상태 표시
-- cmux 알림과 Claude/Codex 계열 `needs input` 이벤트를 iOS Inbox + 로컬 알림 또는 APNs 푸시로 표시
+- cmux 알림(제목·본문 포함)과 Claude/Codex 계열 `needs input` 이벤트를 iOS Inbox + 로컬 알림 또는 APNs 푸시로 표시
 - 입력 패널을 화면 하단에 붙이고, 가려진 터미널 줄을 끌어올릴 수 있도록 하단 스크롤 여유 추가
 - 마우스 모드 TUI 탭 입력 (Textual / Bubble Tea / fzf / omx 등)
 - pane 포커스 자동 고정 + 이전 pane 토글
+- surface 종류(터미널·브라우저·마크다운) 구분, 스크롤 기록 없는 전체 화면 터미널은 맨 위·아래를 넘겨 당겨 Page Up·Page Down
+- cmux 마크다운 탭·텍스트 파일 문서 보기, 브라우저 탭 스크린샷 보기(읽기 전용)
+- AGENTS 탭: Claude 등의 질문·권한·플랜 승인에 답하기, Claude 대화 기록 읽기(읽기 전용)
+- Mac relay가 GitHub 정식 릴리스 태그를 따라 스스로 업데이트 (폰이 연결돼 있지 않을 때만 재시작, 끌 수 있음)
+- 설정 화면에 앱·relay 버전과 업데이트 상태 표시, App Store에 새 버전이 있으면 안내
 
 macOS 14 + iOS 17 실기기 + 시뮬레이터에서 같은 Wi-Fi와 Tailnet
 환경에서 스모크 테스트했습니다 (Tailscale 1.84+).
 
 > **알림 전달** — 1.0.6부터 relay에 `apns` 블록을 설정하면 앱이 종료/장시간
-> 백그라운드 상태여도 APNs 푸시로 배너가 도착합니다. APNs를 설정하지 않으면
-> 기존처럼 앱이 foreground이거나 백그라운드에서 WebSocket이 살아있는 동안만
-> 뜨는 로컬 알림으로 동작합니다. (아래 **설정**의 `apns` 블록 참고.)
+> 백그라운드 상태여도 APNs 푸시로 배너가 도착합니다. 푸시에는 알림의
+> 제목·부제·본문이 들어가며 Mac relay에서 Apple 푸시 서버를 거쳐 기기로
+> 갑니다(개발자 서버는 없습니다). 자세한 내용은 [PRIVACY.md](PRIVACY.md)를
+> 보세요. APNs를 설정하지 않으면 기존처럼 앱이 foreground이거나
+> 백그라운드에서 WebSocket이 살아있는 동안만 뜨는 로컬 알림으로 동작합니다.
+> (아래 **설정**의 `apns` 블록 참고.)
 
 ---
 
@@ -75,7 +86,14 @@ macOS 14 + iOS 17 실기기 + 시뮬레이터에서 같은 Wi-Fi와 Tailnet
 > 범위 — `app`(iOS 앱) · `relay`(Mac 데몬) · `setup`(설치/문서).
 > 버전별 App Store 상세 노트는
 > [`docs/launch-assets/release-notes/`](docs/launch-assets/release-notes/)에 있습니다.
+> 1.1.x의 날짜는 릴리스 노트에 기록된 App Store 제출일입니다.
 
+- **2026-11-09 · v2.0.0 (app + relay)** — app: 마크다운·텍스트 문서와 브라우저 탭(스크린샷, 읽기 전용) 보기, AGENTS 탭(Claude 질문·권한·플랜 응답, Claude 대화 기록 읽기), 알림 제목·본문 표시와 Mac에서 지우면 폰 카드 삭제, 전체 화면 터미널 Page Up/Down 제스처, surface 종류 구분, 설정의 앱·relay 버전 표시와 [ UPDATE NOW ], App Store 새 버전 안내(하루 한 번 번들 ID·국가만 조회), 번역 점검(한국어 49문구), 키보드가 떠도 surface 탭 줄 유지. relay: 자동 업데이트(정식 태그 `vX.Y.Z`만, 폰이 연결돼 있지 않을 때만 재시작, `--no-auto-update`로 끔), `relay.info`·`relay.update.start`, surface 종류·활성 화면 전달, 스크롤백 화면 높이 + 240줄, 문서·브라우저·feed·Claude 대화 기록 서비스, 푸시에 알림 제목·본문 포함(`apns` 설정 시), 반복 프레임·파일 작업 정체·큰 파일 전송 수정, 느린 RPC 로그.
+- **2026-10-27 · v1.1.4 (app)** — Option + 아래쪽 방향키 단축키 추가. Claude Code 전체 화면에서 최신 출력으로 내려가려면 Mac의 `~/.claude/keybindings.json` Scroll 컨텍스트에 `"alt+down": "scroll:bottom"`을 추가해야 합니다.
+- **2026-10-15 · v1.1.3 (app + relay)** — app: 터미널·워크스페이스 전환 때 이전 화면이 남지 않게 수정, 열 수 없는 터미널은 이유 안내, relay·Tailscale이 시작 중이면 자동 재연결과 연결·페어링 메시지 개선. relay: 페어링을 Tailscale 기기에 묶고(노드 키 교체 때도 유지) Host/Origin 검증으로 교차 사이트·DNS 리바인딩 요청 차단. relay는 App Store가 아니라 `main`에서 배포됩니다.
+- **2026-10-05 · v1.1.2 (app)** — Option + 위쪽 방향키 단축키 추가(맨 아래 줄), Space 라벨을 기호로 교체.
+- **v1.1.1 (app)** — ANSI 트루컬러(불투명 검은 viewport), 길게 눌러 드래그 선택·한 번에 복사, 사진·문서 업로드(`Downloads/cmux-remote`), 최근 업로드·터미널 파일 썸네일과 전체 화면 뷰어, 맨 아래 이동 버튼 위치 변경, Settings 안내·알림 문구 한/영 현지화.
+- **v1.0.9 (app)** — 태블릿 네이티브 작업공간(전체 창, 가로 화면 2단 패널, 전체 너비 터미널, 큰 터치 영역, 네 방향 지원).
 - **2026-07-23 · v1.0.8 (app + relay)** — app: 한글/CJK wide glyph 겹침 렌더링 수정(실측 폰트 메트릭 + run 클리핑, 기하 회귀 테스트, #13), 커맨드 입력 스마트 구두점 비활성화(`--` → em dash 방지, #4), 알림 소음 컨트롤(입력 필요 이벤트만 배너), release 빌드 타입체크 스톨 해소(#11). relay: cmux 0.64+ `socket-control-password` XDG state 경로 지원(#8, #14), GUI Tailscale.app CLI PATH 폴백(#14), 연결 가이드 password 안내 교정.
 - **2026-06-23 · v1.0.6 (app + relay)** — 네이티브 APNs 푸시 알림(relay `apns` 블록 설정 시 앱 종료 상태에도 배너 도착, 미설정 시 로컬 알림 폴백), 터미널 키보드 바 Ctrl-C 단축키, App Store 6.9" 스크린샷 5장 전체 교체. *App Store에는 미공개 — v1.0.8에 통합 출시.*
 - **2026-06-06 · relay** — cmux 1.0.5가 Unix 소켓을 `~/Library/Application Support/cmux`에서 `~/.local/state/cmux`로 이전한 것에 대응. `cmuxSocketPath()`가 마커를 최신순(`/tmp/cmux-last-socket-path` → `~/.local/state/cmux/last-socket-path` → 레거시 Application Support)으로 추적하고, 없으면 `~/.local/state/cmux/cmux.sock`로 폴백. **iOS 앱 무변경 → App Store 재제출 불필요.**
@@ -141,16 +159,18 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 - 칩바에서 surface 생성 / 닫기 (확정 다이얼로그 포함)
 - 작업공간 전환 / surface 전환 시 자동 재구독 + 하단 자동 스크롤
 - 첫 RPC 게이트 (`CMUXClient.awaitReady`) — inbound bridge 설치 race 방지
+- surface 종류(터미널·브라우저·마크다운)를 relay가 전달합니다. 터미널이 아닌 탭은 표시가 붙고, 빈 터미널 대신 종류에 맞는 화면(또는 안내 카드)으로 열립니다
 
 ### 터미널 미러
 
 - 15Hz diff 폴링 + 풀텍스트 fallback + checksum reconcile
-- 120줄 bounded history로 surface 전환/새로고침 시 갑작스러운 24줄 축소 완화
+- relay가 화면 높이 + 240줄 스크롤백을 보존해 surface 전환/새로고침 시 갑작스러운 24줄 축소 완화
 - 입력 액세서리에 가려진 줄을 완전히 볼 수 있도록 터미널 하단 5행 스크롤 여유 추가
 - 렌더 row/style-run 캐시 + Canvas run 단위 그리기로 대형 화면에서도 빠른 스크롤/줌 유지
 - Tokyo Night Storm ANSI 팔레트, 256색/truecolor ANSI 렌더링 준비 + CRT 스캔라인 셰이더
 - 동아시아 와이드 글리프 폭 계산
 - iOS 컬러 이모지 자동 승격 차단 (●, ⏺, ✔, ▶ 등에 VS-15 적용)
+- Claude Code 전체 화면처럼 스크롤 기록이 없는 화면(alternate screen)에서는 맨 위·아래를 넘겨 당기면 Page Up·Page Down이 한 번씩 전송 (당김 임계 56pt, 같은 방향 연속은 0.35초 간격)
 
 ### 입력
 
@@ -171,6 +191,21 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
   자동 호출. 책상에서 cmux 포커스를 옮긴 뒤에도 iPhone 키가 의도한
   surface로 도착.
 
+### 문서 / 브라우저
+
+- cmux 마크다운 탭과 텍스트 파일을 폰에서 문서로 렌더링 (새로고침 버튼, 실시간 갱신 없음)
+- 파일 경로는 relay가 cmux에서 읽습니다 — 폰은 workspace·surface id만 보냅니다
+- 터미널에 찍힌 맨 상대 경로 파일도 열기
+- cmux 브라우저 탭을 스크린샷으로 보기 — 화면에 보이는 동안 약 2초마다 갱신, 읽기 전용(클릭·스크롤·이동 없음), 수동 새로고침·핀치 확대, 제목·URL 표시
+- 큰 이미지·문서는 720 KiB 단위로 받아 열기 (relay 프레임은 1 MiB 미만, 앱 수신 한도 4 MiB)
+
+### AGENTS 탭
+
+- Mac에서 Claude 등이 기다리는 질문·권한 요청·플랜 승인을 폰에서 확인하고 답하기 (권한: 허용·항상 허용·거부, 플랜: 승인·자동 승인·거절)
+- 요청이 열려 있는 남은 시간과 만료 안내 표시 (cmux 훅은 약 125초 뒤 만료)
+- Claude 세션 목록과 대화를 읽기 전용으로 보기 — 최신 페이지부터, 맨 위로 스크롤하면 이전 페이지
+- relay는 `~/.claude/projects` 안의 `.jsonl` 세션 파일만 읽고, 파일 경로와 resume 명령은 폰에 보내지 않습니다
+
 ### 알림
 
 - cmux events.stream의 notification을 iOS 로컬 알림으로 표시
@@ -179,10 +214,17 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 - 중복 ID 가드 — 재연결로 같은 알림이 두 번 와도 한 번만 배너
 - Inbox 화면 — 최근 200건 보관, 가장 최근 먼저
 - Claude/Codex 계열 `needs input`, `needs attention`, 승인 요청 이벤트를 일반 cmux 알림과 같은 Inbox 항목으로 승격
-- relay에 `apns` 블록을 설정하면 cmux 이벤트와 `needs input`을 APNs 푸시로 전달 — 앱이 종료된 상태에도 도달, 미설정 시 로컬 알림 폴백
+- relay에 `apns` 블록을 설정하면 cmux 이벤트와 `needs input`을 APNs 푸시로 전달 — 앱이 종료된 상태에도 도달, 미설정 시 로컬 알림 폴백. 푸시에는 알림 제목·부제·본문이 들어가며 Apple 푸시 서버를 거칩니다(개발자 서버 없음, [PRIVACY.md](PRIVACY.md))
 - 딥링크 `cmux://surface/<id>` 처리 (푸시 페이로드 딥링크 자동 오픈은 v1.1 예정)
 - Settings의 `SEND TEST NOTIFICATION` 버튼 — 로컬 inject 즉시 확인 +
   relay→cmux→events.stream 라운드트립 별도 상태 라인
+- Inbox 카드에 알림 제목·본문 표시 (cmux가 이벤트 스트림에서 가리는 텍스트를 relay가 채워 줍니다), 연결 중 새 알림마다 로컬 배너, Mac에서 알림을 지우면 폰 카드도 삭제
+
+### 설정 화면 (버전 · 업데이트)
+
+- **version 섹션** — 앱 버전(`2.0.0 (22)` 형식)과 relay 버전, 업데이트 상태(최신 버전·새 버전 있음·확인/받는/빌드 중·준비됨·적용 중·실패 이유), 자동 업데이트 켜짐/꺼짐, 마지막 확인 시각을 보여 줍니다. relay가 2.0 이전이면 버전이 "알 수 없음 (2.0 이전)"으로 보이고 `git pull` 후 `./scripts/install-launchd.sh`를 실행하라는 안내가 나옵니다.
+- **[ UPDATE NOW ]** — relay가 2.0 이상이고 자동 업데이트가 꺼져 있지 않을 때 보이는 버튼입니다. 확인창을 거쳐 바로 확인·받기·빌드를 시작하고, 준비되면 폰이 연결돼 있어도 바로 적용합니다(재시작하는 동안 연결이 잠깐 끊겼다가 자동으로 다시 붙습니다).
+- **App Store 새 버전 안내** — 설치된 앱보다 새 버전이 있으면 설정 탭에 점이 뜨고 version 섹션에 안내와 [ OPEN APP STORE ] 버튼이 나옵니다.
 
 ### Mac relay
 
@@ -196,16 +238,25 @@ cmux 소스 코드는 이 저장소에 포함되지 않습니다. 문서화된 J
 - MacBook 배터리 상태 조회 (`host.battery`) 및 iPhone 헤더 배지 표시
 - iPhone 사진 업로드를 Mac의 `~/Downloads/cmux-remote/` 안에만 저장 (`file.upload`)
 - events.stream 전용 cmux UDS 채널 분리 (구독 채널은 push-only lock)
-- APNs 푸시 fanout (`APNsProvider`) — 디바이스 토큰별 알림 전송, relay에 `apns` 미설정 시 비활성
+- APNs 푸시 fanout (`APNsProvider`) — 디바이스 토큰별 알림 전송(제목·부제·본문 포함), relay에 `apns` 미설정 시 비활성
+- 문서(`surface.document.open`)·브라우저 스크린샷(`surface.browser.capture`)·feed 응답(`feed.reply`)·Claude 대화 기록(`claude.transcript.page`) 서비스. 파일·썸네일 프레임은 1 MiB 미만
+- 자동 업데이트(launchd job `com.genie.cmuxremote.updater`, `relay-update.sh`) — 정식 태그만, 폰이 연결돼 있지 않을 때만 재시작, 실패하면 이전 바이너리로 되돌림 ([자동 업데이트](#자동-업데이트))
+- `relay.info`(버전·업데이트 상태)·`relay.update.start`(지금 업데이트) RPC, 능력 플래그 `relay.info.v1`·`relay.update.v1`
 
 ### 보안
 
 - Relay는 0.0.0.0에 바인딩하되 비-Tailscale 소스 주소를 *애플리케이션
   레이어*에서 거부 (`EndpointPolicy`)
 - 디바이스별 토큰 + 메뉴바 revoke
-- 알림 페이로드에는 터미널 내용 미포함 (작업공간/surface id + 짧은
-  제목만)
-- 텔레메트리 없음, 분석 없음, 서드파티 네트워크 호출 없음
+- 푸시(APNs)에는 알림의 제목·부제·본문과 workspace/surface id가 들어갑니다.
+  터미널 화면 자체는 보내지 않지만 본문은 cmux 알림이 담은 글자 그대로라
+  터미널에서 돌던 프로그램이 쓴 글이 들어갈 수 있습니다. 푸시는 relay에
+  `apns` 블록이 있을 때만 나갑니다
+- 텔레메트리·분석 없음, 개발자가 운영하는 서버 없음. Tailscale 밖으로 나가는
+  통신은 다음뿐입니다 — 푸시(Mac relay → Apple 푸시 서버), App Store 최신
+  버전 조회(앱 → Apple, 번들 ID·국가만, 하루 한 번), relay의 GitHub 태그
+  확인·받기(Mac → GitHub, `--no-auto-update`로 끔). 자세한 내용은
+  [PRIVACY.md](PRIVACY.md)
 
 ---
 
@@ -273,12 +324,14 @@ cd cmux-remote
 ```bash
 # 헬스 체크 — Mac에서 자기 Tailscale IP로 두드리기
 curl -s http://$(tailscale ip -4):4399/v1/health
-# {"ok":true,"version":"0.1.0"}   ← 이게 나오면 relay 정상
+# {"ok":true}   ← 이게 나오면 relay 정상
 
 # cmux 소켓에도 붙었는지 점검
 ./scripts/cmux-probe.sh
 # {"id":"probe-1","result":{...}}
 ```
+
+헬스 응답은 인증 없이 열려 있어 버전이 들어 있지 않습니다. relay 버전은 앱 설정 화면이나 Mac의 `~/.cmuxremote/bin/cmux-relay --version`으로 확인하세요.
 
 응답이 없거나 비정상이면 로그부터 봅니다:
 
@@ -384,8 +437,9 @@ relay가 stale socket에 묶이지 않도록 하기 위함입니다. 고정 경�
 그대로 박혀버리기 때문입니다.
 
 > **APNs 푸시 (`apns` 블록).** relay.json에 `apns` 블록을 넣으면 cmux
-> 알림이 APNs 푸시로 전달돼 앱이 종료된 상태에서도 도착합니다. 블록이
-> 없으면 알림은 로컬 알림으로만 표시됩니다.
+> 알림이 APNs 푸시로 전달돼 앱이 종료된 상태에서도 도착합니다. 푸시에는
+> 알림 제목·부제·본문이 들어가며 Apple 푸시 서버를 거칩니다([PRIVACY.md](PRIVACY.md)).
+> 블록이 없으면 알림은 로컬 알림으로만 표시됩니다.
 >
 > ```json
 > {
@@ -400,6 +454,8 @@ relay가 stale socket에 묶이지 않도록 하기 위함입니다. 고정 경�
 > ```
 >
 > `env`는 개발/사이드로드 빌드면 `"sandbox"`, App Store/배포 빌드면 `"prod"`.
+
+자동 업데이트 설정은 `~/.cmuxremote/update/config.json`에 저장되며 설치 스크립트의 `--no-auto-update`·`--auto-update` 옵션으로 바꿉니다([자동 업데이트](#자동-업데이트)).
 
 ---
 
@@ -459,6 +515,26 @@ stale socket에 묶인 것 — install 스크립트를 다시 실행해 최신 �
 `cat /tmp/cmux-last-socket-path`로 라이브 소켓을 확인해
 `./scripts/install-launchd.sh --socket <경로>`로 핀하세요.
 
+### 자동 업데이트
+
+2.0.0부터 relay는 GitHub 저장소(`https://github.com/NewTurn2017/cmux-remote`)의 **정식 릴리스 태그(`vX.Y.Z`)만** 따라가며 스스로 업데이트합니다. `main` 브랜치나 임의 커밋은 보지 않고, `-rc` 같은 접미사 태그도 무시합니다. 개발 중인 브랜치 빌드를 쓰는 사람은 새 태그가 나오면 덮어써지므로 `./scripts/install-launchd.sh --no-auto-update`로 설치하세요.
+
+- **누가 하나** — relay와 따로 도는 launchd job `com.genie.cmuxremote.updater`(`~/.cmuxremote/libexec/relay-update.sh`)가 5분마다 깨어나 확인할 때가 됐는지 봅니다. 설치한 원본 checkout은 건드리지 않고 `~/.cmuxremote/src/cmux-remote`의 관리용 clone에서만 받아 빌드합니다.
+- **언제 확인하나** — 설치 뒤 첫 확인은 약 15~20분 뒤, 그다음부터 1시간에 한 번 이하입니다. 현재보다 큰 `vX.Y.Z` 태그가 있고 그 커밋이 `origin/main`에 포함돼 있으면 받아 빌드하고 서명한 뒤 설치합니다.
+- **언제 재시작하나** — 연결된 폰이 하나도 없는 상태가 2분(120초) 이어졌을 때만 재시작합니다. 앱 설정의 [ UPDATE NOW ]는 폰이 연결돼 있어도 바로 적용합니다(재시작하는 동안 연결이 잠깐 끊겼다가 자동으로 다시 붙습니다).
+- **실패하면** — 새 relay가 60초 안에 새 버전으로 뜨고 15초 더 살아 있지 않으면 이전 relay로 되돌리고, 그 태그는 자동으로 다시 시도하지 않습니다. 빌드가 실패한 태그도 자동으로 다시 빌드하지 않습니다(툴체인이 바뀌거나 사용자가 요청하면 재시도).
+- **서명** — 기억된 `~/.cmuxremote/codesign-identity`로 서명하고, 서명에 실패하면 ad-hoc으로 내려가지 않고 실패로 기록한 뒤 재시도 간격을 늘립니다. 서명 신원이 없으면 ad-hoc 서명이라 macOS가 업데이트 뒤 다운로드 폴더 권한을 다시 물을 수 있습니다(설정 화면과 `update.log`에 경고가 남습니다).
+- **상태 확인** — 앱 설정의 version 섹션, 또는 Mac에서 `tail ~/.cmuxremote/log/update.log`. 문제가 있으면 `~/.cmuxremote/update/last-git.log`와 `~/.cmuxremote/log/updater.stderr.log`도 보세요. 로그에는 태그·커밋·상태·시간만 남고 홈 경로는 `~`로 줄입니다.
+- **필요한 것** — Mac에 `git`과 Swift 툴체인이 있어야 합니다. 관리용 clone·빌드 캐시가 디스크를 쓰며(약 0.8 GB로 추정, 실측 아님), 빌드 전 여유 공간이 2 GiB보다 적으면 업데이트하지 않습니다.
+- **의존성 버전** — `Package.resolved`는 저장소에 없으므로 업데이트 때 SwiftPM 의존성의 최신 호환 버전을 받아, 사용자마다 빌드 결과가 다를 수 있습니다. 새 의존성 버전이 빌드를 깨면 그 태그는 `build_failed`로 기억되고 업데이트되지 않습니다.
+- **다른 저장소를 따라가려면** — `./scripts/install-launchd.sh --update-origin <https git URL>`(기본값은 위 GitHub 저장소).
+
+**끄기와 다시 켜기** — `./scripts/install-launchd.sh --no-auto-update`로 끄면 updater job을 설치하지 않거나 지우며 이 선택이 기억됩니다. 꺼져 있으면 GitHub에 아무 요청도 하지 않고, 앱 설정에는 "Mac에서 자동 업데이트가 꺼져 있습니다"가 보입니다. 다시 켜려면 `./scripts/install-launchd.sh --auto-update`.
+
+**1.x에서 처음 올라올 때** — 1.x relay에는 updater가 없으므로 한 번만 수동으로 올립니다. 저장소에서 `git pull`로 2.0.0 이상을 받은 뒤 `./scripts/install-launchd.sh`를 실행하세요(서명 신원은 기억돼 있습니다). relay 2.0.0과 updater가 함께 설치되고 그 뒤로는 자동입니다. 앱 설정에서 relay 버전이 "알 수 없음 (2.0 이전)"으로 보이면 아직 1.x relay입니다.
+
+**제거** — `./scripts/uninstall-launchd.sh`는 relay·updater job과 plist, `~/.cmuxremote/libexec`의 updater 스크립트, `update/` 상태, 관리용 clone을 지웁니다. clone(빌드 캐시)을 남기려면 `--keep-update-cache`를 붙이세요. `relay.json`·`devices.json`·`codesign-identity`·`bin/`은 그대로 둡니다.
+
 ---
 
 ## 연결이 안 될 때
@@ -515,11 +591,12 @@ SERVICE="gui/$(id -u)/com.genie.cmuxremote"
 - [x] v1.0.5 — LIVE 입력 모드, 한글 IME 보호, 하단 고정 입력 패널, 터미널 5행 하단 스크롤 여유, Claude/Codex Inbox 회귀 테스트
 - [x] v1.0.6 — 네이티브 APNs 푸시 알림(앱 종료 상태 도달), Ctrl-C 단축키, App Store 스크린샷 5장 교체 (App Store 미공개, 1.0.8에 통합)
 - [x] v1.0.8 — 한글/CJK 겹침 렌더링 수정, `--` 스마트 구두점 입력 보호, 알림 소음 컨트롤, cmux 0.64+ 셋업 호환성(relay)
+- [x] v2.0.0 — surface 종류 구분·전체 화면 Page Up/Down, 마크다운·텍스트 문서와 브라우저 탭 보기, AGENTS 탭(feed 응답·Claude 대화 기록), 알림 본문, relay 자동 업데이트, 설정의 앱·relay 버전 표시와 App Store 새 버전 안내, 번역 점검, 키보드 중 탭 줄 유지, relay 안정성 개선
 - [ ] **v1.1 — 푸시 후속** — 푸시 페이로드 → 딥링크로 surface 자동 오픈, 전달 신뢰성/재시도 강화
 - [x] iPad 네이티브 가로 레이아웃
 - [ ] v1.2 — 외장 키보드 폴리시
 - [ ] v1.3 — cmux "open in pane" 인텐트용 파일 프리뷰
-- [ ] v2.0 — 고빈도 TUI(vim, htop, k9s) 대상 바이트스트림 RPC
+- [ ] v2.x 이후 — 고빈도 TUI(vim, htop, k9s) 대상 바이트스트림 RPC
 - [ ] 혹시 — Android 클라이언트 (PR 환영, `docs/specs/` 참고)
 
 명시적 비목표: 공용 인터넷 노출(Tailscale Funnel), 멀티유저 공유,
@@ -627,9 +704,16 @@ discussion을 열거나 `docs/specs/`에 디자인 문서를 먼저 올려주세
 - 디바이스별 토큰은 relay CLI에서 개별 해지할 수 있습니다.
 - 등록과 호출자 신원 조회는 성공과 일시적 실패를 짧게 캐시하고 동시 요청을
   하나로 합쳐 로컬 Tailscale 프로세스 부하를 제한합니다.
-- 알림 페이로드에는 터미널 내용이 포함되지 않습니다 — workspace/surface
-  id + 짧은 title만.
-- 텔레메트리 / 분석 / 서드파티 네트워크 호출 없음.
+- 푸시(APNs)에는 알림의 제목·부제·본문과 workspace/surface id가 들어갑니다.
+  터미널 화면 자체는 보내지 않지만 본문은 cmux 알림이 담은 글자 그대로라
+  터미널에서 돌던 프로그램이 쓴 글이 들어갈 수 있습니다. 푸시는 relay에
+  `apns` 블록이 있을 때만 나가며 Mac relay에서 Apple 푸시 서버를 거쳐
+  기기로 갑니다.
+- 텔레메트리 / 분석 없음, 개발자가 운영하는 서버 없음. Tailscale 밖으로
+  나가는 통신은 다음뿐입니다 — 푸시(Mac relay → Apple 푸시 서버), App Store
+  최신 버전 조회(앱 → Apple, 번들 ID·국가만, 하루 한 번), relay의 GitHub
+  태그 확인·받기(Mac → GitHub, `--no-auto-update`로 끔). 자세한 내용은
+  [PRIVACY.md](PRIVACY.md).
 
 보안 이슈는 이슈 트래커에 공개로 올리지 말고 `SECURITY.md`의 메인테이너
 이메일로 알려주세요.
