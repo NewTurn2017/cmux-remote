@@ -4,6 +4,7 @@ import SharedKit
 struct ContentView: View {
     @State private var selectedTab: AppTab = .workspaces
     @State private var requestedSurfaceId: String?
+    @Environment(\.scenePhase) private var scenePhase
 
     let workspaceStore: WorkspaceStore
     let surfaceStore: SurfaceStore
@@ -32,6 +33,8 @@ struct ContentView: View {
                     preferredSurfaceId: $requestedSurfaceId,
                     onBack: { selectedTab = .workspaces }
                 )
+            case .claude:
+                FeedListView(store: remoteFiles.feed, isConnected: isConnected)
             case .inbox:
                 NotificationCenterView(store: notifStore) { notification in
                     open(notification: notification)
@@ -48,10 +51,32 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cmuxRemoteNotificationResponse)) { notification in
             openNotificationUserInfo(notification.userInfo)
         }
+        .task(id: feedLoopKey) {
+            guard remoteFiles.feedEnabled, tabBarVisible else { return }
+            await remoteFiles.feed.runRefreshLoop(
+                intervalSeconds: selectedTab == .claude
+                    ? FeedRefreshPolicy.listIntervalSeconds
+                    : FeedRefreshPolicy.badgeIntervalSeconds,
+                isConnected: isConnected,
+                isActive: scenePhase == .active
+            )
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, !tabBarVisible, remoteFiles.feedEnabled, isConnected else { return }
+            Task { await remoteFiles.feed.refresh() }
+        }
+        .onChange(of: remoteFiles.feedEnabled) { _, enabled in
+            if !enabled, selectedTab == .claude { selectedTab = .workspaces }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedTab != .active {
-                FloatingTabBar(selectedTab: $selectedTab, inboxCount: notifStore.unreadCount)
+            if tabBarVisible {
+                FloatingTabBar(
+                    tabs: visibleTabs,
+                    selectedTab: $selectedTab,
+                    inboxCount: notifStore.unreadCount,
+                    claudePendingCount: remoteFiles.feed.pendingCount
+                )
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 0)
@@ -60,6 +85,26 @@ struct ContentView: View {
             }
         }
         .background(CmuxTheme.canvas.ignoresSafeArea())
+    }
+
+    private var tabBarVisible: Bool { selectedTab != .active }
+
+    private var isConnected: Bool { workspaceStore.connection == .connected }
+
+    private var visibleTabs: [AppTab] {
+        AppTab.allCases.filter { $0 != .claude || remoteFiles.feedEnabled }
+    }
+
+    /// Restarting on any change also gives the immediate list when the app returns to the foreground.
+    private var feedLoopKey: String {
+        [
+            String(remoteFiles.hostGeneration),
+            remoteFiles.feedEnabled ? "feed" : "no-feed",
+            isConnected ? "connected" : "offline",
+            scenePhase == .active ? "active" : "inactive",
+            tabBarVisible ? "tab-bar" : "no-tab-bar",
+            selectedTab == .claude ? "list" : "badge",
+        ].joined(separator: "|")
     }
 
     private func open(notification: NotificationRecord) {
@@ -95,6 +140,7 @@ struct ContentView: View {
 private enum AppTab: String, CaseIterable, Hashable {
     case workspaces = "Workspaces"
     case active = "Active"
+    case claude = "Claude"
     case inbox = "Inbox"
     case settings = "Settings"
 
@@ -102,6 +148,7 @@ private enum AppTab: String, CaseIterable, Hashable {
         switch self {
         case .workspaces: return "rectangle.stack.fill"
         case .active: return "terminal.fill"
+        case .claude: return "bubble.left.and.text.bubble.right.fill"
         case .inbox: return "bell.fill"
         case .settings: return "gearshape.fill"
         }
@@ -109,12 +156,14 @@ private enum AppTab: String, CaseIterable, Hashable {
 }
 
 private struct FloatingTabBar: View {
+    let tabs: [AppTab]
     @Binding var selectedTab: AppTab
     let inboxCount: Int
+    let claudePendingCount: Int
 
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(AppTab.allCases, id: \.self) { tab in
+            ForEach(tabs, id: \.self) { tab in
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         selectedTab = tab
@@ -126,9 +175,11 @@ private struct FloatingTabBar: View {
                                 .font(.system(size: 18, weight: .semibold))
                             Text(tab.rawValue.uppercased())
                                 .cmuxDisplay(9)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
                         }
                         .foregroundStyle(selectedTab == tab ? CmuxTheme.accentGreen : CmuxTheme.muted)
-                        .frame(maxWidth: .infinity)
+                        .frame(minWidth: 0, maxWidth: .infinity)
                         .frame(height: 58)
                         .background {
                             if selectedTab == tab {
@@ -151,6 +202,21 @@ private struct FloatingTabBar: View {
                                 .accessibilityIdentifier("InboxUnreadBadge")
                                 .accessibilityLabel("\(inboxCount) unread inbox notifications")
                         }
+
+                        if tab == .claude, claudePendingCount > 0 {
+                            Text(claudePendingCount > 99 ? "99+" : "\(claudePendingCount)")
+                                .cmuxDisplay(9)
+                                .foregroundStyle(CmuxTheme.canvas)
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 18, minHeight: 18)
+                                .background(CmuxTheme.accentRed)
+                                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                                .padding(.top, 4)
+                                .padding(.trailing, 10)
+                                .accessibilityIdentifier("ClaudeFeedPendingBadge")
+                                .accessibilityLabel("\(claudePendingCount) pending Claude requests")
+                                .accessibilityValue("\(claudePendingCount)")
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -165,6 +231,8 @@ private struct FloatingTabBar: View {
                 .strokeBorder(CmuxTheme.divider, lineWidth: 1)
         }
         .shadow(color: CmuxTheme.hardShadow, radius: 24, x: 0, y: 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("FloatingTabBar")
     }
 
     @Namespace private var namespace

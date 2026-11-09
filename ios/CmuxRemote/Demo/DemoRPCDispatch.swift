@@ -37,6 +37,8 @@ public actor DemoRPCDispatch: RPCDispatch {
     private var uploadSequence = 0
     private var documentOpenCount = 0
     private var browserCaptureCount = 0
+    private let feedScenario: String?
+    private var feedItems: [FeedPendingItem]?
     private var intentionallyFailedAttachmentNames: Set<String> = []
     private var blockedAttachmentUploadID: String?
     private var blockedAttachmentChunk: CheckedContinuation<RPCResponse, Never>?
@@ -57,7 +59,8 @@ public actor DemoRPCDispatch: RPCDispatch {
         staleFeatureResponseGateEnabled: Bool = false,
         attachmentScenario: String? = nil,
         artifactScenario: String? = nil,
-        fileFeatureCacheNamespace: String? = nil
+        fileFeatureCacheNamespace: String? = nil,
+        feedScenario: String? = nil
     ) {
         self.workspaces = DemoContent.workspaces
         #if DEBUG
@@ -74,6 +77,7 @@ public actor DemoRPCDispatch: RPCDispatch {
             namespace: cacheNamespace
         )
         self.shouldGateThumbnail = artifactScenario == "source-states"
+        self.feedScenario = feedScenario?.isEmpty == false ? feedScenario : nil
         #else
         self.fileFeatureFixturesEnabled = false
         self.staleFeatureResponseGateEnabled = false
@@ -82,6 +86,7 @@ public actor DemoRPCDispatch: RPCDispatch {
         self.fileFeatureCacheNamespace = nil
         self.activeImageRevision = DemoContent.fileFeatureImageArtifact.revision
         self.shouldGateThumbnail = false
+        self.feedScenario = nil
         #endif
     }
 
@@ -308,12 +313,14 @@ public actor DemoRPCDispatch: RPCDispatch {
     ) async throws -> RPCResponse {
         switch method {
         case .hostCapabilities:
-            return try encodedResponse(HostCapabilitiesResult(capabilities: [
+            var capabilities = [
                 HostCapabilities.chunkUploadV2,
                 HostCapabilities.terminalArtifactsV1,
                 HostCapabilities.surfaceDocumentV1,
                 HostCapabilities.surfaceBrowserV1,
-            ]))
+            ]
+            if feedScenario != nil { capabilities.append(HostCapabilities.feedV1) }
+            return try encodedResponse(HostCapabilitiesResult(capabilities: capabilities))
 
         case .surfaceDocumentOpen:
             let request = try params.decode(SurfaceDocumentOpenRequest.self)
@@ -345,7 +352,10 @@ public actor DemoRPCDispatch: RPCDispatch {
                 capturedAt: Int64(Date().timeIntervalSince1970 * 1000)
             ))
 
-        case .feedPendingList, .feedReply, .claudeSessionsList, .claudeTranscriptPage:
+        case .feedPendingList, .feedReply:
+            return try feedResponse(method: method, params: params)
+
+        case .claudeSessionsList, .claudeTranscriptPage:
             return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
 
         case .uploadBegin:
@@ -651,6 +661,35 @@ public actor DemoRPCDispatch: RPCDispatch {
         ]
         let ordinal = happyNames.firstIndex(of: filename) ?? max(0, uploadSequence - 1)
         return "/Users/demo/Drop/\(ordinal)-it's \(filename)"
+    }
+
+    /// Scenarios: `pending` answers replies once (a second reply is not pending),
+    /// `already-handled` treats every reply as answered on the Mac first, and
+    /// `method-not-found` advertises `feed.v1` but answers like a relay without it.
+    private func feedResponse(method: RemoteRPCMethod, params: JSONValue) throws -> RPCResponse {
+        guard let feedScenario, feedScenario != "method-not-found" else {
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+        var items = feedItems ?? DemoFeedFixtures.pendingItems(
+            nowMilliseconds: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+        defer { feedItems = items }
+        switch method {
+        case .feedPendingList:
+            return try encodedResponse(FeedPendingListResult(items: items, truncated: false))
+        case .feedReply:
+            let request = try params.decode(FeedReplyRequest.self)
+            guard let index = items.firstIndex(where: { $0.requestId == request.requestId }) else {
+                return errorResponse(code: .feedRequestNotPending, message: "The request is no longer pending")
+            }
+            items.remove(at: index)
+            if feedScenario == "already-handled" {
+                return errorResponse(code: .feedRequestNotPending, message: "The request is no longer pending")
+            }
+            return try encodedResponse(FeedReplyResult(requestId: request.requestId, kind: request.kind))
+        default:
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
     }
 
     private func encodedResponse<Value: Encodable>(_ value: Value) throws -> RPCResponse {

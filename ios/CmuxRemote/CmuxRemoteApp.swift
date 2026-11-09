@@ -70,6 +70,7 @@ struct CmuxRemoteApp: App {
                     onTriggerTestNotification: triggerTestNotification
                 )
                 .modifier(TerminalArtifactDebugWidthHarness())
+                .modifier(UITestWidthHarness())
                 .task { await bootstrapOnce() }
                 .onOpenURL(perform: handleDeepLink(_:))
                 .onChange(of: localNotificationsEnabled) { _, enabled in
@@ -234,7 +235,8 @@ struct CmuxRemoteApp: App {
             staleFeatureResponseGateEnabled: staleFeatureGate,
             attachmentScenario: processInfo.environment["CMUX_UI_TEST_ATTACHMENT_SCENARIO"],
             artifactScenario: processInfo.environment["CMUX_UI_TEST_ARTIFACT_SCENARIO"],
-            fileFeatureCacheNamespace: processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_CACHE_NAMESPACE"]
+            fileFeatureCacheNamespace: processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_CACHE_NAMESPACE"],
+            feedScenario: processInfo.environment["CMUX_UI_TEST_FEED_SCENARIO"]
         )
         #else
         let rpc = DemoRPCDispatch()
