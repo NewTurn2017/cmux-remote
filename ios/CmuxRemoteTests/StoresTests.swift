@@ -585,7 +585,7 @@ final class StoresTests: XCTestCase {
         XCTAssertEqual(store.items.first?.threadId, "workspace-w1")
     }
 
-    func testNotificationStoreStoresGenericNotificationCreatedWithoutOnNew() {
+    func testNotificationStoreRaisesBannerForGenericNotificationCreated() {
         let store = NotificationStore()
         var observed: [NotificationRecord] = []
         store.onNew = { record in observed.append(record) }
@@ -604,7 +604,7 @@ final class StoresTests: XCTestCase {
 
         XCTAssertEqual(store.items.count, 1)
         XCTAssertEqual(store.unreadCount, 1)
-        XCTAssertEqual(observed.count, 0)
+        XCTAssertEqual(observed.map(\.id), ["generic-1"])
     }
 
     func testNotificationStoreSuppressesLocalCallbackWhenDisabled() {
