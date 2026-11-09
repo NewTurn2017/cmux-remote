@@ -39,12 +39,55 @@ export REAL_GIT
 STUBS="$WORK/stubs"
 mkdir -p "$STUBS"
 
+# Models just enough of launchd: which jobs are loaded, a bootout whose job is still
+# visible to FAKE_BOOTOUT_LINGER more prints (a bootstrap in that window fails like the
+# real race), and bootstrap failures by call number (FAKE_BOOTSTRAP_FAILS).
 cat > "$STUBS/launchctl" <<'STUB'
 #!/bin/bash
 printf 'launchctl %s\n' "$*" >> "$CALLS"
+last="${@: -1}"
+label="${last##*/}"
+label="${label%.plist}"
+case "$1" in
+  print)
+    if [ -f "$LAUNCHD_STATE/$label.linger" ]; then
+      left="$(cat "$LAUNCHD_STATE/$label.linger")"
+      if [ "$left" -gt 0 ]; then
+        echo $(( left - 1 )) > "$LAUNCHD_STATE/$label.linger"
+        exit 0
+      fi
+      rm -f "$LAUNCHD_STATE/$label.linger"
+    fi
+    [ -f "$LAUNCHD_STATE/$label.loaded" ] && exit 0
+    exit 113
+    ;;
+  bootout)
+    if [ -f "$LAUNCHD_STATE/$label.loaded" ]; then
+      rm -f "$LAUNCHD_STATE/$label.loaded"
+      if [ "${FAKE_BOOTOUT_LINGER:-0}" -gt 0 ]; then
+        echo "$FAKE_BOOTOUT_LINGER" > "$LAUNCHD_STATE/$label.linger"
+      fi
+    fi
+    exit 0
+    ;;
+  bootstrap)
+    count=$(( $(cat "$LAUNCHD_STATE/bootstrap-count" 2>/dev/null || echo 0) + 1 ))
+    echo "$count" > "$LAUNCHD_STATE/bootstrap-count"
+    if [ -f "$LAUNCHD_STATE/$label.linger" ]; then
+      echo "Bootstrap failed: 5: Input/output error" >&2
+      exit 5
+    fi
+    for n in ${FAKE_BOOTSTRAP_FAILS:-}; do
+      if [ "$n" = "$count" ]; then
+        echo "Bootstrap failed: 5: Input/output error" >&2
+        exit 5
+      fi
+    done
+    touch "$LAUNCHD_STATE/$label.loaded"
+    ;;
+esac
 case "$1" in
   kickstart|bootstrap)
-    last="${@: -1}"
     case "$last" in
       */com.genie.cmuxremote|*/com.genie.cmuxremote.plist)
         printf '%s\n' "$(/usr/bin/plutil -extract state raw -o - "$CMUX_REMOTE_HOME/update/state.json" 2>/dev/null || echo none)" \
@@ -66,6 +109,10 @@ cat > "$STUBS/codesign" <<'STUB'
 #!/bin/bash
 printf 'codesign %s\n' "$*" >> "$CALLS"
 if [ "${FAKE_SIGN_FAIL:-0}" = "1" ] && [ "$1" = "--force" ]; then exit 1; fi
+if [ "${FAKE_SIGN_HANG:-0}" = "1" ] && [ "$1" = "--force" ]; then
+  echo "$$" > "$HANG_PID_FILE"
+  exec sleep 30
+fi
 exit 0
 STUB
 
@@ -73,6 +120,10 @@ cat > "$STUBS/fake-build" <<'STUB'
 #!/bin/bash
 case "$PWD" in "$WORK"/*) ;; *) echo "fake-build: refusing to build outside $WORK" >&2; exit 1 ;; esac
 printf 'build %s\n' "$PWD" >> "$BUILDS"
+if [ "${FAKE_BUILD_HANG:-0}" = "1" ]; then
+  echo "$$" > "$HANG_PID_FILE"
+  exec sleep 30
+fi
 echo "Compiling cmux-relay in $PWD for $HOME"
 if [ "${FAKE_BUILD_FAIL:-0}" = "1" ]; then echo "error: fake build failure" >&2; exit 1; fi
 version="$(sed -n 's/.*marketing = "\(.*\)".*/\1/p' Sources/SharedKit/CmuxRemoteVersion.swift)"
@@ -159,8 +210,11 @@ begin() {
   export CMUX_LAUNCH_AGENTS_DIR="$CASE_DIR/agents"
   export CALLS="$CASE_DIR/calls.log" BUILDS="$CASE_DIR/builds.log" GITCALLS="$CASE_DIR/git.log"
   export RESTART_STATES="$CASE_DIR/restart-states.log"
+  export LAUNCHD_STATE="$CASE_DIR/launchd" HANG_PID_FILE="$CASE_DIR/hang.pid"
+  mkdir -p "$LAUNCHD_STATE"
   : > "$CALLS"; : > "$BUILDS"; : > "$GITCALLS"; : > "$RESTART_STATES"
-  unset FAKE_BUILD_FAIL FAKE_SIGN_FAIL FAKE_RELAY_CRASH
+  unset FAKE_BUILD_FAIL FAKE_SIGN_FAIL FAKE_RELAY_CRASH FAKE_BUILD_HANG FAKE_SIGN_HANG
+  unset FAKE_BOOTOUT_LINGER FAKE_BOOTSTRAP_FAILS
 }
 
 check() {
@@ -195,6 +249,11 @@ count_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; 
 count_matches() { grep -cF -- "$2" "$1" 2>/dev/null || true; }
 # Builds the updater ran in its managed clone (install-launchd.sh builds in the seed checkout).
 clone_builds() { count_matches "$BUILDS" "/.cmuxremote/src/cmux-remote"; }
+hung_process_gone() {
+  local pid
+  pid="$(cat "$HANG_PID_FILE" 2>/dev/null)"
+  [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null
+}
 state() { /usr/bin/plutil -extract "$1" raw -o - "$CMUX_REMOTE_HOME/update/state.json" 2>/dev/null; }
 config() { /usr/bin/plutil -extract "$1" raw -o - "$CMUX_REMOTE_HOME/update/config.json" 2>/dev/null; }
 installed() { "$CMUX_REMOTE_HOME/bin/cmux-relay" --version 2>/dev/null; }
@@ -373,7 +432,7 @@ check "tag remembered" has "$CMUX_REMOTE_HOME/update/failed-tags" "build_failed 
 check "relay untouched" is "$(digest "$CMUX_REMOTE_HOME/bin/cmux-relay")" "$before"
 tick "$(( T1 + HOUR + 1 ))"
 check "no automatic rebuild of the failed tag" is "$(clone_builds)" 1
-check "idle after skipping" is "$(state state)" idle
+check "failed release still reported after skipping" is "$(state state)" failed
 "$REAL_GIT" -C "$CMUX_REMOTE_HOME/src/cmux-remote" remote set-url origin "file:///nonexistent/elsewhere.git"
 request_update "$(( T1 + HOUR + 2 ))"
 tick "$(( T1 + HOUR + 3 ))"
@@ -451,6 +510,148 @@ check "no kickstart when the plist changed" lacks "$CALLS" "kickstart -k"
 check "updater job untouched" lacks "$CALLS" "com.genie.cmuxremote.updater"
 check "updater plist file updated" has "$CMUX_LAUNCH_AGENTS_DIR/com.genie.cmuxremote.updater.plist" "<integer>6</integer>"
 check "updater plist change logged" has "$CMUX_REMOTE_HOME/log/update.log" "updater plist changed"
+finish
+
+begin staged_release_failing_on_a_later_pass_is_not_retried
+install_relay 2.0.0
+tick "$T0"
+runtime "$OLD_RELAY_PID" 1
+tick "$T1"
+check "staged while a phone is connected" is "$(state state)" staged
+check "manifest records the toolchain" \
+  is "$(/usr/bin/plutil -extract toolchain raw -o - "$CMUX_REMOTE_HOME/update/staged/manifest.json")" test-toolchain
+runtime "$OLD_RELAY_PID" 0 "$(( T1 + 1000 ))"
+FAKE_RELAY_CRASH=1 tick "$(( T1 + 1000 + 120000 ))"
+check "rolled back on the later pass" is "$(state last_error_code)" start_failed
+check "failure remembered with the toolchain" has "$CMUX_REMOTE_HOME/update/failed-tags" "start_failed test-toolchain"
+check "previous relay restored" is "$(installed)" 2.0.0
+tick "$(( T1 + 2 * HOUR ))"
+check "no automatic rebuild of the failed tag" is "$(clone_builds)" 1
+check "relay still 2.0.0" is "$(installed)" 2.0.0
+finish
+
+begin manual_install_clears_a_stale_staged_update
+install_relay 2.0.0
+tick "$T0"
+runtime "$OLD_RELAY_PID" 1
+tick "$T1"
+check "v2.0.1 staged" is "$(state state)" staged
+install_relay 2.0.2
+check "manual install exit 0" is "$?" 0
+check "staged update removed" missing "$CMUX_REMOTE_HOME/update/staged"
+check "state reset to idle" is "$(state state)" idle
+check "state reports the installed version" is "$(state current_version)" 2.0.2
+check "next check kept" is "$(state next_check_at_ms)" "$(( T1 + HOUR ))"
+runtime "$OLD_RELAY_PID" 0 "$(( T1 + 1000 ))"
+: > "$CALLS"
+tick "$(( T1 + 1000 + 120000 ))"
+check "relay stays 2.0.2" is "$(installed)" 2.0.2
+check "no restart by the updater" is "$(count_lines "$CALLS")" 0
+finish
+
+begin older_staged_release_is_never_applied
+install_relay 2.0.0
+tick "$T0"
+runtime "$OLD_RELAY_PID" 1
+tick "$T1"
+check "v2.0.1 staged" is "$(state state)" staged
+# A newer relay put in place without clearing the staged update (an installer from
+# before this fix, or a hand copy).
+printf '#!/bin/bash\nif [ "${1:-}" = "--version" ]; then echo 2.0.2; fi\nexit 0\n' > "$CMUX_REMOTE_HOME/bin/cmux-relay"
+before="$(digest "$CMUX_REMOTE_HOME/bin/cmux-relay")"
+runtime "$OLD_RELAY_PID" 0 "$(( T1 + 1000 ))"
+: > "$CALLS"
+tick "$(( T1 + 1000 + 120000 ))"
+check "relay binary untouched" is "$(digest "$CMUX_REMOTE_HOME/bin/cmux-relay")" "$before"
+check "no launchctl" is "$(count_lines "$CALLS")" 0
+check "staged release dropped" missing "$CMUX_REMOTE_HOME/update/staged"
+check "state idle" is "$(state state)" idle
+check "state reports the installed version" is "$(state current_version)" 2.0.2
+check "discard logged" has "$CMUX_REMOTE_HOME/log/update.log" "version=2.0.1 installed=2.0.2 reason=not_newer"
+finish
+
+begin slow_bootout_waits_before_bootstrap
+CASE_ORIGIN="$ORIGIN2"
+install_relay 2.0.1
+tick "$T0"
+runtime "$OLD_RELAY_PID" 0 1
+: > "$CALLS"
+FAKE_BOOTOUT_LINGER=2 tick "$T1"
+check "applied v2.0.2" is "$(installed)" 2.0.2
+check "state idle" is "$(state state)" idle
+check "waited until launchd dropped the job" is "$(count_matches "$CALLS" "launchctl print $GUI/com.genie.cmuxremote")" 3
+check "print came right before bootstrap" is "$(tail -n 2 "$CALLS" | head -n 1)" "launchctl print $GUI/com.genie.cmuxremote"
+check "bootstrap last" is "$(tail -n 1 "$CALLS")" "launchctl bootstrap $GUI $CMUX_LAUNCH_AGENTS_DIR/com.genie.cmuxremote.plist"
+check "relay loaded" exists "$LAUNCHD_STATE/com.genie.cmuxremote.loaded"
+finish
+
+begin rollback_reload_waits_and_retries_bootstrap
+CASE_ORIGIN="$ORIGIN2"
+install_relay 2.0.1
+tick "$T0"
+runtime "$OLD_RELAY_PID" 0 1
+rm -f "$LAUNCHD_STATE/bootstrap-count"
+FAKE_BOOTOUT_LINGER=2 FAKE_BOOTSTRAP_FAILS=2 FAKE_RELAY_CRASH=1 tick "$T1"
+check "state failed" is "$(state state)" failed
+check "start_failed" is "$(state last_error_code)" start_failed
+check "previous relay restored" is "$(installed)" 2.0.1
+check "previous plist restored" lacks "$CMUX_LAUNCH_AGENTS_DIR/com.genie.cmuxremote.plist" "CMUX_TEST_NEW_KEY"
+check "relay loaded again" exists "$LAUNCHD_STATE/com.genie.cmuxremote.loaded"
+check "apply, failed rollback try, rollback retry" is "$(cat "$LAUNCHD_STATE/bootstrap-count")" 3
+check "rollback bootstrap did not give up" lacks "$CMUX_REMOTE_HOME/log/update.log" "rollback bootstrap failed"
+finish
+
+begin skipped_failed_release_is_still_reported
+install_relay 2.0.0
+tick "$T0"
+runtime "$OLD_RELAY_PID" 0 1
+FAKE_BUILD_FAIL=1 tick "$T1"
+tick "$(( T1 + HOUR + 1 ))"
+check "no automatic rebuild" is "$(clone_builds)" 1
+check "state failed, not up to date" is "$(state state)" failed
+check "latest is the skipped release, not the rejected off-main tag" is "$(state latest_version)" 2.0.1
+check "failure code kept" is "$(state last_error_code)" build_failed
+check "installed version still reported" is "$(state current_version)" 2.0.0
+check "next check in an hour" is "$(state next_check_at_ms)" "$(( T1 + HOUR + 1 + HOUR ))"
+request_update "$(( T1 + HOUR + 2 ))"
+tick "$(( T1 + HOUR + 3 ))"
+check "user request still retries it" is "$(clone_builds)" 2
+check "relay 2.0.1 installed" is "$(installed)" 2.0.1
+finish
+
+begin build_timeout_backs_off
+install_relay 2.0.0
+tick "$T0"
+runtime "$OLD_RELAY_PID" 0 1
+FAKE_BUILD_HANG=1 CMUX_RELAY_UPDATE_BUILD_TIMEOUT=1 tick "$T1"
+check "state failed" is "$(state state)" failed
+check "build_failed" is "$(state last_error_code)" build_failed
+check "one failure" is "$(state consecutive_failures)" 1
+check "retry in one hour" is "$(state next_check_at_ms)" "$(( T1 + HOUR ))"
+check "tag not marked broken" lacks "$CMUX_REMOTE_HOME/update/failed-tags" "v2.0.1"
+check "timeout logged" has "$CMUX_REMOTE_HOME/log/update.log" "build timed out after 1s tag=v2.0.1"
+check "hung build ended" hung_process_gone
+check "lock released" missing "$CMUX_REMOTE_HOME/update/updater.lock"
+tick "$(( T1 + HOUR ))"
+check "built again after the backoff" is "$(clone_builds)" 2
+check "relay 2.0.1 installed" is "$(installed)" 2.0.1
+finish
+
+begin sign_timeout_backs_off
+install_relay 2.0.0
+printf 'Test Identity (TEAM123)\n' > "$CMUX_REMOTE_HOME/codesign-identity"
+before="$(digest "$CMUX_REMOTE_HOME/bin/cmux-relay")"
+tick "$T0"
+FAKE_SIGN_HANG=1 CMUX_RELAY_UPDATE_SIGN_TIMEOUT=1 tick "$T1"
+check "state failed" is "$(state state)" failed
+check "sign_failed" is "$(state last_error_code)" sign_failed
+check "one failure" is "$(state consecutive_failures)" 1
+check "retry in one hour" is "$(state next_check_at_ms)" "$(( T1 + HOUR ))"
+check "nothing staged" missing "$CMUX_REMOTE_HOME/update/staged"
+check "relay untouched" is "$(digest "$CMUX_REMOTE_HOME/bin/cmux-relay")" "$before"
+check "timeout logged" has "$CMUX_REMOTE_HOME/log/update.log" "codesign timed out after 1s tag=v2.0.1"
+check "hung codesign ended" hung_process_gone
+check "identity not in logs" logs_are_clean
 finish
 
 begin https_origin_is_refused_offline

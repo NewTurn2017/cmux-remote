@@ -56,6 +56,8 @@ BUILD_CMD="${CMUX_RELAY_UPDATE_BUILD_CMD:-swift build -c release --product cmux-
 TEST_MODE="${CMUX_RELAY_UPDATE_TEST:-0}"
 HEALTH_TIMEOUT="${CMUX_RELAY_UPDATE_HEALTH_TIMEOUT:-60}"
 STABLE_SECONDS="${CMUX_RELAY_UPDATE_STABLE_SECONDS:-15}"
+BUILD_TIMEOUT="${CMUX_RELAY_UPDATE_BUILD_TIMEOUT:-1800}"
+SIGN_TIMEOUT="${CMUX_RELAY_UPDATE_SIGN_TIMEOUT:-120}"
 FIRST_CHECK_DELAY_MS=600000
 MAX_BACKOFF_MS=86400000
 MIN_FREE_KB=2097152
@@ -76,6 +78,7 @@ S_SIGNING=""
 USER_REQUEST=0
 FIRST_RUN=0
 TOOLCHAIN=""
+SKIP_CODE=""
 
 usage() {
   cat <<USAGE
@@ -213,6 +216,50 @@ run_git() {
   return "${PIPESTATUS[0]}"
 }
 
+# Runs a command in its own process group and ends the whole group after $1 seconds
+# (exit 124), so a codesign waiting on a keychain prompt or a stuck build cannot hold
+# the updater lock forever. A TERM to the updater is passed on to the group.
+run_with_timeout() {
+  local limit="$1"
+  shift
+  [ -x /usr/bin/perl ] || { "$@"; return; }
+  /usr/bin/perl -MPOSIX=:sys_wait_h -e '
+    my $limit = shift @ARGV;
+    my $pid = fork();
+    exit 127 unless defined $pid;
+    if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+    my $stop = sub {
+      kill "TERM", -$pid;
+      for (1 .. 20) { last if waitpid($pid, WNOHANG) > 0; select(undef, undef, undef, 0.1); }
+      kill "KILL", -$pid;
+      waitpid($pid, 0);
+    };
+    $SIG{$_} = sub { $stop->(); exit 143; } for qw(TERM INT HUP);
+    $SIG{ALRM} = sub { $stop->(); exit 124; };
+    alarm $limit;
+    waitpid($pid, 0);
+    alarm 0;
+    exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);
+  ' "$limit" "$@"
+}
+
+# launchctl bootout can return before launchd has dropped the job, and a bootstrap in
+# that window fails (5: Input/output error). Waits up to 10s for the job to go, then
+# bootstraps with a few retries. install-launchd.sh carries the same helper.
+bootstrap_job() {
+  local plist="$1" service="$GUI/$2" waited=0 tries=0
+  while "$LAUNCHCTL" print "$service" >/dev/null 2>&1; do
+    [ "$waited" -lt 50 ] || break
+    sleep 0.2
+    waited=$(( waited + 1 ))
+  done
+  until "$LAUNCHCTL" bootstrap "$GUI" "$plist" >/dev/null 2>&1; do
+    tries=$(( tries + 1 ))
+    [ "$tries" -lt 5 ] || return 1
+    sleep 1
+  done
+}
+
 load_state() {
   [ -f "$STATE" ] || return 1
   S_STATE="$(json_get "$STATE" state)"
@@ -295,16 +342,25 @@ release_candidates() {
   done | sort -k1,1nr -k2,2nr -k3,3nr | awk '{ print $4, $5 }'
 }
 
+# Sets SKIP_CODE to the failure that skips the tag: tag_verification_failed always,
+# otherwise the latest failure with this toolchain unless the user asked for the update.
 tag_is_skipped() {
+  SKIP_CODE=""
   [ -f "$FAILED_TAGS" ] || return 1
-  local t c code tc
+  local t c code tc skipped=1
   while read -r t c code tc; do
     [ "$t" = "$1" ] && [ "$c" = "$2" ] || continue
-    [ "$code" = "tag_verification_failed" ] && return 0
+    if [ "$code" = "tag_verification_failed" ]; then
+      SKIP_CODE="$code"
+      return 0
+    fi
     [ "$USER_REQUEST" = "1" ] && continue
-    [ "$tc" = "$TOOLCHAIN" ] && return 0
+    if [ "$tc" = "$TOOLCHAIN" ]; then
+      SKIP_CODE="$code"
+      skipped=0
+    fi
   done < "$FAILED_TAGS"
-  return 1
+  return "$skipped"
 }
 
 tag_moved() {
@@ -385,17 +441,19 @@ disk_ready() {
   [ "$avail" -ge "$MIN_FREE_KB" ]
 }
 
+# Returns 0 when the release binary was built, 2 when the build ran out of time, 1 otherwise.
 build_release() {
   local raw="$UPDATE_DIR/build.tmp.$$" rc
-  (cd "$SRC" && /bin/bash -c "$BUILD_CMD") > "$raw" 2>&1
+  (cd "$SRC" && run_with_timeout "$BUILD_TIMEOUT" /bin/bash -c "$BUILD_CMD") > "$raw" 2>&1
   rc=$?
   tail -n 200 "$raw" | redact_stream > "$UPDATE_DIR/last-build.log"
   rm -f "$raw"
+  [ "$rc" -ne 124 ] || return 2
   [ "$rc" -eq 0 ] && [ -x "$SRC/.build/release/cmux-relay" ]
 }
 
 stage_release() {
-  local tag="$1" commit="$2" version="$3" identity="" file digest
+  local tag="$1" commit="$2" version="$3" identity="" file digest rc
   remove_tree "$STAGED.tmp"
   mkdir -p "$STAGED.tmp/scripts" || { fail_retry insufficient_disk; return 1; }
   cp "$SRC/.build/release/cmux-relay" "$STAGED.tmp/cmux-relay" && chmod 755 "$STAGED.tmp/cmux-relay" \
@@ -407,9 +465,15 @@ stage_release() {
     identity="$(head -n 1 "$DEST/codesign-identity")"
   fi
   if [ -n "$identity" ] && [ "$identity" != "adhoc" ]; then
-    if ! "$CODESIGN" --force --timestamp=none --identifier "$LABEL.relay" --sign "$identity" \
-        "$STAGED.tmp/cmux-relay" >/dev/null 2>&1 \
-      || ! "$CODESIGN" --verify --strict "$STAGED.tmp/cmux-relay" >/dev/null 2>&1; then
+    run_with_timeout "$SIGN_TIMEOUT" "$CODESIGN" --force --timestamp=none --identifier "$LABEL.relay" \
+      --sign "$identity" "$STAGED.tmp/cmux-relay" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      run_with_timeout "$SIGN_TIMEOUT" "$CODESIGN" --verify --strict "$STAGED.tmp/cmux-relay" >/dev/null 2>&1
+      rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
+      [ "$rc" -ne 124 ] || log "codesign timed out after ${SIGN_TIMEOUT}s tag=$tag"
       fail_retry sign_failed
       return 1
     fi
@@ -419,8 +483,8 @@ stage_release() {
     log "warning=adhoc_signature downloads_permission_may_reprompt tag=$tag"
   fi
   digest="$(/usr/bin/shasum -a 256 "$STAGED.tmp/cmux-relay" | cut -d ' ' -f 1)"
-  printf '{"schema_version":1,"tag":"%s","version":"%s","commit":"%s","built_at_ms":%s,"binary_sha256":"%s","signing":"%s"}\n' \
-    "$tag" "$version" "$commit" "$(now_ms)" "$digest" "$S_SIGNING" > "$STAGED.tmp/manifest.json"
+  printf '{"schema_version":1,"tag":"%s","version":"%s","commit":"%s","built_at_ms":%s,"binary_sha256":"%s","signing":"%s","toolchain":"%s"}\n' \
+    "$tag" "$version" "$commit" "$(now_ms)" "$digest" "$S_SIGNING" "$TOOLCHAIN" > "$STAGED.tmp/manifest.json"
   remove_tree "$STAGED"
   mv "$STAGED.tmp" "$STAGED"
 }
@@ -477,7 +541,7 @@ rollback() {
   if [ -f "$ROLLBACK/relay.plist" ] && ! cmp -s "$ROLLBACK/relay.plist" "$RELAY_PLIST"; then
     cp -p "$ROLLBACK/relay.plist" "$RELAY_PLIST.new" && mv -f "$RELAY_PLIST.new" "$RELAY_PLIST"
     "$LAUNCHCTL" bootout "$GUI/$LABEL" >/dev/null 2>&1 || true
-    "$LAUNCHCTL" bootstrap "$GUI" "$RELAY_PLIST" >/dev/null 2>&1 || log "rollback bootstrap failed"
+    bootstrap_job "$RELAY_PLIST" "$LABEL" || log "rollback bootstrap failed"
   else
     "$LAUNCHCTL" kickstart -k "$GUI/$LABEL" >/dev/null 2>&1 || log "rollback kickstart failed"
   fi
@@ -491,10 +555,14 @@ apply_staged() {
   tag="$(json_get "$STAGED/manifest.json" tag)"
   commit="$(json_get "$STAGED/manifest.json" commit)"
   signing="$(json_get "$STAGED/manifest.json" signing)"
+  # A failure here is remembered under the toolchain that built this release, also when
+  # the release is applied on a later pass that never ran run_check.
+  [ -n "$TOOLCHAIN" ] || TOOLCHAIN="$(json_get "$STAGED/manifest.json" toolchain)"
+  [ -n "$TOOLCHAIN" ] || TOOLCHAIN="$(toolchain_id)"
   if ! [[ $version =~ $VERSION_RE ]]; then
     remove_tree "$STAGED"
     fail_retry version_unknown
-    return
+    return 0
   fi
   S_STATE=applying
   S_LATEST="$version"
@@ -508,18 +576,18 @@ apply_staged() {
   if ! backup_current; then
     remove_tree "$STAGED"
     fail_tag install_failed "$tag" "$commit"
-    return
+    return 0
   fi
   CMUX_RELAY_UPDATER_CONTEXT=1 /bin/bash "$STAGED/scripts/install-launchd.sh" --apply-staged "$STAGED" 2>&1 \
     | redact_stream >> "$LOG"
   rc="${PIPESTATUS[0]}"
   if [ "$rc" -ne 0 ]; then
     rollback install_failed "$tag" "$commit"
-    return
+    return 0
   fi
   if ! wait_healthy "$version" "$old_pid"; then
     rollback start_failed "$tag" "$commit"
-    return
+    return 0
   fi
   S_STATE=idle
   S_CURRENT="$version"
@@ -530,8 +598,34 @@ apply_staged() {
   log "applied tag=$tag version=$version"
 }
 
+# A release staged before someone installed the same or a newer relay by hand must never
+# be applied over it. Returns 0 after dropping such a release and recording idle.
+discard_staged_if_not_newer() {
+  local version installed
+  version="$(json_get "$STAGED/manifest.json" version)"
+  installed="$(installed_version)" || return 1
+  [[ $version =~ $VERSION_RE ]] || return 1
+  ! ver_gt "$version" "$installed" || return 1
+  log "discarded staged tag=$(json_get "$STAGED/manifest.json" tag) version=$version installed=$installed reason=not_newer"
+  remove_tree "$STAGED"
+  S_STATE=idle
+  S_CURRENT="$installed"
+  S_LATEST="$installed"
+  S_TAG=""
+  S_COMMIT=""
+  S_ERROR=""
+  S_FAILURES=0
+  save_state
+  return 0
+}
+
+# Returns 2 when the staged release was dropped as not newer, so the caller can go on
+# to a normal check; 0 otherwise.
 maybe_apply() {
   [ -f "$REQUEST" ] && USER_REQUEST=1
+  if discard_staged_if_not_newer; then
+    return 2
+  fi
   if [ "$USER_REQUEST" != "1" ] && ! phones_idle; then
     log "staged tag=$S_TAG waiting until no phone is connected for ${IDLE_S}s"
     return 0
@@ -541,6 +635,7 @@ maybe_apply() {
 
 run_check() {
   local current listing tag commit rc chosen_tag="" chosen_commit="" built
+  local skipped_tag="" skipped_commit="" skipped_code=""
   S_STATE=checking
   S_ERROR=""
   save_state
@@ -561,7 +656,15 @@ run_check() {
   S_CHECKED="$(now_ms)"
 
   while read -r tag commit <&3; do
-    if tag_is_skipped "$tag" "$commit"; then continue; fi
+    if tag_is_skipped "$tag" "$commit"; then
+      # Remember the newest release skipped for its own failure (not a rejected tag).
+      if [ -z "$skipped_tag" ] && [ "$SKIP_CODE" != "tag_verification_failed" ]; then
+        skipped_tag="$tag"
+        skipped_commit="$commit"
+        skipped_code="$SKIP_CODE"
+      fi
+      continue
+    fi
     if tag_moved "$tag" "$commit"; then
       log "rejected tag=$tag commit=${commit:0:12} reason=tag_moved"
       mark_failed "$tag" "$commit" tag_verification_failed
@@ -589,6 +692,22 @@ run_check() {
   done 3< <(release_candidates "$listing" "$current")
   rm -f "$listing"
 
+  if [ -z "$chosen_tag" ] && [ -n "$skipped_tag" ]; then
+    # A newer release exists but failed before: keep reporting it and why, so the app
+    # does not say "up to date" and the user can still ask for a retry.
+    S_STATE=failed
+    S_LATEST="${skipped_tag#v}"
+    S_TAG="$skipped_tag"
+    S_COMMIT="$skipped_commit"
+    S_ERROR="$skipped_code"
+    S_FAILURES=0
+    S_NEXT=$(( $(now_ms) + INTERVAL_S * 1000 ))
+    save_state
+    rm -f "$REQUEST"
+    log "state=failed reason=$skipped_code tag=$skipped_tag skipped=failed_before current=$current"
+    return
+  fi
+
   if [ -z "$chosen_tag" ]; then
     S_STATE=idle
     S_LATEST="$current"
@@ -609,7 +728,15 @@ run_check() {
   S_STATE=building
   save_state
   log "found tag=$chosen_tag commit=${chosen_commit:0:12}; building"
-  if ! build_release; then fail_tag build_failed "$chosen_tag" "$chosen_commit"; return; fi
+  build_release
+  rc=$?
+  if [ "$rc" -eq 2 ]; then
+    # Running out of time says nothing about the release; retry later with backoff.
+    log "build timed out after ${BUILD_TIMEOUT}s tag=$chosen_tag"
+    fail_retry build_failed
+    return
+  fi
+  if [ "$rc" -ne 0 ]; then fail_tag build_failed "$chosen_tag" "$chosen_commit"; return; fi
   built="$("$SRC/.build/release/cmux-relay" --version 2>/dev/null | head -n 1)"
   if [ "$built" != "${chosen_tag#v}" ]; then fail_tag version_mismatch "$chosen_tag" "$chosen_commit"; return; fi
   stage_release "$chosen_tag" "$chosen_commit" "$built" || return
@@ -673,9 +800,11 @@ main() {
   if [ "$S_STATE" = "staged" ]; then
     if [ -f "$STAGED/manifest.json" ]; then
       maybe_apply
-      exit 0
+      [ "$?" -eq 2 ] || exit 0
+    else
+      S_STATE=idle
+      save_state
     fi
-    S_STATE=idle
   fi
 
   if [ "$FIRST_RUN" = "1" ] && [ "$USER_REQUEST" != "1" ]; then

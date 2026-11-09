@@ -199,6 +199,7 @@ UPDATER_DEST="$DEST/libexec/relay-update.sh"
 UPDATER_PLIST="$LAUNCH_AGENTS_DIR/$UPDATER_LABEL.plist"
 UPDATE_DIR="$DEST/update"
 UPDATE_CONFIG="$UPDATE_DIR/config.json"
+UPDATE_STATE="$UPDATE_DIR/state.json"
 DEFAULT_UPDATE_ORIGIN="https://github.com/NewTurn2017/cmux-remote.git"
 
 json_get() {
@@ -309,6 +310,45 @@ install_file() {
   mv -f "$2.tmp.$$" "$2"
 }
 
+# launchctl bootout can return before launchd has dropped the job, and a bootstrap in
+# that window fails (5: Input/output error). Waits up to 10s for the job to go, then
+# bootstraps with a few retries. relay-update.sh carries the same helper for rollback.
+bootstrap_job() {
+  local plist="$1" service="$TARGET/$2" waited=0 tries=0
+  while "$LAUNCHCTL" print "$service" >/dev/null 2>&1; do
+    [ "$waited" -lt 50 ] || break
+    sleep 0.2
+    waited=$(( waited + 1 ))
+  done
+  until "$LAUNCHCTL" bootstrap "$TARGET" "$plist"; do
+    tries=$(( tries + 1 ))
+    [ "$tries" -lt 5 ] || return 1
+    sleep 1
+  done
+}
+
+# A release the updater staged before this install is the same as or older than what was
+# just installed: drop it so it is never applied over this install, and record idle so
+# relay.info stops reporting it. A first install (no state yet) keeps its first-run delay.
+clear_stale_update() {
+  local version="$1" checked next
+  rm -rf "$UPDATE_DIR/staged" "$UPDATE_DIR/staged.tmp"
+  [ -f "$UPDATE_STATE" ] || return 0
+  checked="$(json_get "$UPDATE_STATE" last_checked_at_ms || true)"
+  next="$(json_get "$UPDATE_STATE" next_check_at_ms || true)"
+  {
+    printf '{"schema_version":1,"state":"idle","pid":%s' "$$"
+    case "$version" in
+      ''|*[!0-9.]*) ;;
+      *) printf ',"current_version":"%s","latest_version":"%s"' "$version" "$version" ;;
+    esac
+    case "$checked" in ''|*[!0-9]*) ;; *) printf ',"last_checked_at_ms":%s' "$checked" ;; esac
+    case "$next" in ''|*[!0-9]*) ;; *) printf ',"next_check_at_ms":%s' "$next" ;; esac
+    printf ',"consecutive_failures":0,"updated_at_ms":%s}\n' "$(( $(date +%s) * 1000 ))"
+  } > "$UPDATE_STATE.tmp.$$"
+  mv -f "$UPDATE_STATE.tmp.$$" "$UPDATE_STATE"
+}
+
 write_update_config() {
   mkdir -p "$UPDATE_DIR"
   printf '{"schema_version":1,"auto_update":%s,"origin":"%s","check_interval_seconds":3600,"idle_restart_seconds":120,"installed_version":"%s"}\n' \
@@ -384,7 +424,7 @@ if [ -n "$APPLY_STAGED" ]; then
     validate_rendered_plist
     note "relay plist changed; reloading $LABEL"
     "$LAUNCHCTL" bootout "$TARGET" "$PLIST" >/dev/null 2>&1 || true
-    "$LAUNCHCTL" bootstrap "$TARGET" "$PLIST"
+    bootstrap_job "$PLIST" "$LABEL" || fail "could not load $LABEL"
   fi
 
   install_file "$UPDATER_SRC" "$UPDATER_DEST" 755
@@ -428,6 +468,12 @@ if [ "$DRY_RUN" -eq 1 ]; then
   note "would copy: $BIN_SRC -> $BIN_DEST"
   note "would run: launchctl bootstrap $TARGET $PLIST"
   note "would run: launchctl kickstart -k $SERVICE"
+  if [ -d "$UPDATE_DIR/staged" ]; then
+    note "would remove: $UPDATE_DIR/staged (staged before this install; never applied over it)"
+  fi
+  if [ -f "$UPDATE_STATE" ]; then
+    note "would reset: $UPDATE_STATE (state idle)"
+  fi
   if [ "$AUTO_UPDATE" -eq 1 ]; then
     note "auto-update: enabled (origin $UPDATE_ORIGIN, tags vX.Y.Z only, check every 3600s, restart after no phone for 120s)"
     note "updater label: $UPDATER_LABEL"
@@ -518,10 +564,11 @@ validate_rendered_plist
 
 note "bootstrapping $LABEL"
 "$LAUNCHCTL" bootout "$TARGET" "$PLIST" >/dev/null 2>&1 || true
-"$LAUNCHCTL" bootstrap "$TARGET" "$PLIST"
+bootstrap_job "$PLIST" "$LABEL" || fail "could not load $LABEL"
 "$LAUNCHCTL" kickstart -k "$SERVICE"
 
 INSTALLED_VERSION="$("$BIN_DEST" --version 2>/dev/null | head -n 1)"
+clear_stale_update "$INSTALLED_VERSION"
 if [ "$AUTO_UPDATE" -eq 1 ]; then
   note "installing updater $UPDATER_LABEL (release tags vX.Y.Z from $UPDATE_ORIGIN)"
   install_file "$UPDATER_SRC" "$UPDATER_DEST" 755
@@ -529,7 +576,7 @@ if [ "$AUTO_UPDATE" -eq 1 ]; then
   render_updater_plist > "$UPDATER_PLIST.tmp.$$"
   mv -f "$UPDATER_PLIST.tmp.$$" "$UPDATER_PLIST"
   validate_rendered_plist render_updater_plist
-  "$LAUNCHCTL" bootstrap "$TARGET" "$UPDATER_PLIST"
+  bootstrap_job "$UPDATER_PLIST" "$UPDATER_LABEL" || fail "could not load $UPDATER_LABEL"
 else
   note "auto-update off (from $AUTO_UPDATE_SOURCE); updater not installed"
   write_update_config false "$INSTALLED_VERSION"
