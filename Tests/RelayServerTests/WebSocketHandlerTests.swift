@@ -214,9 +214,11 @@ final class WebSocketHandlerTests: XCTestCase {
         let response = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
         let capabilities = try response.decodeResult(HostCapabilitiesResult.self)
 
-        expect(capabilities.capabilities == ["file.upload.v2", "terminal.artifact.v1", "surface.document.v1", "surface.browser.v1"])
+        expect(capabilities.capabilities == ["file.upload.v2", "terminal.artifact.v1", "surface.document.v1", "surface.browser.v1", "feed.v1"])
         expect(capabilities.supportsSurfaceDocumentV1)
         expect(capabilities.supportsSurfaceBrowserV1)
+        expect(capabilities.supportsFeedV1)
+        expect(!capabilities.supportsClaudeTranscriptV1)
         expect(await cmux.snapshot() == [])
     }
 
@@ -439,6 +441,119 @@ final class WebSocketHandlerTests: XCTestCase {
         XCTAssertEqual(next.ok, true)
         expect(await facade.snapshot() == [.init(method: "workspace.list")])
         try printBrowserWireSample("temporarily_unavailable", blocked)
+    }
+
+    func testFeedPendingListAndReplyOnTheWire() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cmux = FakeFeedCMUX(items: [
+            FeedRaw.item(id: "item-q1", kind: "question", requestId: "req-q1", createdAt: "2026-11-09T10:00:03Z", [
+                "title": .string("Question"),
+                "questions": .array([FeedRaw.question("q1", prompt: "Which approach?", options: [
+                    FeedRaw.option("o1", "Option A"), FeedRaw.option("o2", "Option B"),
+                ])]),
+            ]),
+            FeedRaw.item(id: "item-p1", kind: "permissionRequest", requestId: "req-p1", createdAt: "2026-11-09T10:00:02Z", [
+                "title": .string("Permission: Bash"), "tool_name": .string("Bash"),
+                "tool_input": .object(["command": .string("npm test")]),
+            ]),
+            FeedRaw.item(id: "item-x1", kind: "exitPlan", requestId: "req-x1", createdAt: "2026-11-09T10:00:01Z", [
+                "plan": .string("1. Read\n2. Edit\n3. Test"), "default_mode": .string("manual"),
+            ]),
+        ])
+        let machine = feedMachine(directory: directory, cmux: cmux)
+        _ = await hello(machine)
+
+        let listRequest = RPCRequest(id: "f-1", method: RemoteRPCMethod.feedPendingList.rawValue, params: .object(["limit": .int(50)]))
+        let list = try await rpc(machine, id: listRequest.id, method: listRequest.method, params: listRequest.params)
+        let pending = try list.decodeResult(FeedPendingListResult.self)
+        XCTAssertEqual(pending.items.map(\.id), ["item-q1", "item-p1", "item-x1"])
+        XCTAssertEqual(pending.items[1].toolInput, #"{"command":"npm test"}"#)
+        XCTAssertEqual(pending.items[2].availableModes, ["autoAccept", "manual", "deny"])
+        XCTAssertLessThanOrEqual(
+            try JSONEncoder().encode(list).count,
+            FeedLimits.maxResponseBytes
+        )
+
+        let replyRequest = RPCRequest(id: "r-1", method: RemoteRPCMethod.feedReply.rawValue, params: .object([
+            "request_id": .string("req-q1"), "kind": .string("question"), "selections": .array([.string("Option A")]),
+        ]))
+        let replied = try await rpc(machine, id: replyRequest.id, method: replyRequest.method, params: replyRequest.params)
+        XCTAssertEqual(try replied.decodeResult(FeedReplyResult.self), FeedReplyResult(requestId: "req-q1", kind: .question))
+
+        let bypass = try await rpc(machine, id: "r-2", method: RemoteRPCMethod.feedReply.rawValue, params: .object([
+            "request_id": .string("req-p1"), "kind": .string("permission"), "mode": .string("bypass"),
+        ]))
+        let gone = try await rpc(machine, id: "r-3", method: RemoteRPCMethod.feedReply.rawValue, params: .object([
+            "request_id": .string("req-q1"), "kind": .string("question"), "selections": .array([.string("Option A")]),
+        ]))
+        let ultraplan = try await rpc(machine, id: "r-4", method: RemoteRPCMethod.feedReply.rawValue, params: .object([
+            "request_id": .string("req-x1"), "kind": .string("plan"), "mode": .string("ultraplan"),
+        ]))
+        let badLimit = try await rpc(machine, id: "f-2", method: RemoteRPCMethod.feedPendingList.rawValue, params: .object(["limit": .int(0)]))
+
+        XCTAssertEqual(bypass.error?.code, "invalid_field")
+        XCTAssertEqual(bypass.error?.data, .object(["field": .string("mode")]))
+        XCTAssertEqual(gone.error?.code, "feed_request_not_pending")
+        XCTAssertEqual(gone.error?.data, .object(["field": .string("request_id")]))
+        XCTAssertEqual(ultraplan.error?.code, "invalid_field")
+        XCTAssertEqual(badLimit.error?.data, .object(["field": .string("limit")]))
+        for response in [bypass, gone, ultraplan, badLimit] {
+            let message = response.error?.message ?? "Option A"
+            XCTAssertFalse(message.contains("Option A"))
+            XCTAssertFalse(message.contains("npm test"))
+            XCTAssertFalse(message.contains("/"))
+        }
+        expect(await cmux.replyCount() == 1)
+        expect(await cmux.count(of: "feed.list") == 3)
+
+        try printFeedWireSample("list_request", listRequest)
+        try printFeedWireSample("list_success", list)
+        try printFeedWireSample("reply_request", replyRequest)
+        try printFeedWireSample("reply_success", replied)
+        try printFeedWireSample("invalid_field", bypass)
+        try printFeedWireSample("feed_request_not_pending", gone)
+    }
+
+    func testFeedPendingDeadlineAnswersAndLaterFramesStillRun() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
+        let feed = FakeFeedCMUX(items: [], listGate: gate.stream)
+        let facade = RecordingCMUXFacade()
+        let machine = WSProtocolMachine(
+            cmux: facade,
+            authenticatedDeviceID: "feed-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: inertArtifactService(cmux: facade),
+            feedService: FeedService(dispatch: feed.dispatch),
+            relayOwnedTimeout: .milliseconds(100)
+        )
+        _ = await hello(machine)
+
+        let blockedList = try await rpc(machine, id: "f-3", method: RemoteRPCMethod.feedPendingList.rawValue, params: .object([:]))
+        let blockedReply = try await rpc(machine, id: "r-5", method: RemoteRPCMethod.feedReply.rawValue, params: .object([
+            "request_id": .string("req"), "kind": .string("plan"), "mode": .string("manual"),
+        ]))
+        let next = try await rpc(machine, id: "after", method: "workspace.list", params: .object([:]))
+
+        for blocked in [blockedList, blockedReply] {
+            XCTAssertEqual(blocked.error?.code, WSProtocolMachine.temporarilyUnavailableCode)
+            XCTAssertEqual(blocked.error?.message, "cmux feed did not answer in time")
+        }
+        XCTAssertEqual(next.ok, true)
+        expect(await facade.snapshot() == [.init(method: "workspace.list")])
+        try printFeedWireSample("temporarily_unavailable", blockedList)
+    }
+
+    func testClaudeTranscriptMethodsStayUnavailableUntilR2() async throws {
+        let machine = WSProtocolMachine(cmux: RecordingCMUXFacade())
+        _ = await hello(machine)
+        for method in [RemoteRPCMethod.claudeSessionsList, .claudeTranscriptPage] {
+            let response = try await rpc(machine, id: method.rawValue, method: method.rawValue, params: .object([:]))
+            XCTAssertEqual(response.error?.code, "method_not_found")
+        }
     }
 
     func testAuthenticatedDeviceCanUploadMultipleChunksCommitAndCancel() async throws {
@@ -1023,6 +1138,24 @@ final class WebSocketHandlerTests: XCTestCase {
                 clock: { Date(timeIntervalSince1970: 1_794_240_000) }
             )
         )
+    }
+
+    private func feedMachine(directory: URL, cmux: FakeFeedCMUX) -> WSProtocolMachine {
+        let facade = RecordingCMUXFacade()
+        return WSProtocolMachine(
+            cmux: facade,
+            authenticatedDeviceID: "feed-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: inertArtifactService(cmux: facade),
+            feedService: FeedService(dispatch: cmux.dispatch)
+        )
+    }
+
+    /// Prints a wire sample for APP-CONTRACT-NOTES.
+    private func printFeedWireSample<Frame: Encodable>(_ label: String, _ frame: Frame) throws {
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(frame))
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
+        print("FEED_WIRE_SAMPLE \(label) \(String(decoding: data, as: UTF8.self))")
     }
 
     /// Prints a wire sample for APP-CONTRACT-NOTES with the JPEG body replaced by its length.

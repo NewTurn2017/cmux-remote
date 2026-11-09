@@ -43,6 +43,7 @@ public actor WSProtocolMachine {
     private let uploadService: ChunkedFileUploadService
     private let artifactService: TerminalArtifactService
     private let browserCaptureService: BrowserCaptureService
+    private let feedService: FeedService
     private let uploadIDSource: @Sendable () -> UUID
     private let relayOwnedTimeout: Duration
     private var helloed = false
@@ -57,6 +58,7 @@ public actor WSProtocolMachine {
             }
         )
         self.browserCaptureService = BrowserCaptureService(cmux: cmux)
+        self.feedService = FeedService(cmux: cmux)
         self.uploadIDSource = { UUID() }
         self.relayOwnedTimeout = BoundedRelayWork.defaultTimeout
     }
@@ -67,6 +69,7 @@ public actor WSProtocolMachine {
         uploadService: ChunkedFileUploadService,
         artifactService: TerminalArtifactService,
         browserCaptureService: BrowserCaptureService? = nil,
+        feedService: FeedService? = nil,
         uploadIDSource: @escaping @Sendable () -> UUID = { UUID() },
         relayOwnedTimeout: Duration = BoundedRelayWork.defaultTimeout
     ) {
@@ -75,6 +78,7 @@ public actor WSProtocolMachine {
         self.uploadService = uploadService
         self.artifactService = artifactService
         self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
+        self.feedService = feedService ?? FeedService(cmux: cmux)
         self.uploadIDSource = uploadIDSource
         self.relayOwnedTimeout = relayOwnedTimeout
     }
@@ -195,6 +199,11 @@ public actor WSProtocolMachine {
                 await self.relayOwnedResponseBody(method: method, req: req)
             }
         }
+        if method == .feedPendingList || method == .feedReply {
+            return await bounded(req, timeoutMessage: "cmux feed did not answer in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
+        }
         return await bounded(req) { [self] in
             await self.relayOwnedResponseBody(method: method, req: req)
         }
@@ -212,6 +221,7 @@ public actor WSProtocolMachine {
                         HostCapabilitiesResult.terminalArtifactsV1Capability,
                         HostCapabilitiesResult.surfaceDocumentV1Capability,
                         HostCapabilitiesResult.surfaceBrowserV1Capability,
+                        HostCapabilitiesResult.feedV1Capability,
                     ])
                 )
 
@@ -370,7 +380,17 @@ public actor WSProtocolMachine {
                     surfaceID: request.surfaceId
                 ))
 
-            case .feedPendingList, .feedReply, .claudeSessionsList, .claudeTranscriptPage:
+            case .feedPendingList:
+                let request = try Self.decode(FeedPendingListRequest.self, from: req.params)
+                result = try Self.jsonValue(try await feedService.pending(
+                    limit: request.limit ?? FeedLimits.defaultListLimit
+                ))
+
+            case .feedReply:
+                let request = try Self.decode(FeedReplyRequest.self, from: req.params)
+                result = try Self.jsonValue(try await feedService.reply(request))
+
+            case .claudeSessionsList, .claudeTranscriptPage:
                 return Self.encode(Self.errorResponse(
                     id: req.id,
                     code: RemoteErrorCode.methodNotFound.rawValue,
@@ -386,6 +406,8 @@ public actor WSProtocolMachine {
             return Self.encode(Self.artifactErrorResponse(id: req.id, error: error))
         } catch let error as BrowserCaptureService.Error {
             return Self.encode(Self.browserCaptureErrorResponse(id: req.id, error: error))
+        } catch let error as FeedService.Error {
+            return Self.encode(Self.feedErrorResponse(id: req.id, error: error))
         } catch {
             return Self.encode(Self.errorResponse(
                 id: req.id,
@@ -546,6 +568,24 @@ public actor WSProtocolMachine {
             )
         case .native(let code):
             return errorResponse(id: id, code: code, message: "cmux browser capture failed")
+        }
+    }
+
+    private static func feedErrorResponse(id: String, error: FeedService.Error) -> RPCResponse {
+        switch error {
+        case .notPending:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.feedRequestNotPending.rawValue,
+                message: "Feed request is no longer pending",
+                field: "request_id"
+            )
+        case .invalidField(let field):
+            return errorResponse(id: id, code: RemoteErrorCode.invalidField.rawValue, message: "Invalid field", field: field)
+        case .malformed:
+            return errorResponse(id: id, code: "internal_error", message: "cmux feed response malformed")
+        case .native(let code):
+            return errorResponse(id: id, code: code, message: "cmux feed request failed")
         }
     }
 
@@ -715,6 +755,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         uploadService: ChunkedFileUploadService,
         artifactService: TerminalArtifactService,
         browserCaptureService: BrowserCaptureService? = nil,
+        feedService: FeedService? = nil,
         maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes,
         maximumOutstandingInboundActions: Int = WebSocketHandler.defaultMaximumOutstandingInboundActions,
         maximumOutstandingInboundBytes: Int = WebSocketHandler.defaultMaximumOutstandingInboundBytes
@@ -728,7 +769,8 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                 authenticatedDeviceID: deviceId,
                 uploadService: uploadService,
                 artifactService: artifactService,
-                browserCaptureService: browserCaptureService
+                browserCaptureService: browserCaptureService,
+                feedService: feedService
             ),
             maximumQueuedOutputBytes: maximumQueuedOutputBytes,
             maximumOutstandingInboundActions: maximumOutstandingInboundActions,
