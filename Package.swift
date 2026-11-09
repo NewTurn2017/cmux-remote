@@ -84,6 +84,8 @@ let package = Package(
             .product(name: "NIOPosix", package: "swift-nio"),
             .product(name: "NIOEmbedded", package: "swift-nio"),
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        ], resources: [
+            .copy("Fixtures"),
         ]),
     ]
 )

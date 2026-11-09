@@ -38,6 +38,7 @@ public final class HTTPServer: @unchecked Sendable {
     private let artifactService: TerminalArtifactService
     private let browserCaptureService: BrowserCaptureService
     private let feedService: FeedService
+    private let claudeTranscriptService: ClaudeTranscriptService
     public let logger = Logger(label: "HTTPServer")
 
     public init(group: MultiThreadedEventLoopGroup,
@@ -65,6 +66,7 @@ public final class HTTPServer: @unchecked Sendable {
         })
         self.browserCaptureService = BrowserCaptureService(cmux: cmux)
         self.feedService = FeedService(cmux: cmux)
+        self.claudeTranscriptService = ClaudeTranscriptService(cmux: cmux)
     }
 
     init(group: MultiThreadedEventLoopGroup,
@@ -76,7 +78,8 @@ public final class HTTPServer: @unchecked Sendable {
          uploadService: ChunkedFileUploadService,
          artifactService: TerminalArtifactService,
          browserCaptureService: BrowserCaptureService? = nil,
-         feedService: FeedService? = nil)
+         feedService: FeedService? = nil,
+         claudeTranscriptService: ClaudeTranscriptService? = nil)
     {
         self.group = group
         self.routes = routes
@@ -88,6 +91,7 @@ public final class HTTPServer: @unchecked Sendable {
         self.artifactService = artifactService
         self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
         self.feedService = feedService ?? FeedService(cmux: cmux)
+        self.claudeTranscriptService = claudeTranscriptService ?? ClaudeTranscriptService(cmux: cmux)
     }
 
     /// Bind the server and return the listening channel. The caller is
@@ -108,6 +112,7 @@ public final class HTTPServer: @unchecked Sendable {
         let artifactService = self.artifactService
         let browserCaptureService = self.browserCaptureService
         let feedService = self.feedService
+        let claudeTranscriptService = self.claudeTranscriptService
 
         let bs = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
@@ -161,7 +166,8 @@ public final class HTTPServer: @unchecked Sendable {
                                 uploadService: uploadService,
                                 artifactService: artifactService,
                                 browserCaptureService: browserCaptureService,
-                                feedService: feedService
+                                feedService: feedService,
+                                claudeTranscriptService: claudeTranscriptService
                             )
                             return channel.pipeline.addHandler(handler)
                         }

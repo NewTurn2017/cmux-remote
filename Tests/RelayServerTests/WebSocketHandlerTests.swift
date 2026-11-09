@@ -214,11 +214,13 @@ final class WebSocketHandlerTests: XCTestCase {
         let response = try await rpc(machine, id: "cap", method: "host.capabilities", params: .object([:]))
         let capabilities = try response.decodeResult(HostCapabilitiesResult.self)
 
-        expect(capabilities.capabilities == ["file.upload.v2", "terminal.artifact.v1", "surface.document.v1", "surface.browser.v1", "feed.v1"])
+        expect(capabilities.capabilities == [
+            "file.upload.v2", "terminal.artifact.v1", "surface.document.v1", "surface.browser.v1", "feed.v1", "claude.transcript.v1",
+        ])
         expect(capabilities.supportsSurfaceDocumentV1)
         expect(capabilities.supportsSurfaceBrowserV1)
         expect(capabilities.supportsFeedV1)
-        expect(!capabilities.supportsClaudeTranscriptV1)
+        expect(capabilities.supportsClaudeTranscriptV1)
         expect(await cmux.snapshot() == [])
     }
 
@@ -547,13 +549,110 @@ final class WebSocketHandlerTests: XCTestCase {
         try printFeedWireSample("temporarily_unavailable", blockedList)
     }
 
-    func testClaudeTranscriptMethodsStayUnavailableUntilR2() async throws {
-        let machine = WSProtocolMachine(cmux: RecordingCMUXFacade())
+    func testClaudeSessionsAndTranscriptPageOnTheWire() async throws {
+        let sandbox = try TranscriptSandbox()
+        defer { sandbox.remove() }
+        let file = sandbox.project.appendingPathComponent("00000000-0000-4000-8000-000000000001.jsonl")
+        try TranscriptFixture.data().write(to: file)
+        let vault = FakeVaultCMUX(sessions: [
+            TranscriptLine.vaultSession("00000000-0000-4000-8000-000000000001", file: file.path, title: "README 정리"),
+            TranscriptLine.vaultSession("outside", file: "/etc/hosts.jsonl"),
+        ])
+        let machine = claudeMachine(directory: sandbox.base, vault: vault, root: sandbox.root.path)
         _ = await hello(machine)
-        for method in [RemoteRPCMethod.claudeSessionsList, .claudeTranscriptPage] {
-            let response = try await rpc(machine, id: method.rawValue, method: method.rawValue, params: .object([:]))
-            XCTAssertEqual(response.error?.code, "method_not_found")
+
+        let listRequest = RPCRequest(id: "c-1", method: RemoteRPCMethod.claudeSessionsList.rawValue, params: .object(["limit": .int(20)]))
+        let list = try await rpc(machine, id: listRequest.id, method: listRequest.method, params: listRequest.params)
+        let sessions = try list.decodeResult(ClaudeSessionListResult.self)
+        XCTAssertEqual(sessions.sessions.map(\.sessionId), ["00000000-0000-4000-8000-000000000001"])
+
+        let pageRequest = RPCRequest(id: "c-2", method: RemoteRPCMethod.claudeTranscriptPage.rawValue, params: .object([
+            "session_id": .string("00000000-0000-4000-8000-000000000001"), "max_entries": .int(4),
+        ]))
+        let pageResponse = try await rpc(machine, id: pageRequest.id, method: pageRequest.method, params: pageRequest.params)
+        let page = try pageResponse.decodeResult(ClaudeTranscriptPageResult.self)
+        XCTAssertEqual(page.entries.map(\.id), ["u2", "a3", "u3", "a4"])
+        let before = try require(page.before)
+        XCTAssertEqual(page.fileSize, 25_960)
+
+        let olderRequest = RPCRequest(id: "c-3", method: RemoteRPCMethod.claudeTranscriptPage.rawValue, params: .object([
+            "session_id": .string("00000000-0000-4000-8000-000000000001"), "before": .int(before), "max_entries": .int(4),
+        ]))
+        let older = try await rpc(machine, id: olderRequest.id, method: olderRequest.method, params: olderRequest.params)
+        let olderPage = try older.decodeResult(ClaudeTranscriptPageResult.self)
+        XCTAssertEqual(olderPage.entries.map(\.id), ["u1", "a2"])
+        XCTAssertNil(olderPage.before)
+
+        let unknown = try await rpc(machine, id: "c-4", method: RemoteRPCMethod.claudeTranscriptPage.rawValue, params: .object([
+            "session_id": .string("outside"),
+        ]))
+        let pastEnd = try await rpc(machine, id: "c-5", method: RemoteRPCMethod.claudeTranscriptPage.rawValue, params: .object([
+            "session_id": .string("00000000-0000-4000-8000-000000000001"), "before": .int(26_000),
+        ]))
+        let badEntries = try await rpc(machine, id: "c-6", method: RemoteRPCMethod.claudeTranscriptPage.rawValue, params: .object([
+            "session_id": .string("00000000-0000-4000-8000-000000000001"), "max_entries": .int(0),
+        ]))
+        let badId = try await rpc(machine, id: "c-7", method: RemoteRPCMethod.claudeTranscriptPage.rawValue, params: .object([
+            "session_id": .string("../escape"),
+        ]))
+
+        XCTAssertEqual(unknown.error?.code, "claude_session_not_found")
+        XCTAssertEqual(unknown.error?.data, .object(["field": .string("session_id")]))
+        XCTAssertEqual(pastEnd.error?.code, "invalid_field")
+        XCTAssertEqual(pastEnd.error?.data, .object(["field": .string("before")]))
+        XCTAssertEqual(badEntries.error?.data, .object(["field": .string("max_entries")]))
+        XCTAssertEqual(badId.error?.data, .object(["field": .string("session_id")]))
+        for response in [list, pageResponse, older] {
+            let text = String(decoding: try JSONEncoder().encode(response), as: UTF8.self)
+            XCTAssertFalse(text.contains(sandbox.base.path))
+            XCTAssertFalse(text.contains("resume"))
+            XCTAssertLessThanOrEqual(text.utf8.count, ClaudeTranscriptLimits.maxResponseBytes)
         }
+        for response in [unknown, pastEnd, badEntries, badId] {
+            XCTAssertFalse((response.error?.message ?? "/").contains("/"))
+        }
+        expect(await vault.calls.count == 2)
+
+        try printClaudeWireSample("sessions_request", listRequest)
+        try printClaudeWireSample("sessions_success", list)
+        try printClaudeWireSample("page_request", pageRequest)
+        try printClaudeWireSample("page_success", pageResponse)
+        try printClaudeWireSample("older_page_request", olderRequest)
+        try printClaudeWireSample("older_page_success", older)
+        try printClaudeWireSample("claude_session_not_found", unknown)
+        try printClaudeWireSample("invalid_field_before", pastEnd)
+    }
+
+    func testClaudeTranscriptDeadlineAnswersAndLaterFramesStillRun() async throws {
+        let sandbox = try TranscriptSandbox()
+        defer { sandbox.remove() }
+        let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
+        let vault = FakeVaultCMUX(sessions: [], gate: gate.stream)
+        let facade = RecordingCMUXFacade()
+        let machine = WSProtocolMachine(
+            cmux: facade,
+            authenticatedDeviceID: "claude-device",
+            uploadService: ChunkedFileUploadService(rootURL: sandbox.base),
+            artifactService: inertArtifactService(cmux: facade),
+            claudeTranscriptService: ClaudeTranscriptService(dispatch: vault.dispatch, root: sandbox.root.path, log: { _ in }),
+            relayOwnedTimeout: .milliseconds(100)
+        )
+        _ = await hello(machine)
+
+        let blockedList = try await rpc(machine, id: "c-8", method: RemoteRPCMethod.claudeSessionsList.rawValue, params: .object([:]))
+        let blockedPage = try await rpc(machine, id: "c-9", method: RemoteRPCMethod.claudeTranscriptPage.rawValue, params: .object([
+            "session_id": .string("waiting"),
+        ]))
+        let next = try await rpc(machine, id: "after", method: "workspace.list", params: .object([:]))
+
+        for blocked in [blockedList, blockedPage] {
+            XCTAssertEqual(blocked.error?.code, WSProtocolMachine.temporarilyUnavailableCode)
+            XCTAssertEqual(blocked.error?.message, "Claude transcript did not load in time")
+        }
+        XCTAssertEqual(next.ok, true)
+        expect(await facade.snapshot() == [.init(method: "workspace.list")])
+        try printClaudeWireSample("temporarily_unavailable", blockedPage)
     }
 
     func testAuthenticatedDeviceCanUploadMultipleChunksCommitAndCancel() async throws {
@@ -1149,6 +1248,23 @@ final class WebSocketHandlerTests: XCTestCase {
             artifactService: inertArtifactService(cmux: facade),
             feedService: FeedService(dispatch: cmux.dispatch)
         )
+    }
+
+    private func claudeMachine(directory: URL, vault: FakeVaultCMUX, root: String) -> WSProtocolMachine {
+        let facade = RecordingCMUXFacade()
+        return WSProtocolMachine(
+            cmux: facade,
+            authenticatedDeviceID: "claude-device",
+            uploadService: ChunkedFileUploadService(rootURL: directory),
+            artifactService: inertArtifactService(cmux: facade),
+            claudeTranscriptService: ClaudeTranscriptService(dispatch: vault.dispatch, root: root, log: { _ in })
+        )
+    }
+
+    private func printClaudeWireSample<Frame: Encodable>(_ label: String, _ frame: Frame) throws {
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(frame))
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
+        print("CLAUDE_WIRE_SAMPLE \(label) \(String(decoding: data, as: UTF8.self))")
     }
 
     /// Prints a wire sample for APP-CONTRACT-NOTES.

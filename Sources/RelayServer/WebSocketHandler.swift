@@ -44,6 +44,7 @@ public actor WSProtocolMachine {
     private let artifactService: TerminalArtifactService
     private let browserCaptureService: BrowserCaptureService
     private let feedService: FeedService
+    private let claudeTranscriptService: ClaudeTranscriptService
     private let uploadIDSource: @Sendable () -> UUID
     private let relayOwnedTimeout: Duration
     private var helloed = false
@@ -59,6 +60,7 @@ public actor WSProtocolMachine {
         )
         self.browserCaptureService = BrowserCaptureService(cmux: cmux)
         self.feedService = FeedService(cmux: cmux)
+        self.claudeTranscriptService = ClaudeTranscriptService(cmux: cmux)
         self.uploadIDSource = { UUID() }
         self.relayOwnedTimeout = BoundedRelayWork.defaultTimeout
     }
@@ -70,6 +72,7 @@ public actor WSProtocolMachine {
         artifactService: TerminalArtifactService,
         browserCaptureService: BrowserCaptureService? = nil,
         feedService: FeedService? = nil,
+        claudeTranscriptService: ClaudeTranscriptService? = nil,
         uploadIDSource: @escaping @Sendable () -> UUID = { UUID() },
         relayOwnedTimeout: Duration = BoundedRelayWork.defaultTimeout
     ) {
@@ -79,6 +82,7 @@ public actor WSProtocolMachine {
         self.artifactService = artifactService
         self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
         self.feedService = feedService ?? FeedService(cmux: cmux)
+        self.claudeTranscriptService = claudeTranscriptService ?? ClaudeTranscriptService(cmux: cmux)
         self.uploadIDSource = uploadIDSource
         self.relayOwnedTimeout = relayOwnedTimeout
     }
@@ -204,6 +208,11 @@ public actor WSProtocolMachine {
                 await self.relayOwnedResponseBody(method: method, req: req)
             }
         }
+        if method == .claudeSessionsList || method == .claudeTranscriptPage {
+            return await bounded(req, timeoutMessage: "Claude transcript did not load in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
+        }
         return await bounded(req) { [self] in
             await self.relayOwnedResponseBody(method: method, req: req)
         }
@@ -222,6 +231,7 @@ public actor WSProtocolMachine {
                         HostCapabilitiesResult.surfaceDocumentV1Capability,
                         HostCapabilitiesResult.surfaceBrowserV1Capability,
                         HostCapabilitiesResult.feedV1Capability,
+                        HostCapabilitiesResult.claudeTranscriptV1Capability,
                     ])
                 )
 
@@ -390,12 +400,15 @@ public actor WSProtocolMachine {
                 let request = try Self.decode(FeedReplyRequest.self, from: req.params)
                 result = try Self.jsonValue(try await feedService.reply(request))
 
-            case .claudeSessionsList, .claudeTranscriptPage:
-                return Self.encode(Self.errorResponse(
-                    id: req.id,
-                    code: RemoteErrorCode.methodNotFound.rawValue,
-                    message: "\(method.rawValue) is not available yet"
+            case .claudeSessionsList:
+                let request = try Self.decode(ClaudeSessionListRequest.self, from: req.params)
+                result = try Self.jsonValue(try await claudeTranscriptService.sessions(
+                    limit: request.limit ?? ClaudeTranscriptLimits.defaultSessionLimit
                 ))
+
+            case .claudeTranscriptPage:
+                let request = try Self.decode(ClaudeTranscriptPageRequest.self, from: req.params)
+                result = try Self.jsonValue(try await claudeTranscriptService.page(request))
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {
@@ -408,6 +421,8 @@ public actor WSProtocolMachine {
             return Self.encode(Self.browserCaptureErrorResponse(id: req.id, error: error))
         } catch let error as FeedService.Error {
             return Self.encode(Self.feedErrorResponse(id: req.id, error: error))
+        } catch let error as ClaudeTranscriptService.Error {
+            return Self.encode(Self.claudeTranscriptErrorResponse(id: req.id, error: error))
         } catch {
             return Self.encode(Self.errorResponse(
                 id: req.id,
@@ -589,6 +604,26 @@ public actor WSProtocolMachine {
         }
     }
 
+    private static func claudeTranscriptErrorResponse(id: String, error: ClaudeTranscriptService.Error) -> RPCResponse {
+        switch error {
+        case .sessionNotFound:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.claudeSessionNotFound.rawValue,
+                message: "Claude session not found",
+                field: "session_id"
+            )
+        case .invalidField(let field):
+            return errorResponse(id: id, code: RemoteErrorCode.invalidField.rawValue, message: "Invalid field", field: field)
+        case .fileChanged:
+            return errorResponse(id: id, code: temporarilyUnavailableCode, message: "Claude transcript changed while reading")
+        case .malformed:
+            return errorResponse(id: id, code: "internal_error", message: "cmux vault response malformed")
+        case .native(let code):
+            return errorResponse(id: id, code: code, message: "cmux vault request failed")
+        }
+    }
+
     private static func dispatchNative(
         cmux: CMUXFacade,
         method: String,
@@ -756,6 +791,7 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         artifactService: TerminalArtifactService,
         browserCaptureService: BrowserCaptureService? = nil,
         feedService: FeedService? = nil,
+        claudeTranscriptService: ClaudeTranscriptService? = nil,
         maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes,
         maximumOutstandingInboundActions: Int = WebSocketHandler.defaultMaximumOutstandingInboundActions,
         maximumOutstandingInboundBytes: Int = WebSocketHandler.defaultMaximumOutstandingInboundBytes
@@ -770,7 +806,8 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                 uploadService: uploadService,
                 artifactService: artifactService,
                 browserCaptureService: browserCaptureService,
-                feedService: feedService
+                feedService: feedService,
+                claudeTranscriptService: claudeTranscriptService
             ),
             maximumQueuedOutputBytes: maximumQueuedOutputBytes,
             maximumOutstandingInboundActions: maximumOutstandingInboundActions,
