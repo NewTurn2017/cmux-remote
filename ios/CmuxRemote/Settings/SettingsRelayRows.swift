@@ -38,7 +38,6 @@ struct SettingsRelayRows: View {
                     .cmuxDisplay(14)
                     .foregroundStyle(presentation.version == .legacy ? CmuxTheme.accentYellow : CmuxTheme.accentBlue)
                     .accessibilityIdentifier("SettingsRelayVersionValue")
-                    .accessibilityValue(presentation.versionAccessibilityValue)
             }
 
             if let status = presentation.status {
@@ -47,7 +46,6 @@ struct SettingsRelayRows: View {
                     .foregroundStyle(color(for: status))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("SettingsRelayUpdateState")
-                    .accessibilityValue("state=\(presentation.stateRawValue ?? "none")")
             }
 
             if let enabled = presentation.autoUpdateEnabled {
@@ -93,9 +91,21 @@ struct SettingsRelayRows: View {
                 updateNowButton(enabled: presentation.updateButton == .enabled)
             }
         }
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 0) {
+                testMarker("SettingsRelayVersionMarker", value: presentation.versionAccessibilityValue)
+                if presentation.status != nil {
+                    testMarker("SettingsRelayUpdateStateMarker", value: "state=\(presentation.stateRawValue ?? "none")")
+                }
+            }
+            .allowsHitTesting(false)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SettingsRelaySection")
         .task(id: pollingKey) {
+            if isConnected, !remoteFiles.capabilitiesResolved {
+                await remoteFiles.retryCapabilitiesIfUnresolved()
+            }
             guard RelaySettingsPresentation.shouldQueryInfo(
                 isConnected: isConnected,
                 capabilitiesResolved: remoteFiles.capabilitiesResolved,
@@ -119,6 +129,16 @@ struct SettingsRelayRows: View {
                 defaultValue: "The relay restarts after the update, so this phone disconnects briefly and reconnects automatically."
             ))
         }
+    }
+
+    /// A 1x1 element that carries a machine value for UI tests, like `TerminalViewportBackground`,
+    /// so the visible rows keep human-readable accessibility.
+    private func testMarker(_ identifier: String, value: String) -> some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(identifier)
+            .accessibilityValue(value)
     }
 
     private var manualGuide: some View {

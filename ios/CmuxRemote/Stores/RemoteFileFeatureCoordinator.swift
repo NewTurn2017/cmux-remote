@@ -33,6 +33,7 @@ final class RemoteFileFeatureCoordinator {
     private(set) var hostID = "offline"
     private(set) var accountScope = "offline"
     private(set) var qaState: String?
+    @ObservationIgnored private var relayVersionHostID: String?
     private(set) var releaseStaleFixtureResponse: (() -> Void)?
 
     init(
@@ -60,6 +61,7 @@ final class RemoteFileFeatureCoordinator {
         hostID: String,
         accountScope: String
     ) async {
+        prepareHost(hostID)
         hostGeneration &+= 1
         let generation = hostGeneration
         self.hostID = hostID
@@ -73,6 +75,25 @@ final class RemoteFileFeatureCoordinator {
         await routingRPC.install(rpc)
         await attachments.setHostGeneration(generation)
         await terminalArtifacts.activate(identity: nil)
+        await resolveCapabilities(rpc: rpc, generation: generation)
+    }
+
+    /// Forgets the relay version shown for another Mac before connecting to `hostID`.
+    func prepareHost(_ hostID: String) {
+        guard relayVersionHostID != hostID else { return }
+        relayVersion.reset()
+        relayVersionHostID = hostID
+    }
+
+    /// Asks for `host.capabilities` again after a timeout or transport error left them unresolved.
+    func retryCapabilitiesIfUnresolved() async {
+        guard !capabilitiesResolved, hostID != "offline" else { return }
+        await resolveCapabilities(rpc: routingRPC, generation: hostGeneration)
+    }
+
+    /// Only `method_not_found` means a relay without the method; other failures stay unresolved
+    /// so a 2.0 relay that timed out is not shown as one from before 2.0.
+    private func resolveCapabilities(rpc: any RPCDispatch, generation: Int) async {
         do {
             let response = try await rpc.call(
                 method: RemoteRPCMethod.hostCapabilities.rawValue,
@@ -89,11 +110,22 @@ final class RemoteFileFeatureCoordinator {
         } catch {
             guard generation == hostGeneration else { return }
             capabilities = HostCapabilitiesResult(capabilities: [])
-            capabilitiesResolved = true
+            capabilitiesResolved = Self.isMethodNotFound(error)
             documentRoutingEnabled = false
             browserRoutingEnabled = false
             feedRoutingEnabled = false
             transcriptRoutingEnabled = false
+        }
+    }
+
+    private static func isMethodNotFound(_ error: any Error) -> Bool {
+        switch error {
+        case CmuxRemoteRPCError.rpc(let code, _):
+            return code == RemoteErrorCode.methodNotFound.rawValue
+        case let error as RPCError:
+            return error.code == RemoteErrorCode.methodNotFound.rawValue
+        default:
+            return false
         }
     }
 

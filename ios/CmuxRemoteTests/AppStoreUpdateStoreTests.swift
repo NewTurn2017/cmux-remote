@@ -89,6 +89,20 @@ final class AppStoreUpdateStoreTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(store.availableUpdate).version, "2.1.0")
     }
 
+    func testFailedLookupIsRetriedOnTheNextCall() async throws {
+        StubURLProtocol.respond { _ in .status(500) }
+        let store = makeStore(installed: "2.0.0")
+        await store.checkIfDue()
+        XCTAssertNil(store.availableUpdate)
+        XCTAssertEqual(StubURLProtocol.requestedCountries, ["kr"])
+
+        StubURLProtocol.respond { _ in .json(self.lookupBody(version: "2.1.0")) }
+        await store.checkIfDue()
+
+        XCTAssertEqual(StubURLProtocol.requestedCountries, ["kr"], "a failure must not start the 24-hour wait")
+        XCTAssertEqual(try XCTUnwrap(store.availableUpdate).version, "2.1.0")
+    }
+
     func testMalformedResponseIsIgnoredSilently() async {
         StubURLProtocol.respond { _ in .json("not json") }
         let store = makeStore(installed: "2.0.0")

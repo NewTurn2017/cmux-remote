@@ -133,6 +133,124 @@ final class RelayVersionStoreTests: XCTestCase {
         XCTAssertFalse(store.hasPendingRequest)
     }
 
+    func testNewVersionWhileApplyingIsNotSettledUntilIdle() async {
+        let rpc = RelayRPCScript(
+            info: [
+                ok(RelayInfoResult(version: "2.0.0", update: status(.staged, latest: "2.0.1", restartPending: true))),
+                ok(RelayInfoResult(version: "2.0.1", update: status(.applying, latest: "2.0.1", restartPending: true))),
+                ok(RelayInfoResult(version: "2.0.1", update: status(.idle, latest: "2.0.1"))),
+            ],
+            start: ok(status(.applying, latest: "2.0.1", restartPending: true))
+        )
+        let store = makeStore(rpc)
+        await store.refresh(hostID: "mac")
+        await store.startUpdate()
+
+        await store.refresh(hostID: "mac")
+        XCTAssertNil(store.outcome, "the new relay may still be rolled back while the updater applies")
+        XCTAssertTrue(store.hasPendingRequest)
+        XCTAssertTrue(store.shouldPoll)
+
+        await store.refresh(hostID: "mac")
+        XCTAssertEqual(store.outcome, .updated(from: "2.0.0", to: "2.0.1"))
+        XCTAssertFalse(store.hasPendingRequest)
+    }
+
+    func testRollbackAfterApplyingIsNotReportedAsUpdated() async {
+        let rpc = RelayRPCScript(
+            info: [
+                ok(RelayInfoResult(version: "2.0.0", update: status(.staged, latest: "2.0.1", restartPending: true))),
+                ok(RelayInfoResult(version: "2.0.1", update: status(.applying, latest: "2.0.1", restartPending: true))),
+                ok(RelayInfoResult(version: "2.0.0", update: status(.failed, latest: "2.0.1", error: .startFailed))),
+            ],
+            start: ok(status(.applying, latest: "2.0.1", restartPending: true))
+        )
+        let store = makeStore(rpc)
+        await store.refresh(hostID: "mac")
+        await store.startUpdate()
+        await store.refresh(hostID: "mac")
+
+        await store.refresh(hostID: "mac")
+
+        XCTAssertNil(store.outcome)
+        XCTAssertFalse(store.hasPendingRequest)
+        XCTAssertEqual(store.info?.update?.lastErrorCode, .startFailed)
+    }
+
+    func testFailedRollbackClearsAnEarlierUpdatedResult() async {
+        let rpc = RelayRPCScript(
+            info: [
+                ok(RelayInfoResult(version: "2.0.0", update: status(.idle, latest: "2.0.1"))),
+                ok(RelayInfoResult(version: "2.0.1", update: status(.idle, latest: "2.0.1"))),
+                ok(RelayInfoResult(version: "2.0.0", update: status(.failed, latest: "2.0.1", error: .startFailed))),
+            ],
+            start: ok(status(.checking, latest: "2.0.1"))
+        )
+        let store = makeStore(rpc)
+        await store.refresh(hostID: "mac")
+        await store.startUpdate()
+        await store.refresh(hostID: "mac")
+        XCTAssertEqual(store.outcome, .updated(from: "2.0.0", to: "2.0.1"))
+
+        await store.refresh(hostID: "mac")
+
+        XCTAssertNil(store.outcome, "back on the old version with a failure is not an update")
+    }
+
+    func testConnectingToAnotherMacForgetsTheRelayVersion() async {
+        let coordinator = makeCoordinator()
+        await coordinator.connect(rpc: DemoRPCDispatch(), hostID: "mac-a", accountScope: "account")
+        await coordinator.relayVersion.refresh(hostID: "mac-a")
+        XCTAssertEqual(coordinator.relayVersion.info?.version, CmuxRemoteVersion.marketing)
+
+        await coordinator.deactivate(purgeAccountCache: false)
+        coordinator.prepareHost("mac-a")
+        XCTAssertNotNil(coordinator.relayVersion.info, "the same Mac keeps its last known version")
+
+        coordinator.prepareHost("mac-b")
+        XCTAssertNil(coordinator.relayVersion.info)
+
+        await coordinator.connect(rpc: DemoRPCDispatch(relayScenario: "legacy"), hostID: "mac-b", accountScope: "account")
+        XCTAssertNil(coordinator.relayVersion.info)
+        XCTAssertTrue(coordinator.capabilitiesResolved)
+        XCTAssertFalse(coordinator.capabilities.supportsRelayInfoV1)
+    }
+
+    func testCapabilityTimeoutStaysUnresolvedAndIsRetried() async {
+        let rpc = CapabilityRPCScript(answers: [
+            .timeout,
+            .response(ok(HostCapabilitiesResult(capabilities: [HostCapabilities.relayInfoV1, HostCapabilities.relayUpdateV1]))),
+        ])
+        let coordinator = makeCoordinator()
+
+        await coordinator.connect(rpc: rpc, hostID: "mac", accountScope: "account")
+        XCTAssertFalse(coordinator.capabilitiesResolved, "a timeout is not a relay from before 2.0")
+        XCTAssertFalse(RelaySettingsPresentation(
+            isConnected: true, capabilitiesResolved: coordinator.capabilitiesResolved, supportsInfo: false,
+            supportsUpdate: false, info: nil, isLoading: false, isRequesting: false, hasPendingRequest: false
+        ).showsManualGuide)
+
+        await coordinator.retryCapabilitiesIfUnresolved()
+
+        XCTAssertTrue(coordinator.capabilitiesResolved)
+        XCTAssertTrue(coordinator.capabilities.supportsRelayInfoV1)
+        let calls = await rpc.capabilityCalls
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testCapabilityMethodNotFoundResolvesAsRelayBeforeTwo() async {
+        let rpc = CapabilityRPCScript(answers: [.response(failure(RemoteErrorCode.methodNotFound.rawValue))])
+        let coordinator = makeCoordinator()
+
+        await coordinator.connect(rpc: rpc, hostID: "mac", accountScope: "account")
+        await coordinator.retryCapabilitiesIfUnresolved()
+
+        XCTAssertTrue(coordinator.capabilitiesResolved)
+        XCTAssertFalse(coordinator.capabilities.supportsRelayInfoV1)
+        let calls = await rpc.capabilityCalls
+        XCTAssertEqual(calls, 1)
+    }
+
     func testAnotherHostForgetsThePendingRequest() async {
         let rpc = RelayRPCScript(
             info: [
@@ -271,6 +389,18 @@ final class RelayVersionStoreTests: XCTestCase {
         XCTAssertLessThan(from.lowerBound, to.lowerBound)
     }
 
+    private func makeCoordinator() -> RemoteFileFeatureCoordinator {
+        let cacheRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("relay-version-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: cacheRoot) }
+        let routingRPC = OfflineRPCDispatch()
+        return RemoteFileFeatureCoordinator(
+            routingRPC: routingRPC,
+            attachments: AttachmentCoordinator(store: AttachmentStore(rpc: routingRPC), photoStager: FoundationAttachmentPhotoStager()),
+            terminalArtifacts: TerminalArtifactStore(rpc: routingRPC, cache: TerminalArtifactCache(rootURL: cacheRoot))
+        )
+    }
+
     private func makeStore(_ rpc: RelayRPCScript) -> RelayVersionStore {
         RelayVersionStore(
             rpc: rpc,
@@ -309,6 +439,32 @@ final class RelayVersionStoreTests: XCTestCase {
 
     private func failure(_ code: String) -> RPCResponse {
         RPCResponse(id: "r", ok: false, error: RPCError(code: code, message: "scripted"))
+    }
+}
+
+/// Answers `host.capabilities` with one scripted result per call; every other method is not found.
+private actor CapabilityRPCScript: RPCDispatch {
+    enum Answer: Sendable {
+        case response(RPCResponse)
+        case timeout
+    }
+
+    private var answers: [Answer]
+    private(set) var capabilityCalls = 0
+
+    init(answers: [Answer]) {
+        self.answers = answers
+    }
+
+    func call(method: String, params: JSONValue) async throws -> RPCResponse {
+        guard method == RemoteRPCMethod.hostCapabilities.rawValue else {
+            return RPCResponse(id: "r", ok: false, error: RPCError(code: "method_not_found", message: "scripted"))
+        }
+        capabilityCalls += 1
+        switch answers.removeFirst() {
+        case .response(let response): return response
+        case .timeout: throw URLError(.timedOut)
+        }
     }
 }
 

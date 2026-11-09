@@ -153,18 +153,22 @@ final class RelayVersionStore {
         clearRequest()
     }
 
+    /// A new version counts as updated only once the updater reports idle: while it still applies,
+    /// the new relay may fail its stability check and be rolled back to `from`.
     private func settleRequest(version: String, state: RelayUpdateState?) {
-        guard let from = requestedFromVersion else { return }
-        if version != from {
-            outcome = .updated(from: from, to: version)
-            clearRequest()
-            return
+        if case .updated(let from, _) = outcome, version == from, state == .failed {
+            outcome = nil
         }
+        guard let from = requestedFromVersion else { return }
         switch state {
-        case .idle:
-            outcome = .upToDate
+        case .idle, nil:
+            if version != from {
+                outcome = .updated(from: from, to: version)
+            } else if state == .idle {
+                outcome = .upToDate
+            }
             clearRequest()
-        case .failed, .disabled, .unavailable, .unknown, nil:
+        case .failed, .disabled, .unavailable, .unknown:
             clearRequest()
         case .checking, .downloading, .building, .staged, .applying:
             break

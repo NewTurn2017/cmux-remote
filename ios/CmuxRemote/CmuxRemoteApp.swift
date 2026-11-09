@@ -215,6 +215,7 @@ struct CmuxRemoteApp: App {
             return
         }
 
+        remoteFiles.prepareHost(host)
         let session = LiveRelaySession(
             host: host,
             port: port,

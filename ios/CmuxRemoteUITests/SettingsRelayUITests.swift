@@ -10,10 +10,12 @@ final class SettingsRelayUITests: XCTestCase {
         let updateNow = openRelayRows(in: app, scrollTarget: "SettingsRelayUpdateNowButton")
 
         let version = app.staticTexts["SettingsRelayVersionValue"]
-        XCTAssertEqual(version.value as? String, "relay=current")
+        XCTAssertEqual(marker("SettingsRelayVersionMarker", in: app).value as? String, "relay=current")
+        XCTAssertNotEqual(version.value as? String, "relay=current", "VoiceOver must not read the test value")
         XCTAssertEqual(version.label, "2.0.0")
         let state = app.staticTexts["SettingsRelayUpdateState"]
-        waitForValue("state=idle", of: state)
+        let stateMarker = marker("SettingsRelayUpdateStateMarker", in: app)
+        waitForValue("state=idle", of: stateMarker)
         XCTAssertEqual(state.label, "Up to date")
         XCTAssertTrue(app.staticTexts["SettingsRelayLastChecked"].label.contains("Last checked"))
         XCTAssertFalse(app.staticTexts["SettingsRelayAdhocWarning"].exists)
@@ -27,13 +29,13 @@ final class SettingsRelayUITests: XCTestCase {
         XCTAssertTrue(confirm.label.contains("Update the relay now?"), confirm.label)
         confirm.buttons["Update"].tap()
 
-        waitForValue("state=checking", of: state)
+        waitForValue("state=checking", of: stateMarker)
         XCTAssertFalse(updateNow.isEnabled, "Update Now must be disabled while the relay checks")
 
         let result = app.staticTexts["SettingsRelayUpdateResult"]
         XCTAssertTrue(result.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(result.label, "Already up to date")
-        waitForValue("state=idle", of: state)
+        waitForValue("state=idle", of: stateMarker)
         XCTAssertTrue(updateNow.isEnabled)
     }
 
@@ -42,7 +44,8 @@ final class SettingsRelayUITests: XCTestCase {
         let updateNow = openRelayRows(in: app, scrollTarget: "SettingsRelayUpdateNowButton")
 
         let state = app.staticTexts["SettingsRelayUpdateState"]
-        waitForValue("state=staged", of: state)
+        let stateMarker = marker("SettingsRelayUpdateStateMarker", in: app)
+        waitForValue("state=staged", of: stateMarker)
         XCTAssertTrue(state.label.contains("2.0.1"), state.label)
         XCTAssertTrue(app.staticTexts["SettingsRelayAdhocWarning"].exists, app.debugDescription)
         XCTAssertTrue(updateNow.isEnabled)
@@ -53,7 +56,7 @@ final class SettingsRelayUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), app.debugDescription)
         confirm.buttons["Update"].tap()
 
-        waitForValue("state=applying", of: state)
+        waitForValue("state=applying", of: stateMarker)
         XCTAssertFalse(updateNow.isEnabled)
 
         let result = app.staticTexts["SettingsRelayUpdateResult"]
@@ -67,12 +70,13 @@ final class SettingsRelayUITests: XCTestCase {
         let link = openRelayRows(in: app, scrollTarget: "SettingsRelayManualUpdateLink")
 
         let version = app.staticTexts["SettingsRelayVersionValue"]
-        waitForValue("relay=legacy", of: version)
+        waitForValue("relay=legacy", of: marker("SettingsRelayVersionMarker", in: app))
         XCTAssertEqual(version.label, "Unknown (before 2.0)")
         XCTAssertTrue(app.staticTexts["SettingsRelayManualUpdateGuide"].label.contains("./scripts/install-launchd.sh"))
         XCTAssertTrue(link.isHittable)
         XCTAssertFalse(app.buttons["SettingsRelayUpdateNowButton"].exists)
         XCTAssertFalse(app.staticTexts["SettingsRelayUpdateState"].exists)
+        XCTAssertFalse(marker("SettingsRelayUpdateStateMarker", in: app).exists)
         retainScreenshot(named: "settings-relay-legacy")
     }
 
@@ -81,7 +85,7 @@ final class SettingsRelayUITests: XCTestCase {
         let updateNow = openRelayRows(in: app, scrollTarget: "SettingsRelayUpdateNowButton")
 
         let state = app.staticTexts["SettingsRelayUpdateState"]
-        waitForValue("state=idle", of: state)
+        waitForValue("state=idle", of: marker("SettingsRelayUpdateStateMarker", in: app))
         XCTAssertEqual(state.label, "최신 버전")
         XCTAssertTrue(app.staticTexts["SettingsRelayLastChecked"].label.contains("마지막 확인"))
         XCTAssertTrue(updateNow.isEnabled)
@@ -121,6 +125,10 @@ final class SettingsRelayUITests: XCTestCase {
         }
         XCTAssertTrue(target.isHittable, app.debugDescription)
         return target
+    }
+
+    private func marker(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
     }
 
     private func waitForValue(_ value: String, of element: XCUIElement, timeout: TimeInterval = 10) {

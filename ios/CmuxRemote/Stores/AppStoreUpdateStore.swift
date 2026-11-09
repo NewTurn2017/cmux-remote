@@ -51,7 +51,8 @@ final class AppStoreUpdateStore {
         return availableUpdate.version != seenVersion
     }
 
-    /// Looks up the store at most once per `checkInterval`; failures keep the cached result silently.
+    /// Looks up the store at most once per `checkInterval` after a successful lookup; a failure keeps
+    /// the cached result silently and is retried on the next call.
     func checkIfDue() async {
         guard let lookup, let bundleID, !isChecking else { return }
         if let lastCheckedAt = defaults.object(forKey: Keys.lastCheckedAt) as? Date,
@@ -60,7 +61,7 @@ final class AppStoreUpdateStore {
         }
         isChecking = true
         defer { isChecking = false }
-        defaults.set(now(), forKey: Keys.lastCheckedAt)
+        let checkedAt = now()
 
         let listing: AppStoreListing?
         do {
@@ -74,6 +75,7 @@ final class AppStoreUpdateStore {
         } catch {
             return
         }
+        defaults.set(checkedAt, forKey: Keys.lastCheckedAt)
         cache(listing)
         availableUpdate = newerListing(listing)
     }
