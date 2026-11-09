@@ -88,7 +88,7 @@ private struct SurfaceChip: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isBusy)
-                .accessibilityLabel("Close surface \(title)")
+                .accessibilityLabel(String(localized: "surfaces.chip.close", defaultValue: "Close surface \(title)"))
             }
         }
         .background(isSelected ? CmuxTheme.surfaceRaised : CmuxTheme.surfaceSunken)
@@ -132,6 +132,6 @@ private struct NewSurfaceChip: View {
         .buttonStyle(.plain)
         .disabled(isBusy)
         .accessibilityIdentifier("NewSurfaceButton")
-        .accessibilityLabel("New surface")
+        .accessibilityLabel(String(localized: "surfaces.new.accessibility", defaultValue: "New surface"))
     }
 }

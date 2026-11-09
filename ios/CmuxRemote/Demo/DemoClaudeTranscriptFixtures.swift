@@ -30,7 +30,7 @@ enum DemoClaudeTranscriptFixtures {
             ),
             ClaudeSessionSummary(
                 sessionId: idleSessionID,
-                title: "README 설치 절차 정리",
+                title: "Tidy up the README install steps",
                 cwd: "/Users/demo/dev/notes-api",
                 gitBranch: "main",
                 status: "idle",

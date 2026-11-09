@@ -11,6 +11,7 @@ struct CmuxRemoteApp: App {
     @State private var hostStatusStore = HostStatusStore(rpc: OfflineRPCDispatch())
     @State private var remoteFiles: RemoteFileFeatureCoordinator
     @State private var notifPresenter = LocalNotificationPresenter()
+    @State private var appStoreUpdates = Self.makeAppStoreUpdates(ProcessInfo.processInfo)
     @State private var bootstrapped = false
     @State private var activeSession: LiveRelaySession?
     @State private var activeRPC: RPCClient?
@@ -65,6 +66,7 @@ struct CmuxRemoteApp: App {
                     notifStore: notifStore,
                     hostStatusStore: hostStatusStore,
                     remoteFiles: remoteFiles,
+                    appStoreUpdates: appStoreUpdates,
                     onDisconnect: disconnect,
                     onReconnect: reconnect,
                     onTriggerTestNotification: triggerTestNotification
@@ -100,6 +102,44 @@ struct CmuxRemoteApp: App {
         let info = ProcessInfo.processInfo
         return info.environment["CMUX_SKIP_SPLASH"] == "1"
             || info.arguments.contains("--cmux-skip-splash")
+    }
+
+    /// Fake-relay and UI-test launches never reach the App Store; `CMUX_APPSTORE_FIXTURE` supplies a canned listing.
+    @MainActor
+    private static func makeAppStoreUpdates(_ info: ProcessInfo) -> AppStoreUpdateStore {
+        let installed = AppVersionInfo.current
+        let fixtureStoreURL = URL(string: "https://apps.apple.com/app/id6769380881")
+        let lookup: (any AppStoreLookup)?
+        var defaults = UserDefaults.standard
+        switch info.environment["CMUX_APPSTORE_FIXTURE"] {
+        case "newer":
+            lookup = FixtureAppStoreLookup(fixture: fixtureStoreURL.map {
+                AppStoreListing(version: "99.0.0", url: $0, minimumOSVersion: nil)
+            })
+            defaults = freshFixtureDefaults()
+        case "same":
+            lookup = FixtureAppStoreLookup(fixture: fixtureStoreURL.map {
+                AppStoreListing(version: installed.marketing, url: $0, minimumOSVersion: nil)
+            })
+            defaults = freshFixtureDefaults()
+        default:
+            lookup = shouldUseFakeRelay(info) ? nil : ITunesAppStoreLookup()
+        }
+        return AppStoreUpdateStore(
+            lookup: lookup,
+            installed: installed,
+            bundleID: Bundle.main.bundleIdentifier,
+            country: Locale.current.region?.identifier.lowercased(),
+            systemVersion: UIDevice.current.systemVersion,
+            defaults: defaults
+        )
+    }
+
+    private static func freshFixtureDefaults() -> UserDefaults {
+        let suiteName = "CmuxRemoteAppStoreFixture"
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return .standard }
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 
     private static func shouldUseFakeRelay(_ info: ProcessInfo) -> Bool {

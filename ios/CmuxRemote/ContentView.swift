@@ -12,6 +12,7 @@ struct ContentView: View {
     let notifStore: NotificationStore
     let hostStatusStore: HostStatusStore
     let remoteFiles: RemoteFileFeatureCoordinator
+    let appStoreUpdates: AppStoreUpdateStore
     let onDisconnect: () -> Void
     let onReconnect: () -> Void
     let onTriggerTestNotification: @MainActor () -> TestNotificationResult
@@ -51,6 +52,7 @@ struct ContentView: View {
             case .settings:
                 SettingsView(
                     store: workspaceStore,
+                    appStoreUpdates: appStoreUpdates,
                     onDisconnect: onDisconnect,
                     onReconnect: onReconnect,
                     onTriggerTestNotification: onTriggerTestNotification
@@ -74,6 +76,10 @@ struct ContentView: View {
             guard phase == .active, !tabBarVisible, remoteFiles.feedEnabled, isConnected else { return }
             Task { await remoteFiles.feed.refresh() }
         }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await appStoreUpdates.checkIfDue()
+        }
         .onChange(of: remoteFiles.agentsEnabled) { _, enabled in
             if !enabled, selectedTab == .agents { selectedTab = .workspaces }
         }
@@ -84,7 +90,8 @@ struct ContentView: View {
                     tabs: visibleTabs,
                     selectedTab: $selectedTab,
                     inboxCount: notifStore.unreadCount,
-                    agentsPendingCount: remoteFiles.feed.pendingCount
+                    agentsPendingCount: remoteFiles.feed.pendingCount,
+                    settingsUpdateAvailable: appStoreUpdates.showsBadge
                 )
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -173,6 +180,7 @@ private struct FloatingTabBar: View {
     @Binding var selectedTab: AppTab
     let inboxCount: Int
     let agentsPendingCount: Int
+    let settingsUpdateAvailable: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -213,7 +221,10 @@ private struct FloatingTabBar: View {
                                 .padding(.top, 4)
                                 .padding(.trailing, 10)
                                 .accessibilityIdentifier("InboxUnreadBadge")
-                                .accessibilityLabel("\(inboxCount) unread inbox notifications")
+                                .accessibilityLabel(String(
+                                    localized: "tabbar.inbox.unread",
+                                    defaultValue: "\(inboxCount) unread inbox notifications"
+                                ))
                         }
 
                         if tab == .agents, agentsPendingCount > 0 {
@@ -227,8 +238,25 @@ private struct FloatingTabBar: View {
                                 .padding(.top, 4)
                                 .padding(.trailing, 10)
                                 .accessibilityIdentifier("AgentsFeedPendingBadge")
-                                .accessibilityLabel("\(agentsPendingCount) pending agent requests")
+                                .accessibilityLabel(String(
+                                    localized: "tabbar.agents.pending",
+                                    defaultValue: "\(agentsPendingCount) pending agent requests"
+                                ))
                                 .accessibilityValue("\(agentsPendingCount)")
+                        }
+
+                        if tab == .settings, settingsUpdateAvailable {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(CmuxTheme.accentYellow)
+                                .frame(width: 8, height: 8)
+                                .padding(.top, 8)
+                                .padding(.trailing, 14)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityIdentifier("SettingsUpdateBadge")
+                                .accessibilityLabel(String(
+                                    localized: "tabbar.settings.update_available",
+                                    defaultValue: "App update available"
+                                ))
                         }
                     }
                 }

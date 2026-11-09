@@ -83,9 +83,16 @@ public struct HostBatteryState: Equatable, Sendable {
     }
 
     public var accessibilityText: String {
-        guard available, let percent else { return "MacBook battery unavailable" }
-        if isCharging == true { return "MacBook battery \(percent) percent, charging" }
-        return "MacBook battery \(percent) percent"
+        guard available, let percent else {
+            return String(localized: "host.battery.accessibility.unavailable", defaultValue: "MacBook battery unavailable")
+        }
+        if isCharging == true {
+            return String(
+                localized: "host.battery.accessibility.charging",
+                defaultValue: "MacBook battery \(percent) percent, charging"
+            )
+        }
+        return String(localized: "host.battery.accessibility.level", defaultValue: "MacBook battery \(percent) percent")
     }
 }
 

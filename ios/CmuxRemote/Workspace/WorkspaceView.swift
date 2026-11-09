@@ -143,7 +143,7 @@ struct WorkspaceView: View {
             .presentationDetents([.medium, .large])
         }
         .confirmationDialog(
-            "Close surface?",
+            String(localized: "surfaces.close.title", defaultValue: "Close surface?"),
             isPresented: Binding(
                 get: { pendingCloseSurface != nil },
                 set: { isPresented in
@@ -153,14 +153,17 @@ struct WorkspaceView: View {
             titleVisibility: .visible
         ) {
             if let surface = pendingCloseSurface {
-                Button("Close \(surface.title)", role: .destructive) {
+                Button(
+                    String(localized: "common.close_named", defaultValue: "Close \(surface.title)"),
+                    role: .destructive
+                ) {
                     pendingCloseSurface = nil
                     closeSurface(surface)
                 }
             }
-            Button("Cancel", role: .cancel) { pendingCloseSurface = nil }
+            Button(String(localized: "common.cancel", defaultValue: "Cancel"), role: .cancel) { pendingCloseSurface = nil }
         } message: {
-            Text("This closes the terminal surface in cmux.")
+            Text(String(localized: "surfaces.close.message", defaultValue: "This closes the terminal surface in cmux."))
         }
         .task {
             await subscribeFirstSurfaceIfNeeded()
@@ -240,7 +243,10 @@ struct WorkspaceView: View {
                             .padding(.vertical, 2)
                             .background(CmuxTheme.accentYellow)
                             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                            .accessibilityLabel("Demo mode active")
+                            .accessibilityLabel(String(
+                                localized: "workspace.demo_badge.accessibility",
+                                defaultValue: "Demo mode active"
+                            ))
                     }
                     BatteryBadge(battery: hostStatusStore.battery) {
                         Task { await hostStatusStore.refreshBattery() }
@@ -372,7 +378,9 @@ struct WorkspaceView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("InputModeToggleButton")
-            .accessibilityLabel(inputMode == .live ? "Switch to command input mode" : "Switch to live input mode")
+            .accessibilityLabel(inputMode == .live
+                ? String(localized: "workspace.input_mode.switch_to_command", defaultValue: "Switch to command input mode")
+                : String(localized: "workspace.input_mode.switch_to_live", defaultValue: "Switch to live input mode"))
 
             Text("$")
                 .cmuxDisplay(14)
@@ -381,7 +389,7 @@ struct WorkspaceView: View {
             if inputMode == .command {
                 ZStack(alignment: .leading) {
                     if composer.draft.isEmpty {
-                        Text("type a command…")
+                        Text(String(localized: "workspace.command.placeholder", defaultValue: "type a command…"))
                             .cmuxMono(14)
                             .foregroundStyle(CmuxTheme.ink.opacity(0.65))
                             .allowsHitTesting(false)
@@ -404,7 +412,10 @@ struct WorkspaceView: View {
                         }
                     )
                     .accessibilityIdentifier("LiveInputField")
-                    .accessibilityLabel("Live terminal input")
+                    .accessibilityLabel(String(
+                        localized: "workspace.live_input.accessibility",
+                        defaultValue: "Live terminal input"
+                    ))
 
                     if liveInputEcho.isEmpty {
                         Text(String(
@@ -457,7 +468,7 @@ struct WorkspaceView: View {
                 .onTapGesture { commandFieldFocused = true }
                 .background(CommandInputTraitsConfigurator())
                 .accessibilityIdentifier("CommandComposerField")
-                .accessibilityLabel("Command input")
+                .accessibilityLabel(String(localized: "workspace.command.accessibility", defaultValue: "Command input"))
         }
     }
 
@@ -523,7 +534,7 @@ struct WorkspaceView: View {
         .buttonStyle(.plain)
         .disabled(composer.isSending)
         .accessibilityIdentifier("CommandSubmitButton")
-        .accessibilityLabel("Send terminal input")
+        .accessibilityLabel(String(localized: "workspace.submit.accessibility", defaultValue: "Send terminal input"))
     }
 
     @ViewBuilder
@@ -795,7 +806,10 @@ struct WorkspaceView: View {
         guard !surfaceActionInFlight, let workspace = currentWorkspace else { return }
         let surfaces = workspaceStore.surfaces(for: workspace.id)
         guard surfaces.count > 1 else {
-            surfaceActionError = "Cannot close the last surface."
+            surfaceActionError = String(
+                localized: "surfaces.close.last_error",
+                defaultValue: "Cannot close the last surface."
+            )
             return
         }
 
@@ -955,7 +969,11 @@ private enum TerminalInputError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .noActiveSurface: return "Select a workspace surface before sending input."
+        case .noActiveSurface:
+            return String(
+                localized: "workspace.input.no_surface",
+                defaultValue: "Select a workspace surface before sending input."
+            )
         }
     }
 }
@@ -1137,7 +1155,7 @@ private struct CommandTextFieldView: UIViewRepresentable {
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.accessibilityIdentifier = "CommandComposerField"
-        view.accessibilityLabel = "Command input"
+        view.accessibilityLabel = String(localized: "workspace.command.accessibility", defaultValue: "Command input")
         view.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
         return view
     }
@@ -1255,14 +1273,20 @@ private struct LiveTerminalInputView: UIViewRepresentable {
         view.textContainer.lineFragmentPadding = 0
         view.isScrollEnabled = false
         view.accessibilityIdentifier = "LiveInputField"
-        view.accessibilityLabel = "Live terminal input"
+        view.accessibilityLabel = String(
+            localized: "workspace.live_input.accessibility",
+            defaultValue: "Live terminal input"
+        )
         return view
     }
 
     func updateUIView(_ uiView: LiveTerminalTextView, context: Context) {
         context.coordinator.parent = self
         uiView.accessibilityIdentifier = "LiveInputField"
-        uiView.accessibilityLabel = "Live terminal input"
+        uiView.accessibilityLabel = String(
+            localized: "workspace.live_input.accessibility",
+            defaultValue: "Live terminal input"
+        )
         let currentText = uiView.text ?? ""
         let hasLocalHangulInput = LiveTerminalInputTranslator.containsHangul(currentText)
         uiView.accessibilityValue = hasLocalHangulInput ? currentText : displayText

@@ -42,7 +42,10 @@ struct NotificationCenterView: View {
                         Text("[ no events ]")
                             .cmuxDisplay(13)
                             .foregroundStyle(CmuxTheme.muted)
-                        Text("cmux relay events will appear here")
+                        Text(String(
+                            localized: "inbox.empty.detail",
+                            defaultValue: "cmux relay events will appear here"
+                        ))
                             .cmuxMono(11)
                             .foregroundStyle(CmuxTheme.muted)
                     }
