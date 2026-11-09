@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var store: WorkspaceStore
     let appStoreUpdates: AppStoreUpdateStore
+    let remoteFiles: RemoteFileFeatureCoordinator
     let onDisconnect: () -> Void
     let onReconnect: () -> Void
     var onTriggerTestNotification: (@MainActor () -> TestNotificationResult)? = nil
@@ -106,7 +107,11 @@ struct SettingsView: View {
                 }
 
                 section(title: "version") {
-                    SettingsVersionSection(appStoreUpdates: appStoreUpdates)
+                    SettingsVersionSection(
+                        appStoreUpdates: appStoreUpdates,
+                        remoteFiles: remoteFiles,
+                        isConnected: store.connection == .connected
+                    )
                 }
 
                 section(title: "notifications") {

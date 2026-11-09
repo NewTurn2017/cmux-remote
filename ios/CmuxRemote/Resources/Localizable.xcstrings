@@ -4224,6 +4224,710 @@
           }
         }
       }
+    },
+    "settings.relay.version.legacy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown (before 2.0)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "알 수 없음 (2.0 이전)"
+          }
+        }
+      }
+    },
+    "settings.relay.version.loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "확인 중…"
+          }
+        }
+      }
+    },
+    "settings.relay.status.up_to_date": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up to date"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "최신 버전"
+          }
+        }
+      }
+    },
+    "settings.relay.status.available": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version %@ is available"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 버전 %@ 있음"
+          }
+        }
+      }
+    },
+    "settings.relay.status.checking": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking for updates…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 확인 중…"
+          }
+        }
+      }
+    },
+    "settings.relay.status.downloading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading the update…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 받는 중…"
+          }
+        }
+      }
+    },
+    "settings.relay.status.building": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Building the update. This can take a few minutes."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 빌드 중. 몇 분 걸릴 수 있습니다."
+          }
+        }
+      }
+    },
+    "settings.relay.status.staged": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version %@ is ready. The relay restarts when no phone is connected."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 버전 준비됨. 연결된 폰이 없으면 relay가 재시작합니다."
+          }
+        }
+      }
+    },
+    "settings.relay.status.staged_unversioned": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An update is ready. The relay restarts when no phone is connected."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 준비됨. 연결된 폰이 없으면 relay가 재시작합니다."
+          }
+        }
+      }
+    },
+    "settings.relay.status.applying": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applying the update. The relay is restarting."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 적용 중. relay가 재시작합니다."
+          }
+        }
+      }
+    },
+    "settings.relay.status.restarting": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The relay is restarting. Reconnecting automatically…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "relay 재시작 중. 자동으로 다시 연결합니다…"
+          }
+        }
+      }
+    },
+    "settings.relay.status.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update failed: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 실패: %@"
+          }
+        }
+      }
+    },
+    "settings.relay.status.disabled": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-update is turned off on the Mac."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 자동 업데이트가 꺼져 있습니다."
+          }
+        }
+      }
+    },
+    "settings.relay.status.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This relay install can't update itself."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 relay 설치는 스스로 업데이트할 수 없습니다."
+          }
+        }
+      }
+    },
+    "settings.relay.status.unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update status unknown"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 상태를 알 수 없음"
+          }
+        }
+      }
+    },
+    "settings.relay.status.disconnected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not connected. Showing the last known version."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결되지 않음. 마지막으로 확인한 버전입니다."
+          }
+        }
+      }
+    },
+    "settings.relay.failure.network_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "couldn't download the release"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "릴리스를 받지 못함"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.tag_verification_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the release tag didn't verify"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "릴리스 태그 확인 실패"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.build_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the build failed"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "빌드 실패"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.version_mismatch": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the built version didn't match the release"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "빌드한 버전이 릴리스와 다름"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.sign_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "couldn't sign the new relay"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 relay 서명 실패"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.install_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "install failed; the previous relay was restored"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설치 실패, 이전 relay로 되돌림"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.start_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the new relay didn't start; the previous relay was restored"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 relay가 시작되지 않아 이전 relay로 되돌림"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.insufficient_disk": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "not enough disk space on the Mac"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 디스크 공간 부족"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.toolchain_missing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swift or git is missing on the Mac"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에 Swift 또는 git이 없음"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.version_unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "couldn't read the installed version"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설치된 버전을 읽지 못함"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.interrupted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the update was interrupted"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트가 중간에 멈춤"
+          }
+        }
+      }
+    },
+    "settings.relay.failure.unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unknown reason"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "알 수 없는 이유"
+          }
+        }
+      }
+    },
+    "settings.relay.auto_update.on": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-update on"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동 업데이트 켜짐"
+          }
+        }
+      }
+    },
+    "settings.relay.auto_update.off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-update off"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동 업데이트 꺼짐"
+          }
+        }
+      }
+    },
+    "settings.relay.last_checked": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last checked %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마지막 확인 %@"
+          }
+        }
+      }
+    },
+    "settings.relay.result.updated": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated %1$@ → %2$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트됨 %1$@ → %2$@"
+          }
+        }
+      }
+    },
+    "settings.relay.result.up_to_date": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Already up to date"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미 최신 버전입니다"
+          }
+        }
+      }
+    },
+    "settings.relay.result.timed_out": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still in progress. Check again later."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 진행 중입니다. 나중에 다시 확인하세요."
+          }
+        }
+      }
+    },
+    "settings.relay.request.disabled": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-update is turned off on the Mac, so the relay can't update now."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac에서 자동 업데이트가 꺼져 있어 지금 업데이트할 수 없습니다."
+          }
+        }
+      }
+    },
+    "settings.relay.request.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This relay can't update itself right now."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 relay는 지금 스스로 업데이트할 수 없습니다."
+          }
+        }
+      }
+    },
+    "settings.relay.request.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't start the update. Try again."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트를 시작하지 못했습니다. 다시 시도하세요."
+          }
+        }
+      }
+    },
+    "settings.relay.adhoc_warning": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ad-hoc signed: macOS may ask again for Downloads access after an update."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ad-hoc 서명: 업데이트 뒤 macOS가 다운로드 폴더 권한을 다시 물을 수 있습니다."
+          }
+        }
+      }
+    },
+    "settings.relay.manual_guide": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To update, run git pull and then ./scripts/install-launchd.sh on your Mac."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트하려면 Mac에서 git pull 후 ./scripts/install-launchd.sh를 실행하세요."
+          }
+        }
+      }
+    },
+    "settings.relay.manual_link": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Setup guide (README)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정 안내 (README)"
+          }
+        }
+      }
+    },
+    "settings.relay.confirm.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update the relay now?"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지금 relay를 업데이트할까요?"
+          }
+        }
+      }
+    },
+    "settings.relay.confirm.message": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The relay restarts after the update, so this phone disconnects briefly and reconnects automatically."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트 뒤 relay가 재시작해 이 폰의 연결이 잠깐 끊겼다가 자동으로 다시 연결됩니다."
+          }
+        }
+      }
+    },
+    "settings.relay.confirm.action": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업데이트"
+          }
+        }
+      }
+    },
+    "settings.relay.confirm.cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

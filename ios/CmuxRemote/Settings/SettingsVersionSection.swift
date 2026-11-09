@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsVersionSection: View {
     @Bindable var appStoreUpdates: AppStoreUpdateStore
+    let remoteFiles: RemoteFileFeatureCoordinator
+    let isConnected: Bool
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -45,6 +47,12 @@ struct SettingsVersionSection: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("SettingsAppStoreUpdateButton")
             }
+
+            Rectangle()
+                .fill(CmuxTheme.divider)
+                .frame(height: 1)
+
+            SettingsRelayRows(remoteFiles: remoteFiles, isConnected: isConnected)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SettingsVersionSection")

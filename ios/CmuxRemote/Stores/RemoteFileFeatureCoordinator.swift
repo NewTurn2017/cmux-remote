@@ -11,10 +11,14 @@ final class RemoteFileFeatureCoordinator {
     let browsers: SurfaceBrowserStore
     let feed: FeedStore
     let transcripts: ClaudeTranscriptStore
+    let relayVersion: RelayVersionStore
 
     private let routingRPC: OfflineRPCDispatch
 
     private(set) var capabilities = HostCapabilitiesResult(capabilities: [])
+    /// `true` once this connection's `host.capabilities` answered (or failed), so an empty list
+    /// means a relay without the capability rather than one still being asked.
+    private(set) var capabilitiesResolved = false
     /// Survives disconnects so a document tab keeps its error screen instead of
     /// falling back to the card; only a capability answer or an account purge changes it.
     private(set) var documentRoutingEnabled = false
@@ -44,6 +48,7 @@ final class RemoteFileFeatureCoordinator {
         self.browsers = SurfaceBrowserStore(rpc: routingRPC, baseIntervalSeconds: browserRefreshSeconds)
         self.feed = FeedStore(rpc: routingRPC)
         self.transcripts = ClaudeTranscriptStore(rpc: routingRPC)
+        self.relayVersion = RelayVersionStore(rpc: routingRPC)
     }
 
     var feedEnabled: Bool { feedRoutingEnabled && !feed.isUnsupported }
@@ -60,6 +65,7 @@ final class RemoteFileFeatureCoordinator {
         self.hostID = hostID
         self.accountScope = accountScope
         capabilities = HostCapabilitiesResult(capabilities: [])
+        capabilitiesResolved = false
         documents.reset()
         browsers.reset()
         feed.reset()
@@ -75,6 +81,7 @@ final class RemoteFileFeatureCoordinator {
             let nextCapabilities = try response.decodeResult(HostCapabilitiesResult.self)
             guard generation == hostGeneration else { return }
             capabilities = nextCapabilities
+            capabilitiesResolved = true
             documentRoutingEnabled = nextCapabilities.supportsSurfaceDocumentV1
             browserRoutingEnabled = nextCapabilities.supportsSurfaceBrowserV1
             feedRoutingEnabled = nextCapabilities.supportsFeedV1
@@ -82,6 +89,7 @@ final class RemoteFileFeatureCoordinator {
         } catch {
             guard generation == hostGeneration else { return }
             capabilities = HostCapabilitiesResult(capabilities: [])
+            capabilitiesResolved = true
             documentRoutingEnabled = false
             browserRoutingEnabled = false
             feedRoutingEnabled = false
@@ -94,6 +102,7 @@ final class RemoteFileFeatureCoordinator {
         hostID = "offline"
         accountScope = "offline"
         capabilities = HostCapabilitiesResult(capabilities: [])
+        capabilitiesResolved = false
         qaState = nil
         releaseStaleFixtureResponse = nil
         documents.reset()
@@ -101,6 +110,7 @@ final class RemoteFileFeatureCoordinator {
         feed.reset()
         transcripts.reset()
         if purgeAccountCache {
+            relayVersion.reset()
             documentRoutingEnabled = false
             browserRoutingEnabled = false
             feedRoutingEnabled = false

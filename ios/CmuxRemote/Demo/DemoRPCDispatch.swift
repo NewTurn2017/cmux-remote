@@ -41,6 +41,10 @@ public actor DemoRPCDispatch: RPCDispatch {
     private var feedItems: [FeedPendingItem]?
     private let transcriptScenario: String?
     private var transcriptLatestRequests: [String: Int] = [:]
+    private let relayScenario: String?
+    private var relayVersion = CmuxRemoteVersion.marketing
+    private var relayUpdateRequested = false
+    private var relayInfoCallsSinceRequest = 0
     private var intentionallyFailedAttachmentNames: Set<String> = []
     private var blockedAttachmentUploadID: String?
     private var blockedAttachmentChunk: CheckedContinuation<RPCResponse, Never>?
@@ -63,7 +67,8 @@ public actor DemoRPCDispatch: RPCDispatch {
         artifactScenario: String? = nil,
         fileFeatureCacheNamespace: String? = nil,
         feedScenario: String? = nil,
-        transcriptScenario: String? = nil
+        transcriptScenario: String? = nil,
+        relayScenario: String? = nil
     ) {
         self.workspaces = DemoContent.workspaces
         #if DEBUG
@@ -82,6 +87,7 @@ public actor DemoRPCDispatch: RPCDispatch {
         self.shouldGateThumbnail = artifactScenario == "source-states"
         self.feedScenario = feedScenario?.isEmpty == false ? feedScenario : nil
         self.transcriptScenario = transcriptScenario?.isEmpty == false ? transcriptScenario : nil
+        self.relayScenario = relayScenario?.isEmpty == false ? relayScenario : nil
         #else
         self.fileFeatureFixturesEnabled = false
         self.staleFeatureResponseGateEnabled = false
@@ -92,6 +98,7 @@ public actor DemoRPCDispatch: RPCDispatch {
         self.shouldGateThumbnail = false
         self.feedScenario = nil
         self.transcriptScenario = nil
+        self.relayScenario = nil
         #endif
     }
 
@@ -298,6 +305,15 @@ public actor DemoRPCDispatch: RPCDispatch {
                 "mime_type": .string("image/jpeg"),
             ]))
 
+        case RemoteRPCMethod.hostCapabilities.rawValue:
+            return try encodedResponse(HostCapabilitiesResult(capabilities: relayCapabilities))
+
+        case RemoteRPCMethod.relayInfo.rawValue:
+            return try relayResponse(method: .relayInfo)
+
+        case RemoteRPCMethod.relayUpdateStart.rawValue:
+            return try relayResponse(method: .relayUpdateStart)
+
         case "host.battery":
             return RPCResponse(id: "demo", ok: true, result: .object([
                 "available": .bool(true),
@@ -326,6 +342,7 @@ public actor DemoRPCDispatch: RPCDispatch {
             ]
             if feedScenario != nil { capabilities.append(HostCapabilities.feedV1) }
             if transcriptScenario != nil { capabilities.append(HostCapabilities.claudeTranscriptV1) }
+            capabilities += relayCapabilities
             return try encodedResponse(HostCapabilitiesResult(capabilities: capabilities))
 
         case .surfaceDocumentOpen:
@@ -365,7 +382,7 @@ public actor DemoRPCDispatch: RPCDispatch {
             return try transcriptResponse(method: method, params: params)
 
         case .relayInfo, .relayUpdateStart:
-            return errorResponse(code: .methodNotFound, message: "Relay update is unavailable")
+            return try relayResponse(method: method)
 
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
@@ -758,6 +775,82 @@ public actor DemoRPCDispatch: RPCDispatch {
             ))
         default:
             return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+    }
+
+    private var relayIsLegacy: Bool { relayScenario == "legacy" }
+
+    private var relayCapabilities: [String] {
+        relayIsLegacy ? [] : [HostCapabilities.relayInfoV1, HostCapabilities.relayUpdateV1]
+    }
+
+    /// Scenarios: the default is an up-to-date relay whose update request checks for two
+    /// polls and returns to idle; `staged` has 2.0.1 ready on an ad-hoc signed relay, and its
+    /// request applies for two polls and then reports 2.0.1; `legacy` advertises neither
+    /// capability and answers both methods like a relay from before 2.0.
+    private func relayResponse(method: RemoteRPCMethod) throws -> RPCResponse {
+        guard !relayIsLegacy else {
+            return errorResponse(code: .methodNotFound, message: "Method not found")
+        }
+        let nowMilliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+        let staged = relayScenario == "staged"
+        switch method {
+        case .relayUpdateStart:
+            relayUpdateRequested = true
+            relayInfoCallsSinceRequest = 0
+            return try encodedResponse(RelayUpdateStatus(
+                autoUpdateEnabled: true,
+                state: staged ? .applying : .checking,
+                latestVersion: staged ? "2.0.1" : relayVersion,
+                lastCheckedAt: nowMilliseconds - (staged ? 3 : 12) * 60_000,
+                restartPending: staged,
+                adhocSigning: staged
+            ))
+        case .relayInfo:
+            let update: RelayUpdateStatus
+            if relayUpdateRequested {
+                relayInfoCallsSinceRequest += 1
+                if relayInfoCallsSinceRequest <= 2 {
+                    update = RelayUpdateStatus(
+                        autoUpdateEnabled: true,
+                        state: staged ? .applying : .checking,
+                        latestVersion: staged ? "2.0.1" : relayVersion,
+                        lastCheckedAt: nowMilliseconds - (staged ? 3 : 12) * 60_000,
+                        restartPending: staged,
+                        adhocSigning: staged
+                    )
+                } else {
+                    relayUpdateRequested = false
+                    if staged { relayVersion = "2.0.1" }
+                    update = RelayUpdateStatus(
+                        autoUpdateEnabled: true,
+                        state: .idle,
+                        latestVersion: relayVersion,
+                        lastCheckedAt: nowMilliseconds,
+                        adhocSigning: staged
+                    )
+                }
+            } else if staged, relayVersion == CmuxRemoteVersion.marketing {
+                update = RelayUpdateStatus(
+                    autoUpdateEnabled: true,
+                    state: .staged,
+                    latestVersion: "2.0.1",
+                    lastCheckedAt: nowMilliseconds - 3 * 60_000,
+                    restartPending: true,
+                    adhocSigning: true
+                )
+            } else {
+                update = RelayUpdateStatus(
+                    autoUpdateEnabled: true,
+                    state: .idle,
+                    latestVersion: relayVersion,
+                    lastCheckedAt: nowMilliseconds - 12 * 60_000,
+                    adhocSigning: staged
+                )
+            }
+            return try encodedResponse(RelayInfoResult(version: relayVersion, update: update))
+        default:
+            return errorResponse(code: .methodNotFound, message: "Method not found")
         }
     }
 

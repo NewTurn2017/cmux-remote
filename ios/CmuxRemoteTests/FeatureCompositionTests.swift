@@ -18,6 +18,8 @@ struct FeatureCompositionTests {
             HostCapabilities.terminalArtifactsV1,
             HostCapabilities.surfaceDocumentV1,
             HostCapabilities.surfaceBrowserV1,
+            HostCapabilities.relayInfoV1,
+            HostCapabilities.relayUpdateV1,
         ])
 
         let batchID = "00000000-0000-4000-8000-000000000008"

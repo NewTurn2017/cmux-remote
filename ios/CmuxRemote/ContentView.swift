@@ -53,6 +53,7 @@ struct ContentView: View {
                 SettingsView(
                     store: workspaceStore,
                     appStoreUpdates: appStoreUpdates,
+                    remoteFiles: remoteFiles,
                     onDisconnect: onDisconnect,
                     onReconnect: onReconnect,
                     onTriggerTestNotification: onTriggerTestNotification
