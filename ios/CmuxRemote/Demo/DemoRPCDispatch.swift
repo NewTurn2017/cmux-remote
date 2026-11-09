@@ -345,6 +345,9 @@ public actor DemoRPCDispatch: RPCDispatch {
                 capturedAt: Int64(Date().timeIntervalSince1970 * 1000)
             ))
 
+        case .feedPendingList, .feedReply, .claudeSessionsList, .claudeTranscriptPage:
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
             uploadSequence += 1

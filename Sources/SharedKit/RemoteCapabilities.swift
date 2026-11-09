@@ -24,6 +24,14 @@ public enum RemoteRPCMethod: String, Codable, Sendable, Equatable {
     case surfaceDocumentOpen = "surface.document.open"
     /// Captures the current page image of a cmux browser surface.
     case surfaceBrowserCapture = "surface.browser.capture"
+    /// Lists cmux feed requests that can be answered (questions, permissions, plans).
+    case feedPendingList = "feed.pending.list"
+    /// Answers one pending cmux feed request.
+    case feedReply = "feed.reply"
+    /// Lists Claude sessions whose transcript the relay may read.
+    case claudeSessionsList = "claude.sessions.list"
+    /// Reads one page of a Claude session transcript, newest first.
+    case claudeTranscriptPage = "claude.transcript.page"
 }
 
 /// Capability identifiers exchanged by ``HostCapabilitiesResult``.
@@ -36,6 +44,10 @@ public struct HostCapabilities: Codable, Sendable, Equatable {
     public static let surfaceDocumentV1 = "surface.document.v1"
     /// The capability identifier for capturing cmux browser surfaces.
     public static let surfaceBrowserV1 = "surface.browser.v1"
+    /// The capability identifier for listing and answering cmux feed requests.
+    public static let feedV1 = "feed.v1"
+    /// The capability identifier for reading Claude session transcripts.
+    public static let claudeTranscriptV1 = "claude.transcript.v1"
 }
 
 /// Empty parameters for `host.capabilities`.
@@ -57,6 +69,10 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     public static let surfaceDocumentV1Capability = HostCapabilities.surfaceDocumentV1
     /// The browser-surface capture capability identifier.
     public static let surfaceBrowserV1Capability = HostCapabilities.surfaceBrowserV1
+    /// The cmux feed capability identifier.
+    public static let feedV1Capability = HostCapabilities.feedV1
+    /// The Claude transcript capability identifier.
+    public static let claudeTranscriptV1Capability = HostCapabilities.claudeTranscriptV1
 
     /// Creates a capability result.
     ///
@@ -83,6 +99,16 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     /// Whether `surface.browser.capture` is supported.
     public var supportsSurfaceBrowserV1: Bool {
         capabilities.contains(Self.surfaceBrowserV1Capability)
+    }
+
+    /// Whether `feed.pending.list` and `feed.reply` are supported.
+    public var supportsFeedV1: Bool {
+        capabilities.contains(Self.feedV1Capability)
+    }
+
+    /// Whether `claude.sessions.list` and `claude.transcript.page` are supported.
+    public var supportsClaudeTranscriptV1: Bool {
+        capabilities.contains(Self.claudeTranscriptV1Capability)
     }
 }
 
@@ -142,6 +168,10 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
     case surfaceNotDocument
     /// The surface is not an open cmux browser surface.
     case surfaceNotBrowser
+    /// The feed request was already answered, expired, or never pending.
+    case feedRequestNotPending
+    /// The Claude session is unknown or its transcript file is not allowed.
+    case claudeSessionNotFound
     /// A code unknown to this client version.
     case unknown(String)
 
@@ -167,6 +197,8 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case .unsupportedMedia: return "unsupported_media"
         case .surfaceNotDocument: return "surface_not_document"
         case .surfaceNotBrowser: return "surface_not_browser"
+        case .feedRequestNotPending: return "feed_request_not_pending"
+        case .claudeSessionNotFound: return "claude_session_not_found"
         case .unknown(let rawValue): return rawValue
         }
     }
@@ -195,6 +227,8 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case "unsupported_media": self = .unsupportedMedia
         case "surface_not_document": self = .surfaceNotDocument
         case "surface_not_browser": self = .surfaceNotBrowser
+        case "feed_request_not_pending": self = .feedRequestNotPending
+        case "claude_session_not_found": self = .claudeSessionNotFound
         default: self = .unknown(rawValue)
         }
     }

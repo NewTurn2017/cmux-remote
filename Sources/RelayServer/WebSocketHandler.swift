@@ -369,6 +369,13 @@ public actor WSProtocolMachine {
                     workspaceID: request.workspaceId,
                     surfaceID: request.surfaceId
                 ))
+
+            case .feedPendingList, .feedReply, .claudeSessionsList, .claudeTranscriptPage:
+                return Self.encode(Self.errorResponse(
+                    id: req.id,
+                    code: RemoteErrorCode.methodNotFound.rawValue,
+                    message: "\(method.rawValue) is not available yet"
+                ))
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {
