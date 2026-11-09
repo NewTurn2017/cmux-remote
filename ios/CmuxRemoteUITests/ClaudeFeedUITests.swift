@@ -200,6 +200,8 @@ final class ClaudeFeedUITests: XCTestCase {
             "--cmux-skip-splash",
             "-cmux.demoMode", "NO",
             "-cmux.localNotificationsEnabled", "NO",
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
         ]
         app.launch()
         return app
