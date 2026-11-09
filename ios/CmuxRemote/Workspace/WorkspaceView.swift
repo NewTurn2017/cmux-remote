@@ -47,9 +47,7 @@ struct WorkspaceView: View {
             let padKeyboardDeckVisible = keyboardHeight > 20
                 && UIDevice.current.userInterfaceIdiom == .pad
             let terminalBottomInset = max(0, accessoryHeight + keyboardAccessoryOffset + 10)
-            let terminalTopInset = keyboardControlsActive
-                ? proxy.safeAreaInsets.top + 20
-                : proxy.safeAreaInsets.top + headerHeight + 10
+            let terminalTopInset = proxy.safeAreaInsets.top + headerHeight + (keyboardControlsActive ? 4 : 10)
             ZStack(alignment: .bottom) {
                 if let placeholder = placeholderSurface {
                     NonTerminalSurfaceContent(
@@ -74,9 +72,9 @@ struct WorkspaceView: View {
                 }
 
                 VStack(spacing: 0) {
-                    terminalHeader
+                    terminalHeader(compact: keyboardControlsActive)
                         .padding(.horizontal, 18)
-                        .padding(.top, 12)
+                        .padding(.top, keyboardControlsActive ? 6 : 12)
                         .background(Self.surroundStyle.color.ignoresSafeArea(edges: .top))
                         .readHeight($headerHeight)
                     Spacer()
@@ -119,6 +117,15 @@ struct WorkspaceView: View {
                     .accessibilityIdentifier("WorkspaceSurroundBackground")
                     .accessibilityValue(Self.surroundStyle.rawValue)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(false)
+
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("WorkspaceContentTopEdge")
+                    .padding(.top, terminalTopInset)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .ignoresSafeArea(.container, edges: .all)
                     .allowsHitTesting(false)
             }
             .background(Self.surroundStyle.color.ignoresSafeArea())
@@ -212,8 +219,8 @@ struct WorkspaceView: View {
         }
     }
 
-    private var terminalHeader: some View {
-        VStack(spacing: 10) {
+    private func terminalHeader(compact: Bool) -> some View {
+        VStack(spacing: compact ? 6 : 10) {
             HStack(spacing: 8) {
                 HeaderSquare(systemName: "chevron.left", identifier: "WorkspaceBackButton", action: onBack)
 
@@ -263,42 +270,21 @@ struct WorkspaceView: View {
                 )
             }
 
-            if !commandFieldFocused, keyboardHeight <= 20, let workspace = currentWorkspace {
-                let surfaces = workspaceStore.surfaces(for: workspace.id)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(surfaces) { surface in
-                            SurfaceChip(
-                                title: surface.title,
-                                kind: SurfaceKind(surface),
-                                isSelected: activeSurfaceId == surface.id,
-                                canClose: surfaces.count > 1,
-                                isBusy: surfaceActionInFlight,
-                                onSelect: { selectSurface(surface, in: workspace) },
-                                onClose: { pendingCloseSurface = surface }
-                            )
-                        }
-
-                        NewSurfaceChip(isBusy: surfaceActionInFlight) {
-                            createSurface(in: workspace)
-                        }
-                    }
-                }
-
-                if let surfaceActionError {
-                    HStack(spacing: 6) {
-                        Text("!")
-                            .cmuxDisplay(11)
-                        Text(surfaceActionError)
-                            .cmuxMono(11)
-                            .lineLimit(2)
-                    }
-                    .foregroundStyle(CmuxTheme.accentRed)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("SurfaceActionError")
-                }
+            if let workspace = currentWorkspace {
+                SurfaceChipBar(
+                    surfaces: workspaceStore.surfaces(for: workspace.id),
+                    activeSurfaceId: activeSurfaceId,
+                    isBusy: surfaceActionInFlight,
+                    error: surfaceActionError,
+                    compact: compact,
+                    onSelect: { selectSurface($0, in: workspace) },
+                    onClose: { pendingCloseSurface = $0 },
+                    onCreate: { createSurface(in: workspace) }
+                )
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("WorkspaceHeader")
     }
 
     private var scrollToBottomButton: some View {
@@ -986,91 +972,6 @@ enum WorkspaceAccessoryLayout: Equatable {
     }
 }
 
-private struct SurfaceChip: View {
-    let title: String
-    let kind: SurfaceKind
-    let isSelected: Bool
-    let canClose: Bool
-    let isBusy: Bool
-    let onSelect: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onSelect) {
-                HStack(spacing: 4) {
-                    Image(systemName: kind.systemImage)
-                        .font(.system(size: 9, weight: .semibold))
-                    Text(title)
-                        .cmuxMono(11, weight: isSelected ? .medium : .regular)
-                        .lineLimit(1)
-                }
-                .foregroundStyle(isSelected ? CmuxTheme.accentGreen : CmuxTheme.muted)
-                .padding(.leading, 10)
-                .padding(.trailing, canClose ? 6 : 10)
-                .frame(height: 28)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(title)
-            .accessibilityValue(kind.accessibilityName)
-            .accessibilityIdentifier("SurfaceChip-\(kind.identifierSuffix)")
-
-            if canClose {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(isSelected ? CmuxTheme.accentGreen : CmuxTheme.muted)
-                        .frame(width: 24, height: 28)
-                }
-                .buttonStyle(.plain)
-                .disabled(isBusy)
-                .accessibilityLabel("Close surface \(title)")
-            }
-        }
-        .background(isSelected ? CmuxTheme.surfaceRaised : CmuxTheme.surfaceSunken)
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .strokeBorder(isSelected ? CmuxTheme.accentGreen : CmuxTheme.divider, lineWidth: 1)
-        )
-        .opacity(isBusy && !isSelected ? 0.72 : 1)
-    }
-}
-
-private struct NewSurfaceChip: View {
-    let isBusy: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if isBusy {
-                    ProgressView()
-                        .tint(CmuxTheme.accentGreen)
-                        .scaleEffect(0.6)
-                } else {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .bold))
-                }
-                Text("new")
-                    .cmuxDisplay(10)
-            }
-            .foregroundStyle(CmuxTheme.accentGreen)
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(CmuxTheme.surfaceSunken)
-            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(CmuxTheme.accentGreen.opacity(0.75), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isBusy)
-        .accessibilityIdentifier("NewSurfaceButton")
-        .accessibilityLabel("New surface")
-    }
-}
 private struct HeaderSquare: View {
     let systemName: String
     var identifier: String? = nil
