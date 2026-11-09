@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.genie.cmuxremote.updater</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__UPDATER__</string>
+    <string>tick</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>Nice</key>
+  <integer>5</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CMUX_REMOTE_HOME</key>
+    <string>__DEST__</string>
+    <key>CMUX_RELAY_LOGDIR</key>
+    <string>__LOGDIR__</string>
+    <key>CMUX_LAUNCH_AGENTS_DIR</key>
+    <string>__LAUNCH_AGENTS_DIR__</string>
+    <key>PATH</key>
+    <string>__UPDATER_PATH__</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__LOGDIR__/updater.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOGDIR__/updater.stderr.log</string>
+</dict>
+</plist>

@@ -47,22 +47,34 @@ struct WorkspaceView: View {
             let padKeyboardDeckVisible = keyboardHeight > 20
                 && UIDevice.current.userInterfaceIdiom == .pad
             let terminalBottomInset = max(0, accessoryHeight + keyboardAccessoryOffset + 10)
-            let terminalTopInset = keyboardControlsActive
-                ? proxy.safeAreaInsets.top + 20
-                : proxy.safeAreaInsets.top + headerHeight + 10
+            let terminalTopInset = proxy.safeAreaInsets.top + headerHeight + (keyboardControlsActive ? 4 : 10)
             ZStack(alignment: .bottom) {
-                TerminalView(
-                    store: surfaceStore,
-                    topContentInset: terminalTopInset,
-                    bottomContentInset: terminalBottomInset,
-                    scrollToBottomRequest: scrollToBottomRequest
-                )
-                .ignoresSafeArea(.container, edges: .all)
+                if let placeholder = placeholderSurface {
+                    NonTerminalSurfaceContent(
+                        surface: placeholder,
+                        workspaceID: activeWorkspaceId,
+                        remoteFiles: remoteFiles,
+                        connection: workspaceStore.connection,
+                        topContentInset: terminalTopInset,
+                        bottomContentInset: terminalBottomInset
+                    )
+                    .ignoresSafeArea(.container, edges: .all)
+                } else {
+                    TerminalView(
+                        store: surfaceStore,
+                        topContentInset: terminalTopInset,
+                        bottomContentInset: terminalBottomInset,
+                        scrollToBottomRequest: scrollToBottomRequest,
+                        activeScreen: surfaceStore.activeScreen,
+                        onPageRequest: { sendKey($0) }
+                    )
+                    .ignoresSafeArea(.container, edges: .all)
+                }
 
                 VStack(spacing: 0) {
-                    terminalHeader
+                    terminalHeader(compact: keyboardControlsActive)
                         .padding(.horizontal, 18)
-                        .padding(.top, 12)
+                        .padding(.top, keyboardControlsActive ? 6 : 12)
                         .background(Self.surroundStyle.color.ignoresSafeArea(edges: .top))
                         .readHeight($headerHeight)
                     Spacer()
@@ -106,6 +118,15 @@ struct WorkspaceView: View {
                     .accessibilityValue(Self.surroundStyle.rawValue)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .allowsHitTesting(false)
+
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("WorkspaceContentTopEdge")
+                    .padding(.top, terminalTopInset)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .ignoresSafeArea(.container, edges: .all)
+                    .allowsHitTesting(false)
             }
             .background(Self.surroundStyle.color.ignoresSafeArea())
         }
@@ -122,7 +143,7 @@ struct WorkspaceView: View {
             .presentationDetents([.medium, .large])
         }
         .confirmationDialog(
-            "Close surface?",
+            String(localized: "surfaces.close.title", defaultValue: "Close surface?"),
             isPresented: Binding(
                 get: { pendingCloseSurface != nil },
                 set: { isPresented in
@@ -132,14 +153,17 @@ struct WorkspaceView: View {
             titleVisibility: .visible
         ) {
             if let surface = pendingCloseSurface {
-                Button("Close \(surface.title)", role: .destructive) {
+                Button(
+                    String(localized: "common.close_named", defaultValue: "Close \(surface.title)"),
+                    role: .destructive
+                ) {
                     pendingCloseSurface = nil
                     closeSurface(surface)
                 }
             }
-            Button("Cancel", role: .cancel) { pendingCloseSurface = nil }
+            Button(String(localized: "common.cancel", defaultValue: "Cancel"), role: .cancel) { pendingCloseSurface = nil }
         } message: {
-            Text("This closes the terminal surface in cmux.")
+            Text(String(localized: "surfaces.close.message", defaultValue: "This closes the terminal surface in cmux."))
         }
         .task {
             await subscribeFirstSurfaceIfNeeded()
@@ -198,8 +222,8 @@ struct WorkspaceView: View {
         }
     }
 
-    private var terminalHeader: some View {
-        VStack(spacing: 10) {
+    private func terminalHeader(compact: Bool) -> some View {
+        VStack(spacing: compact ? 6 : 10) {
             HStack(spacing: 8) {
                 HeaderSquare(systemName: "chevron.left", identifier: "WorkspaceBackButton", action: onBack)
 
@@ -219,7 +243,10 @@ struct WorkspaceView: View {
                             .padding(.vertical, 2)
                             .background(CmuxTheme.accentYellow)
                             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                            .accessibilityLabel("Demo mode active")
+                            .accessibilityLabel(String(
+                                localized: "workspace.demo_badge.accessibility",
+                                defaultValue: "Demo mode active"
+                            ))
                     }
                     BatteryBadge(battery: hostStatusStore.battery) {
                         Task { await hostStatusStore.refreshBattery() }
@@ -245,45 +272,25 @@ struct WorkspaceView: View {
                     surfaceStore: surfaceStore,
                     connection: workspaceStore.connection,
                     workspaceID: activeWorkspaceId,
-                    surfaceID: activeSurfaceId
+                    surfaceID: placeholderSurface == nil ? activeSurfaceId : nil
                 )
             }
 
-            if !commandFieldFocused, keyboardHeight <= 20, let workspace = currentWorkspace {
-                let surfaces = workspaceStore.surfaces(for: workspace.id)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(surfaces) { surface in
-                            SurfaceChip(
-                                title: surface.title,
-                                isSelected: activeSurfaceId == surface.id,
-                                canClose: surfaces.count > 1,
-                                isBusy: surfaceActionInFlight,
-                                onSelect: { selectSurface(surface, in: workspace) },
-                                onClose: { pendingCloseSurface = surface }
-                            )
-                        }
-
-                        NewSurfaceChip(isBusy: surfaceActionInFlight) {
-                            createSurface(in: workspace)
-                        }
-                    }
-                }
-
-                if let surfaceActionError {
-                    HStack(spacing: 6) {
-                        Text("!")
-                            .cmuxDisplay(11)
-                        Text(surfaceActionError)
-                            .cmuxMono(11)
-                            .lineLimit(2)
-                    }
-                    .foregroundStyle(CmuxTheme.accentRed)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("SurfaceActionError")
-                }
+            if let workspace = currentWorkspace {
+                SurfaceChipBar(
+                    surfaces: workspaceStore.surfaces(for: workspace.id),
+                    activeSurfaceId: activeSurfaceId,
+                    isBusy: surfaceActionInFlight,
+                    error: surfaceActionError,
+                    compact: compact,
+                    onSelect: { selectSurface($0, in: workspace) },
+                    onClose: { pendingCloseSurface = $0 },
+                    onCreate: { createSurface(in: workspace) }
+                )
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("WorkspaceHeader")
     }
 
     private var scrollToBottomButton: some View {
@@ -371,7 +378,9 @@ struct WorkspaceView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("InputModeToggleButton")
-            .accessibilityLabel(inputMode == .live ? "Switch to command input mode" : "Switch to live input mode")
+            .accessibilityLabel(inputMode == .live
+                ? String(localized: "workspace.input_mode.switch_to_command", defaultValue: "Switch to command input mode")
+                : String(localized: "workspace.input_mode.switch_to_live", defaultValue: "Switch to live input mode"))
 
             Text("$")
                 .cmuxDisplay(14)
@@ -380,7 +389,7 @@ struct WorkspaceView: View {
             if inputMode == .command {
                 ZStack(alignment: .leading) {
                     if composer.draft.isEmpty {
-                        Text("type a command…")
+                        Text(String(localized: "workspace.command.placeholder", defaultValue: "type a command…"))
                             .cmuxMono(14)
                             .foregroundStyle(CmuxTheme.ink.opacity(0.65))
                             .allowsHitTesting(false)
@@ -403,7 +412,10 @@ struct WorkspaceView: View {
                         }
                     )
                     .accessibilityIdentifier("LiveInputField")
-                    .accessibilityLabel("Live terminal input")
+                    .accessibilityLabel(String(
+                        localized: "workspace.live_input.accessibility",
+                        defaultValue: "Live terminal input"
+                    ))
 
                     if liveInputEcho.isEmpty {
                         Text(String(
@@ -456,7 +468,7 @@ struct WorkspaceView: View {
                 .onTapGesture { commandFieldFocused = true }
                 .background(CommandInputTraitsConfigurator())
                 .accessibilityIdentifier("CommandComposerField")
-                .accessibilityLabel("Command input")
+                .accessibilityLabel(String(localized: "workspace.command.accessibility", defaultValue: "Command input"))
         }
     }
 
@@ -522,7 +534,7 @@ struct WorkspaceView: View {
         .buttonStyle(.plain)
         .disabled(composer.isSending)
         .accessibilityIdentifier("CommandSubmitButton")
-        .accessibilityLabel("Send terminal input")
+        .accessibilityLabel(String(localized: "workspace.submit.accessibility", defaultValue: "Send terminal input"))
     }
 
     @ViewBuilder
@@ -794,7 +806,10 @@ struct WorkspaceView: View {
         guard !surfaceActionInFlight, let workspace = currentWorkspace else { return }
         let surfaces = workspaceStore.surfaces(for: workspace.id)
         guard surfaces.count > 1 else {
-            surfaceActionError = "Cannot close the last surface."
+            surfaceActionError = String(
+                localized: "surfaces.close.last_error",
+                defaultValue: "Cannot close the last surface."
+            )
             return
         }
 
@@ -863,8 +878,17 @@ struct WorkspaceView: View {
         return workspaceStore.workspaces.first { $0.id == id }
     }
 
+    private var placeholderSurface: Surface? {
+        guard let surfaceId = activeSurfaceId,
+              surfaceStore.placeholderSurfaceId == surfaceId,
+              let workspaceId = activeWorkspaceId
+        else { return nil }
+        return workspaceStore.surfaces(for: workspaceId).first { $0.id == surfaceId }
+            ?? Surface(id: surfaceId, title: surfaceId, index: 0)
+    }
+
     private func switchWorkspace(to workspaceId: String?) async {
-        if let current = activeSurfaceId { await surfaceStore.unsubscribe(surfaceId: current) }
+        await surfaceStore.leaveCurrentSurface()
         activeWorkspaceId = workspaceId
         activeSurfaceId = nil
         await subscribeFirstSurfaceIfNeeded()
@@ -881,7 +905,7 @@ struct WorkspaceView: View {
             guard workspaceStore.selectedId == workspace.id else { return }
             surfaces = workspaceStore.surfaces(for: workspace.id)
         }
-        guard let first = surfaces.first else { return }
+        guard let first = SurfaceSelectionPolicy.initialSurface(in: surfaces) else { return }
         activeWorkspaceId = workspace.id
         activeSurfaceId = first.id
         await subscribeAndPinToBottom(workspaceId: workspace.id, surfaceId: first.id)
@@ -898,7 +922,7 @@ struct WorkspaceView: View {
             preferredSurfaceId = nil
             return
         }
-        if let current = activeSurfaceId { await surfaceStore.unsubscribe(surfaceId: current) }
+        await surfaceStore.leaveCurrentSurface()
         activeWorkspaceId = workspace.id
         activeSurfaceId = surfaceId
         preferredSurfaceId = nil
@@ -906,7 +930,9 @@ struct WorkspaceView: View {
     }
 
     private func subscribeAndPinToBottom(workspaceId: String, surfaceId: String) async {
-        await surfaceStore.subscribe(workspaceId: workspaceId, surfaceId: surfaceId)
+        let surface = workspaceStore.surfaces(for: workspaceId).first { $0.id == surfaceId }
+            ?? Surface(id: surfaceId, title: surfaceId, index: 0)
+        guard await surfaceStore.open(workspaceId: workspaceId, surface: surface) == .terminal else { return }
         scrollToBottomRequest &+= 1
     }
 }
@@ -943,7 +969,11 @@ private enum TerminalInputError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .noActiveSurface: return "Select a workspace surface before sending input."
+        case .noActiveSurface:
+            return String(
+                localized: "workspace.input.no_surface",
+                defaultValue: "Select a workspace surface before sending input."
+            )
         }
     }
 }
@@ -960,84 +990,6 @@ enum WorkspaceAccessoryLayout: Equatable {
     }
 }
 
-private struct SurfaceChip: View {
-    let title: String
-    let isSelected: Bool
-    let canClose: Bool
-    let isBusy: Bool
-    let onSelect: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onSelect) {
-                Text(title)
-                    .cmuxMono(11, weight: isSelected ? .medium : .regular)
-                    .lineLimit(1)
-                    .foregroundStyle(isSelected ? CmuxTheme.accentGreen : CmuxTheme.muted)
-                    .padding(.leading, 10)
-                    .padding(.trailing, canClose ? 6 : 10)
-                    .frame(height: 28)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(title)
-
-            if canClose {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(isSelected ? CmuxTheme.accentGreen : CmuxTheme.muted)
-                        .frame(width: 24, height: 28)
-                }
-                .buttonStyle(.plain)
-                .disabled(isBusy)
-                .accessibilityLabel("Close surface \(title)")
-            }
-        }
-        .background(isSelected ? CmuxTheme.surfaceRaised : CmuxTheme.surfaceSunken)
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .strokeBorder(isSelected ? CmuxTheme.accentGreen : CmuxTheme.divider, lineWidth: 1)
-        )
-        .opacity(isBusy && !isSelected ? 0.72 : 1)
-    }
-}
-
-private struct NewSurfaceChip: View {
-    let isBusy: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if isBusy {
-                    ProgressView()
-                        .tint(CmuxTheme.accentGreen)
-                        .scaleEffect(0.6)
-                } else {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .bold))
-                }
-                Text("new")
-                    .cmuxDisplay(10)
-            }
-            .foregroundStyle(CmuxTheme.accentGreen)
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(CmuxTheme.surfaceSunken)
-            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(CmuxTheme.accentGreen.opacity(0.75), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isBusy)
-        .accessibilityIdentifier("NewSurfaceButton")
-        .accessibilityLabel("New surface")
-    }
-}
 private struct HeaderSquare: View {
     let systemName: String
     var identifier: String? = nil
@@ -1203,7 +1155,7 @@ private struct CommandTextFieldView: UIViewRepresentable {
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.accessibilityIdentifier = "CommandComposerField"
-        view.accessibilityLabel = "Command input"
+        view.accessibilityLabel = String(localized: "workspace.command.accessibility", defaultValue: "Command input")
         view.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
         return view
     }
@@ -1321,14 +1273,20 @@ private struct LiveTerminalInputView: UIViewRepresentable {
         view.textContainer.lineFragmentPadding = 0
         view.isScrollEnabled = false
         view.accessibilityIdentifier = "LiveInputField"
-        view.accessibilityLabel = "Live terminal input"
+        view.accessibilityLabel = String(
+            localized: "workspace.live_input.accessibility",
+            defaultValue: "Live terminal input"
+        )
         return view
     }
 
     func updateUIView(_ uiView: LiveTerminalTextView, context: Context) {
         context.coordinator.parent = self
         uiView.accessibilityIdentifier = "LiveInputField"
-        uiView.accessibilityLabel = "Live terminal input"
+        uiView.accessibilityLabel = String(
+            localized: "workspace.live_input.accessibility",
+            defaultValue: "Live terminal input"
+        )
         let currentText = uiView.text ?? ""
         let hasLocalHangulInput = LiveTerminalInputTranslator.containsHangul(currentText)
         uiView.accessibilityValue = hasLocalHangulInput ? currentText : displayText

@@ -8,6 +8,11 @@ protocol NotificationCenterFacade: AnyObject {
     func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
     func add(_ request: UNNotificationRequest) async throws
+    func deliveredNotificationIds() async -> Set<String>
+}
+
+extension NotificationCenterFacade {
+    func deliveredNotificationIds() async -> Set<String> { [] }
 }
 
 @MainActor
@@ -30,6 +35,11 @@ private final class UserNotificationCenterAdapter: NotificationCenterFacade {
     func add(_ request: UNNotificationRequest) async throws {
         try await center.add(request)
     }
+
+    func deliveredNotificationIds() async -> Set<String> {
+        let delivered = await center.deliveredNotifications()
+        return Set(delivered.compactMap { $0.request.content.userInfo["notification_id"] as? String })
+    }
 }
 
 /// Posts cmux notifications as iOS local notifications so the user gets a
@@ -37,16 +47,19 @@ private final class UserNotificationCenterAdapter: NotificationCenterFacade {
 @MainActor
 public final class LocalNotificationPresenter {
     private let center: any NotificationCenterFacade
+    private let ledger: NotificationBannerLedger
     private var authorized = false
     private var authorizationRequestInFlight = false
     private var authorizationWaiters: [CheckedContinuation<Bool, Never>] = []
 
-    public init(center: UNUserNotificationCenter = .current()) {
+    public init(center: UNUserNotificationCenter = .current(), ledger: NotificationBannerLedger = .shared) {
         self.center = UserNotificationCenterAdapter(center: center)
+        self.ledger = ledger
     }
 
-    init(notificationCenter: any NotificationCenterFacade) {
+    init(notificationCenter: any NotificationCenterFacade, ledger: NotificationBannerLedger = NotificationBannerLedger()) {
         self.center = notificationCenter
+        self.ledger = ledger
     }
 
     /// Pre-warm authorization so the system dialog appears at app launch
@@ -61,8 +74,12 @@ public final class LocalNotificationPresenter {
         Task { await self.presentAsync(record) }
     }
 
-    private func presentAsync(_ record: NotificationRecord) async {
+    /// At most one banner per notification id. The ledger covers a foreground APNs push
+    /// for the same id; the delivered list covers one that arrived while in the background.
+    func presentAsync(_ record: NotificationRecord) async {
+        guard ledger.claim(record.id) else { return }
         guard await ensureAuthorized() else { return }
+        guard await !center.deliveredNotificationIds().contains(record.id) else { return }
 
         let content = UNMutableNotificationContent()
         content.title = record.title

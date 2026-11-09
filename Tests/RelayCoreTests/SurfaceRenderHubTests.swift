@@ -730,6 +730,113 @@ struct SurfaceRenderHubTests {
         await hub.stop()
     }
 
+    @Test func notTerminalSourceStopsPollingAndNotifiesSubscriberOnce() async throws {
+        let source = ScriptedTerminalSourceReader(steps: [.notTerminal])
+        let clock = ManualSurfaceRenderClock()
+        let sleepProbe = await BoundedAsyncStreamProbe.make(stream: clock.requests())
+        let notified = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(8))
+        let notifiedProbe = await BoundedAsyncStreamProbe.make(stream: notified.stream)
+        let hub = SurfaceRenderHub(
+            workspaceId: "workspace",
+            surfaceId: "surface",
+            lines: 120,
+            reader: source,
+            configuration: .init(activeFps: 15, idleFps: 5, maximumErrorBackoff: 2),
+            clock: clock
+        )
+        _ = try await hub.subscribe(
+            onSnapshot: { _ in },
+            onChecksum: { _, _ in },
+            onNotTerminal: { notified.continuation.yield(1) }
+        )
+
+        let firstDelay = try await sleepProbe.next()
+        await clock.advance(by: firstDelay.seconds)
+        #expect(try await notifiedProbe.next() == 1)
+
+        await hub.tick()
+        await clock.advance(by: 60)
+        await hub.tick()
+
+        #expect(await hub.isSourceNotTerminal)
+        #expect(await source.readCount(surfaceId: "surface") == 1)
+        #expect(await hub.metrics.readAttempts == 1)
+        #expect(await hub.hasReadInFlight == false)
+        #expect(await hub.lastErrorDescription == "surface is not a terminal")
+        await #expect(throws: SurfaceRenderHubError.surfaceNotTerminal(surfaceId: "surface")) {
+            _ = try await hub.subscribe(onSnapshot: { _ in }, onChecksum: { _, _ in })
+        }
+        await hub.stop()
+        notified.continuation.finish()
+        #expect(await source.releaseCount(surfaceId: "surface") == 1)
+    }
+
+    @Test func notTerminalSurfaceEmitsOneEventAndRejectsResubscribe() async throws {
+        let source = ScriptedTerminalSourceReader(steps: [.notTerminal])
+        let clock = ManualSurfaceRenderClock()
+        let sleepProbe = await BoundedAsyncStreamProbe.make(stream: clock.requests())
+        let events = AsyncStream<EventFrame>.makeStream(bufferingPolicy: .bufferingNewest(8))
+        let eventProbe = await BoundedAsyncStreamProbe.make(stream: events.stream)
+        let frames = FrameInbox()
+        let manager = SessionManager(
+            terminalReader: source,
+            defaultFps: 15,
+            idleFps: 5,
+            clockFactory: { clock }
+        )
+        let first = await manager.attach(deviceId: "first") { frame in
+            frames.append(frame)
+            if case .event(let event) = frame {
+                events.continuation.yield(event)
+            }
+        }
+        let second = await manager.attach(deviceId: "second") { _ in }
+
+        try await first.subscribe(workspaceId: "workspace", surfaceId: "surface", lines: 120)
+        let request = try await sleepProbe.next()
+        await clock.advance(by: request.seconds)
+        let event = try await eventProbe.next()
+
+        #expect(event == EventFrame(
+            category: .surface,
+            name: "surface_not_terminal",
+            payload: .object([
+                "code": .string("surface_not_terminal"),
+                "surface_id": .string("surface"),
+                "workspace_id": .string("workspace"),
+            ])
+        ))
+        let wire = try #require(String(
+            data: SharedKitJSON.deterministicEncoder.encode(PushFrame.event(event)),
+            encoding: .utf8
+        ))
+        #expect(wire == #"{"category":"surface","name":"surface_not_terminal","payload":{"code":"surface_not_terminal","surface_id":"surface","workspace_id":"workspace"},"type":"event"}"#)
+
+        await #expect(throws: SurfaceRenderHubError.surfaceNotTerminal(surfaceId: "surface")) {
+            try await first.subscribe(workspaceId: "workspace", surfaceId: "surface", lines: 120)
+        }
+        await #expect(throws: SurfaceRenderHubError.surfaceNotTerminal(surfaceId: "surface")) {
+            try await second.subscribe(workspaceId: "workspace", surfaceId: "surface", lines: 120)
+        }
+        #expect(await source.readCount(surfaceId: "surface") == 1)
+        let eventCount = frames.snapshot().filter { frame in
+            if case .event = frame { return true }
+            return false
+        }.count
+        #expect(eventCount == 1)
+        #expect(!frames.snapshot().contains { frame in
+            if case .screenFull = frame { return true }
+            return false
+        })
+
+        await first.unsubscribe(surfaceId: "surface")
+        #expect(await manager.activeRenderHubCount == 0)
+        #expect(await source.releaseCount(surfaceId: "surface") == 1)
+        events.continuation.finish()
+        await manager.detach(session: first)
+        await manager.detach(session: second)
+    }
+
     @Test func fakeClockProvesActiveToIdleAndInputWake() async throws {
         let identity = CMUXTerminalReplayIdentity(epoch: Self.epochA, revision: 1)
         let source = ScriptedTerminalSourceReader(steps: [

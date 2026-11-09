@@ -21,6 +21,9 @@ public struct ScreenSnapshotMetadata: Sendable, Equatable {
     public var terminalBackground: String
 
     /// The source theme revision, when the producer supplies one.
+    ///
+    /// Informational only: it is not a reset input, because cmux advances it on every replay
+    /// even when the theme is unchanged. See ``Screen/requiresFullReset(comparedTo:)``.
     public var terminalThemeRevision: UInt64?
 
     /// Creates render source metadata for an authoritative screen snapshot.

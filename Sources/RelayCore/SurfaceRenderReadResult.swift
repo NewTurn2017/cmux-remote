@@ -5,5 +5,6 @@ import Foundation
 enum SurfaceRenderReadResult: Sendable {
     case success(CMUXTerminalReadOutcome)
     case failure(String)
+    case notTerminal
     case cancelled
 }

@@ -28,6 +28,11 @@ public struct Screen: Codable, Sendable, Equatable {
     /// Relay-internal render source identity, omitted from the established Codable shape.
     public var snapshotMetadata: ScreenSnapshotMetadata?
 
+    /// Terminal screen the rows came from (`primary` or `alternate`), when the source knows.
+    ///
+    /// Carried by the relay into ``ScreenFull/activeScreen``; omitted from this type's Codable shape.
+    public var activeScreen: String?
+
     /// Creates an authoritative terminal screen snapshot.
     ///
     /// - Parameters:
@@ -36,29 +41,40 @@ public struct Screen: Codable, Sendable, Equatable {
     ///   - cols: Render-grid terminal column count.
     ///   - cursor: Cursor position in retained-screen coordinates.
     ///   - snapshotMetadata: Optional render source identity used only for reset decisions.
+    ///   - activeScreen: Optional source screen (`primary` or `alternate`).
     public init(
         rev: Int,
         rows: [String],
         cols: Int,
         cursor: CursorPos,
-        snapshotMetadata: ScreenSnapshotMetadata? = nil
+        snapshotMetadata: ScreenSnapshotMetadata? = nil,
+        activeScreen: String? = nil
     ) {
         self.rev = rev
         self.rows = rows
         self.cols = cols
         self.cursor = cursor
         self.snapshotMetadata = snapshotMetadata
+        self.activeScreen = activeScreen
     }
 
     /// Returns whether this snapshot needs clear-and-replace semantics relative to another.
     ///
     /// Source revision alone does not reset the screen: ordinary revisions remain eligible
-    /// for row and cursor diffs. Geometry, epoch, and resolved theme-default changes reset.
+    /// for row and cursor diffs. Geometry, epoch, active-screen, and resolved theme-default
+    /// changes reset.
+    ///
+    /// The producer theme revision is deliberately not compared. cmux 0.65.2 advances it on
+    /// every `terminal.replay` call while the theme stays byte-identical, so comparing it
+    /// turned every poll into a `screen.full`. Rows carry fully resolved truecolor, so a real
+    /// palette change still reaches the client as row diffs, and a default-color change still
+    /// resets through the foreground and background comparison.
     ///
     /// - Parameter previous: The previously ingested authoritative snapshot.
     /// - Returns: `true` when incremental row operations cannot safely preserve state.
     public func requiresFullReset(comparedTo previous: Screen) -> Bool {
         guard cols == previous.cols, rows.count == previous.rows.count else { return true }
+        guard activeScreen == previous.activeScreen else { return true }
 
         switch (previous.snapshotMetadata, snapshotMetadata) {
         case (nil, nil):
@@ -70,7 +86,6 @@ public struct Screen: Codable, Sendable, Equatable {
                 || old.viewportRows != new.viewportRows
                 || old.terminalForeground != new.terminalForeground
                 || old.terminalBackground != new.terminalBackground
-                || old.terminalThemeRevision != new.terminalThemeRevision
         }
     }
 
@@ -84,6 +99,7 @@ public struct Screen: Codable, Sendable, Equatable {
         cols = try container.decode(Int.self, forKey: .cols)
         cursor = try container.decode(CursorPos.self, forKey: .cursor)
         snapshotMetadata = nil
+        activeScreen = nil
     }
 
     /// Encodes the established four-field screen representation.

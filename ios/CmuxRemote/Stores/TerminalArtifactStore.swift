@@ -172,6 +172,17 @@ final class TerminalArtifactStore {
         return url
     }
 
+    /// Text documents are read into memory only; they never touch the on-disk
+    /// artifact cache or viewer copies.
+    func loadText(for artifact: TerminalArtifact) async throws -> TextDocument {
+        let context = try activeContext(for: artifact)
+        let document = try await TextArtifactLoader(rpc: rpc).load(artifact)
+        guard isCurrent(context.identity, epoch: context.epoch) else {
+            throw TerminalArtifactStoreError.staleIdentity
+        }
+        return document
+    }
+
     func dismissViewer() async {
         viewerEpoch &+= 1
         let url = viewerURL

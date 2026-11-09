@@ -109,7 +109,12 @@ public final class WorkspaceStore {
         if let surface = surfaces(for: workspaceId).first(where: { $0.id == payload.surfaceId }) {
             return surface
         }
-        return Surface(id: payload.surfaceId, title: "terminal", index: surfaces(for: workspaceId).count)
+        return Surface(
+            id: payload.surfaceId,
+            title: "terminal",
+            index: surfaces(for: workspaceId).count,
+            type: "terminal"
+        )
     }
 
     public func closeSurface(workspaceId: String, surfaceId: String) async throws {

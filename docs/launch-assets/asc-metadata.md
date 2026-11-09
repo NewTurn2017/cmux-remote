@@ -1,4 +1,4 @@
-# App Store Connect — Metadata Draft (v1.1.4 build 21)
+# App Store Connect — Metadata Draft (v2.0.0 build 22)
 
 App: **Cmux Remote** · Bundle ID `com.genie.CmuxRemote` · Team `2UANJX7ATM`
 
@@ -48,9 +48,9 @@ Private terminal companion
 ### Promotional Text (max 170, can change without review)
 
 ```
-See your terminal in true color, select and copy output, upload photos or files, and preview recent images — all through your private Tailscale connection.
+Update the relay from Settings, open markdown and browser tabs, answer Claude questions and approvals, and read notification text. Your terminal stays on your computer.
 ```
-*(155 chars)*
+*(168 chars)*
 
 ### Keywords (max 100, comma-separated, no spaces after commas)
 
@@ -81,7 +81,7 @@ HOW IT WORKS
 3. Open this app, type the computer's Tailscale hostname, and tap Connect.
 4. Your cmux workspaces appear. Pick a surface and you are in.
 
-The relay speaks directly to cmux's local Unix socket. This app speaks to the relay over a WireGuard-encrypted Tailscale tunnel. Nothing leaves your network.
+The relay speaks directly to cmux's local Unix socket. This app speaks to the relay over a WireGuard-encrypted Tailscale tunnel. Your terminal, files, and conversations stay between your phone and your own computer. Optional push notifications are delivered through the system push service and include the notification text.
 
 FEATURES
 
@@ -91,15 +91,19 @@ FEATURES
 - Keyboard-safe composer layout with automatic keyboard dismissal after submit and an inline scroll-to-bottom control
 - Paste text from the mobile clipboard and upload photos or documents; files are saved by the relay under Downloads/cmux-remote
 - Browse recent uploads and terminal-visible files, including image thumbnails and a full-screen zoom viewer
-- Local and native Inbox push notifications for cmux events plus AI-agent needs-input prompts
+- Local notifications and optional push notifications for cmux events plus AI-agent needs-input prompts, with the notification text shown in the Inbox
 - Workspace create, rename, close, and multi-surface chip-bar switching
+- Read markdown tabs and text files, and view browser tabs as screenshots (read-only)
+- AGENTS tab: answer Claude questions, permission requests, and plan approvals, and read Claude conversations
+- Pull past the edge of a fullscreen terminal to send Page Up or Page Down
+- Settings shows the app and relay versions, a notice when a newer app version is available, and an Update Now button for the relay's self-update
 - Connected computer battery status when the relay can provide it
 - Pinch-to-zoom font, scroll-to-bottom on surface change
 - Demo Mode with fully populated fake data — try the app before you set up a relay
 
 PRIVACY
 
-No analytics. No advertising. No third-party SDKs. The bearer token your relay issues is stored only in the system's secure credential storage on your device. Read the full policy and source code at:
+No analytics. No advertising. No tracking SDKs. The developer runs no servers: the app talks to your own computer. Optional push notifications go from your computer through the system push service to your phone and include the notification title and text. The app asks the App Store once a day for the latest version number and sends only its bundle ID and your country. The bearer token your relay issues is stored only in the system's secure credential storage on your device. Read the full policy and source code at:
 
 https://github.com/NewTurn2017/cmux-remote
 
@@ -156,9 +160,9 @@ cmux Remote
 ### 프로모션 텍스트 (max 170)
 
 ```
-트루컬러 터미널, 드래그 선택·복사, 사진·파일 업로드와 최근 이미지 미리보기를 추가했습니다. 모든 연결은 기존처럼 사용자의 Tailscale 안에서만 이루어집니다.
+설정에서 relay 업데이트, 마크다운·브라우저 탭 보기, Claude 질문·권한 요청 응답, 알림 본문 확인까지. 터미널은 계속 내 컴퓨터에 있고 휴대폰으로 원격 제어합니다.
 ```
-*(92 chars)*
+*(98 chars)*
 
 ### 키워드 (max 100)
 
@@ -189,7 +193,7 @@ cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Code
 3. 이 앱을 열고 컴퓨터의 Tailscale 호스트명을 입력해 Connect 탭.
 4. cmux 워크스페이스가 나타납니다. surface를 선택하면 끝.
 
-릴레이는 컴퓨터에서 cmux의 로컬 Unix socket과 직접 통신합니다. 모바일 앱은 Tailscale의 WireGuard 암호화 터널을 통해 릴레이와 통신합니다. 본인 네트워크 밖으로 나가는 데이터는 없습니다.
+릴레이는 컴퓨터에서 cmux의 로컬 Unix socket과 직접 통신합니다. 모바일 앱은 Tailscale의 WireGuard 암호화 터널을 통해 릴레이와 통신합니다. 터미널·파일·대화는 휴대폰과 본인 컴퓨터 사이에서만 오가며, 선택 사항인 푸시 알림은 시스템 푸시 서비스를 거쳐 전달되고 알림 텍스트가 들어갑니다.
 
 주요 기능
 
@@ -199,15 +203,19 @@ cmux (https://cmux.com)는 native splits, 워크스페이스, Claude Code / Code
 - 전송 후 키보드 자동 닫힘, 키보드 표시 중 안정적인 레이아웃, 인라인 맨 아래 이동 버튼
 - 모바일 클립보드 붙여넣기와 사진·문서 업로드. 파일은 relay가 Downloads/cmux-remote 아래에 저장
 - 최근 업로드 및 터미널에 표시된 파일 탐색, 이미지 썸네일과 전체 화면 확대 보기
-- cmux 이벤트와 AI 에이전트 needs input 프롬프트를 로컬 알림 / native Inbox push로 표시
+- cmux 이벤트와 AI 에이전트 needs input 프롬프트를 로컬 알림과 선택형 푸시 알림으로 표시하고, 알림 텍스트를 Inbox에 표시
 - 워크스페이스 생성, 이름 변경, 닫기와 다중 surface 칩바 전환
+- 마크다운 탭과 텍스트 파일 읽기, 브라우저 탭을 스크린샷으로 보기(읽기 전용)
+- AGENTS 탭: Claude의 질문·권한 요청·플랜 승인에 답하고 Claude 대화 읽기
+- 전체 화면 터미널의 맨 위·아래를 넘겨 당겨 Page Up·Page Down 전송
+- 설정에서 앱·relay 버전, 새 앱 버전 안내, relay 자동 업데이트의 지금 업데이트 버튼을 제공
 - relay가 제공하는 경우 연결된 컴퓨터 배터리 상태 표시
 - 핀치 줌 폰트 사이즈, surface 전환 시 자동 하단 스크롤
 - 데모 모드 — 릴레이 설정 전에도 가짜 데이터로 앱을 둘러볼 수 있음
 
 개인정보 처리
 
-분석 도구 없음. 광고 없음. 서드파티 SDK 없음. 릴레이가 발급하는 bearer 토큰은 iOS Keychain에만 저장됩니다. 전체 정책과 소스 코드:
+분석 도구 없음. 광고 없음. 추적 SDK 없음. 개발자가 운영하는 서버는 없고 앱은 본인 컴퓨터와만 통신합니다. 선택 사항인 푸시 알림은 컴퓨터에서 시스템 푸시 서비스를 거쳐 휴대폰으로 전달되며 알림 제목과 텍스트가 들어갑니다. 앱은 하루 한 번 App Store에 번들 ID와 국가만 보내 최신 버전 번호를 확인합니다. 릴레이가 발급하는 bearer 토큰은 시스템의 보안 자격 증명 저장소에만 저장됩니다. 전체 정책과 소스 코드:
 
 https://github.com/NewTurn2017/cmux-remote
 
@@ -228,32 +236,53 @@ https://github.com/NewTurn2017/cmux-remote
 
 ---
 
-## Version 1.1.4 Release Notes
+## Version 2.0.0 Release Notes
+
+The same text lives in `docs/launch-assets/release-notes/2.0.0.md`. Earlier versions are in `docs/launch-assets/release-notes/`.
 
 ### What’s New — en-US
 
 ```
-- Adds an Option + Down Arrow shortcut next to Option + Up Arrow.
-- In Claude Code's fullscreen view, it can jump back to the latest output. Add "alt+down": "scroll:bottom" to the Scroll context in ~/.claude/keybindings.json on your Mac.
+- The relay on your computer can now update itself from official GitHub releases. It restarts only when no phone is connected, and Settings has an Update Now button.
+- Settings shows the app and relay versions, and the app tells you when a newer version is on the App Store.
+- Open cmux markdown tabs and text files on your phone, and see cmux browser tabs as screenshots (read-only).
+- New AGENTS tab: answer Claude questions, permission requests, and plan approvals from your phone, and read Claude conversations.
+- Notification title and text now show in the Inbox and in banners. Clearing notifications on your computer clears them on your phone.
+- In fullscreen terminals such as Claude Code, pulling past the top or bottom edge sends Page Up or Page Down.
+- Large images and documents open reliably.
+- The surface tab row stays visible while you type, and Korean and English text was reviewed.
 ```
 
 ### 새로운 기능 — ko
 
 ```
-- Option + 위쪽 방향키 옆에 Option + 아래쪽 방향키 단축키를 추가했습니다.
-- Claude Code fullscreen 화면에서 최신 출력으로 바로 내려갈 수 있습니다. Mac의 ~/.claude/keybindings.json에서 Scroll 컨텍스트에 "alt+down": "scroll:bottom"을 추가하세요.
+- 컴퓨터의 relay가 GitHub 정식 릴리스로 스스로 업데이트할 수 있습니다. 연결된 폰이 없을 때만 재시작하며, 설정에 지금 업데이트 버튼이 있습니다.
+- 설정에서 앱과 relay 버전을 확인하고, App Store에 새 버전이 있으면 앱이 안내합니다.
+- cmux 마크다운 탭과 텍스트 파일을 폰에서 읽고, cmux 브라우저 탭을 스크린샷으로 볼 수 있습니다(읽기 전용).
+- 새 AGENTS 탭에서 Claude의 질문·권한 요청·플랜 승인에 폰으로 답하고, Claude 대화를 읽을 수 있습니다.
+- 알림 제목과 텍스트가 Inbox와 배너에 표시됩니다. 컴퓨터에서 알림을 지우면 폰의 Inbox 카드도 사라집니다.
+- Claude Code 같은 전체 화면 터미널에서 맨 위나 맨 아래를 넘겨 당기면 Page Up·Page Down이 전송됩니다.
+- 큰 이미지와 문서도 안정적으로 열립니다.
+- 입력 중에도 surface 탭 줄이 사라지지 않고, 한국어·영어 문구를 점검했습니다.
 ```
+
 
 ## App Privacy ("Data Used to Track You" / "Data Collected")
 
 | Question | Answer |
 |---|---|
-| Does this app collect data? | **No** |
+| Does this app collect data? | **No** (Data Not Collected) |
 | Is data linked to user identity? | N/A |
 | Is data used to track? | N/A |
-| Third-party SDKs? | None |
+| Third-party SDKs? | No analytics, advertising, or tracking SDKs. One on-device security library (IOSSecuritySuite) that makes no network calls |
 
-The app stores `bearer` and `device_id` in the iOS Keychain, but these are issued by the **user's own** relay and never sent to any developer-controlled server. Per Apple's definition this is not "data collection".
+Why "Data Not Collected" still holds in 2.0.0 (recorded for the submitter; this is our reading of the definition, to be re-checked in App Store Connect right before submission):
+
+- The developer operates no server that the app or the relay talks to.
+- The app stores `bearer` and `device_id` in the iOS Keychain, but these are issued by the **user's own** relay and never sent to any developer-controlled server. Per Apple's definition this is not "data collection".
+- Notification title, subtitle, and body pass through Apple's push servers when the user's relay has an `apns` block: user's computer → Apple → user's device. The developer never receives them.
+- The app asks Apple's App Store lookup service for the latest version number once a day (twice at most if the first lookup returns nothing for the country). It sends only the bundle ID and the country code, and the developer cannot see the request.
+- The app ships a privacy manifest (`PrivacyInfo.xcprivacy`) that declares no tracking and no collected data types.
 
 ## Encryption / Export Compliance
 
@@ -287,7 +316,7 @@ In demo mode you can:
 - Open the Inbox tab to see demo notifications, including an AI-agent needs-input example
 - Toggle demo mode off via the same Settings button
 
-The app has zero data collection, no analytics, no third-party SDKs, no advertising. Full source code: https://github.com/NewTurn2017/cmux-remote
+The app collects no data: the developer operates no servers, and there are no analytics, advertising, or tracking SDKs. Optional push notifications are sent by the user's own computer through the platform push service and include the notification text. Full source code: https://github.com/NewTurn2017/cmux-remote
 
 Local network usage description (NSLocalNetworkUsageDescription) is required because the relay listens on a Tailscale-assigned IP. Tailscale already provides WireGuard transport encryption, so the relay's HTTP+WS protocol is safe over that tunnel. NSAllowsArbitraryLoads = true is set for the same reason.
 

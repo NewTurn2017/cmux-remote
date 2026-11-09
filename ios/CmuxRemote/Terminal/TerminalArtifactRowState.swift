@@ -5,6 +5,7 @@ enum TerminalArtifactRowState {
     case loading
     case ready(UIImage)
     case generic
+    case document
     case stale
     case fileChanged
     case unavailable
@@ -50,6 +51,8 @@ enum TerminalArtifactRowState {
             return String(localized: "terminal.artifact.state.ready", defaultValue: "Ready")
         case .generic:
             return String(localized: "terminal.artifact.state.generic", defaultValue: "File only")
+        case .document:
+            return String(localized: "terminal.artifact.state.document", defaultValue: "Document")
         case .stale:
             return String(localized: "terminal.artifact.state.stale", defaultValue: "Authorization expired")
         case .fileChanged:
@@ -77,6 +80,8 @@ enum TerminalArtifactRowState {
             return String(localized: "terminal.artifact.detail.ready", defaultValue: "The image is ready to open.")
         case .generic:
             return String(localized: "terminal.artifact.detail.generic", defaultValue: "Only file information is available for this type.")
+        case .document:
+            return String(localized: "terminal.artifact.detail.document", defaultValue: "Opens as text in the document viewer.")
         case .stale:
             return String(localized: "terminal.artifact.detail.stale", defaultValue: "Refresh to request a new terminal-visible authorization.")
         case .fileChanged:
@@ -101,6 +106,7 @@ enum TerminalArtifactRowState {
         case .loading: return "TerminalArtifactStateLoading"
         case .ready: return "TerminalArtifactStateReady"
         case .generic: return "TerminalArtifactStateGeneric"
+        case .document: return "TerminalArtifactStateDocument"
         case .stale: return "TerminalArtifactStateStale"
         case .fileChanged: return "TerminalArtifactStateFileChanged"
         case .unavailable: return "TerminalArtifactStateUnavailable"

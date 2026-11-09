@@ -5,18 +5,34 @@ struct TerminalArtifactRow: View {
     let artifact: TerminalArtifact
     @Bindable var store: TerminalArtifactStore
     let onOpen: (TerminalArtifact) -> Void
+    let onOpenDocument: (TerminalArtifact) -> Void
 
     @State private var thumbnailState: TerminalArtifactRowState
 
     init(
         artifact: TerminalArtifact,
         store: TerminalArtifactStore,
-        onOpen: @escaping (TerminalArtifact) -> Void
+        onOpen: @escaping (TerminalArtifact) -> Void,
+        onOpenDocument: @escaping (TerminalArtifact) -> Void
     ) {
         self.artifact = artifact
         self.store = store
         self.onOpen = onOpen
-        _thumbnailState = State(initialValue: artifact.isImage ? .loading : .generic)
+        self.onOpenDocument = onOpenDocument
+        let kind = DocumentContentKind.classify(
+            filename: artifact.filename,
+            mimeType: artifact.mimeType,
+            isImage: artifact.isImage
+        )
+        _thumbnailState = State(initialValue: artifact.isImage ? .loading : (kind.isDocument ? .document : .generic))
+    }
+
+    private var isDocument: Bool {
+        !artifact.isImage && DocumentContentKind.classify(
+            filename: artifact.filename,
+            mimeType: artifact.mimeType,
+            isImage: false
+        ).isDocument
     }
 
     @ViewBuilder
@@ -34,6 +50,16 @@ struct TerminalArtifactRow: View {
             .task(id: "\(artifact.artifactId)|\(artifact.revision)") {
                 await loadThumbnailIfNeeded()
             }
+        } else if isDocument {
+            Button {
+                onOpenDocument(artifact)
+            } label: {
+                rowContent(showsDisclosure: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("TerminalArtifactRowDocument")
+            .accessibilityLabel(accessibilitySummary)
+            .accessibilityHint(accessibilityHint)
         } else {
             rowContent(showsDisclosure: false)
                 .accessibilityElement(children: .contain)
@@ -116,6 +142,11 @@ struct TerminalArtifactRow: View {
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(CmuxTheme.inkDim)
                     .accessibilityHidden(true)
+            case .document:
+                Image(systemName: "doc.text")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(CmuxTheme.accentCyan)
+                    .accessibilityHidden(true)
             default:
                 Image(systemName: "photo.badge.exclamationmark")
                     .font(.system(size: 20, weight: .medium))
@@ -150,6 +181,7 @@ struct TerminalArtifactRow: View {
         case .ready: return CmuxTheme.accentGreen
         case .loading: return CmuxTheme.accentBlue
         case .generic: return CmuxTheme.inkDim
+        case .document: return CmuxTheme.accentCyan
         case .stale, .fileChanged: return CmuxTheme.accentYellow
         case .unavailable: return CmuxTheme.muted
         case .corrupt, .oversized, .byteCap, .pixelCap, .error: return CmuxTheme.accentRed
@@ -176,6 +208,12 @@ struct TerminalArtifactRow: View {
                 defaultValue: "Opens the full image viewer."
             )
         }
+        if isDocument {
+            return String(
+                localized: "terminal.artifact.open_document_hint",
+                defaultValue: "Opens the document viewer."
+            )
+        }
         return String(
             localized: "terminal.artifact.generic_hint",
             defaultValue: "This file type cannot be previewed."
@@ -185,7 +223,7 @@ struct TerminalArtifactRow: View {
     @MainActor
     private func loadThumbnailIfNeeded() async {
         guard artifact.isImage else {
-            thumbnailState = .generic
+            thumbnailState = isDocument ? .document : .generic
             return
         }
         guard artifact.bytes <= TerminalArtifactLimits.maxImageBytes else {

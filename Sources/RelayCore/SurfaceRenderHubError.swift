@@ -13,4 +13,7 @@ public enum SurfaceRenderHubError: Error, Equatable, Sendable {
 
     /// The hub has entered terminal lifecycle cleanup and accepts no new subscribers.
     case stopped(surfaceId: String)
+
+    /// The surface was classified as a non-terminal (browser, markdown, ...) and is not polled.
+    case surfaceNotTerminal(surfaceId: String)
 }

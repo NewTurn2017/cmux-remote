@@ -35,6 +35,16 @@ public actor DemoRPCDispatch: RPCDispatch {
     private var thumbnailContinuation: CheckedContinuation<RPCResponse, Never>?
     private var shouldGateThumbnail: Bool
     private var uploadSequence = 0
+    private var documentOpenCount = 0
+    private var browserCaptureCount = 0
+    private let feedScenario: String?
+    private var feedItems: [FeedPendingItem]?
+    private let transcriptScenario: String?
+    private var transcriptLatestRequests: [String: Int] = [:]
+    private let relayScenario: String?
+    private var relayVersion = CmuxRemoteVersion.marketing
+    private var relayUpdateRequested = false
+    private var relayInfoCallsSinceRequest = 0
     private var intentionallyFailedAttachmentNames: Set<String> = []
     private var blockedAttachmentUploadID: String?
     private var blockedAttachmentChunk: CheckedContinuation<RPCResponse, Never>?
@@ -55,7 +65,10 @@ public actor DemoRPCDispatch: RPCDispatch {
         staleFeatureResponseGateEnabled: Bool = false,
         attachmentScenario: String? = nil,
         artifactScenario: String? = nil,
-        fileFeatureCacheNamespace: String? = nil
+        fileFeatureCacheNamespace: String? = nil,
+        feedScenario: String? = nil,
+        transcriptScenario: String? = nil,
+        relayScenario: String? = nil
     ) {
         self.workspaces = DemoContent.workspaces
         #if DEBUG
@@ -72,6 +85,9 @@ public actor DemoRPCDispatch: RPCDispatch {
             namespace: cacheNamespace
         )
         self.shouldGateThumbnail = artifactScenario == "source-states"
+        self.feedScenario = feedScenario?.isEmpty == false ? feedScenario : nil
+        self.transcriptScenario = transcriptScenario?.isEmpty == false ? transcriptScenario : nil
+        self.relayScenario = relayScenario?.isEmpty == false ? relayScenario : nil
         #else
         self.fileFeatureFixturesEnabled = false
         self.staleFeatureResponseGateEnabled = false
@@ -80,6 +96,9 @@ public actor DemoRPCDispatch: RPCDispatch {
         self.fileFeatureCacheNamespace = nil
         self.activeImageRevision = DemoContent.fileFeatureImageArtifact.revision
         self.shouldGateThumbnail = false
+        self.feedScenario = nil
+        self.transcriptScenario = nil
+        self.relayScenario = nil
         #endif
     }
 
@@ -155,11 +174,13 @@ public actor DemoRPCDispatch: RPCDispatch {
             }
             return RPCResponse(id: "demo", result: .object([
                 "surfaces": .array(workspace.surfaces.enumerated().map { index, surface in
-                    .object([
+                    var payload: [String: JSONValue] = [
                         "id": .string(surface.id),
                         "title": .string(surface.title),
                         "index": .int(Int64(index)),
-                    ])
+                    ]
+                    if let type = surface.type { payload["type"] = .string(type) }
+                    return .object(payload)
                 }),
             ]))
 
@@ -167,6 +188,9 @@ public actor DemoRPCDispatch: RPCDispatch {
             if case .object(let p) = params,
                case .string(let surfaceId)? = p["surface_id"]
             {
+                if let surface = surface(for: surfaceId), !surface.isTerminal, !surface.reportsNotTerminal {
+                    return notTerminalResponse()
+                }
                 await onSubscribe?(surfaceId)
             }
             return RPCResponse(id: "demo", ok: true, result: .object([:]))
@@ -176,6 +200,7 @@ public actor DemoRPCDispatch: RPCDispatch {
                case .string(let surfaceId)? = p["surface_id"],
                let surface = surface(for: surfaceId)
             {
+                guard surface.isTerminal else { return notTerminalResponse() }
                 return RPCResponse(id: "demo", result: .object([
                     "text": .string(surface.screen.joined(separator: "\n")),
                 ]))
@@ -280,6 +305,15 @@ public actor DemoRPCDispatch: RPCDispatch {
                 "mime_type": .string("image/jpeg"),
             ]))
 
+        case RemoteRPCMethod.hostCapabilities.rawValue:
+            return try encodedResponse(HostCapabilitiesResult(capabilities: relayCapabilities))
+
+        case RemoteRPCMethod.relayInfo.rawValue:
+            return try relayResponse(method: .relayInfo)
+
+        case RemoteRPCMethod.relayUpdateStart.rawValue:
+            return try relayResponse(method: .relayUpdateStart)
+
         case "host.battery":
             return RPCResponse(id: "demo", ok: true, result: .object([
                 "available": .bool(true),
@@ -300,10 +334,55 @@ public actor DemoRPCDispatch: RPCDispatch {
     ) async throws -> RPCResponse {
         switch method {
         case .hostCapabilities:
-            return try encodedResponse(HostCapabilitiesResult(capabilities: [
+            var capabilities = [
                 HostCapabilities.chunkUploadV2,
                 HostCapabilities.terminalArtifactsV1,
-            ]))
+                HostCapabilities.surfaceDocumentV1,
+                HostCapabilities.surfaceBrowserV1,
+            ]
+            if feedScenario != nil { capabilities.append(HostCapabilities.feedV1) }
+            if transcriptScenario != nil { capabilities.append(HostCapabilities.claudeTranscriptV1) }
+            capabilities += relayCapabilities
+            return try encodedResponse(HostCapabilitiesResult(capabilities: capabilities))
+
+        case .surfaceDocumentOpen:
+            let request = try params.decode(SurfaceDocumentOpenRequest.self)
+            guard request.surfaceId == DemoContent.documentSurfaceID else {
+                return errorResponse(code: .surfaceNotDocument, message: "The surface is not a document")
+            }
+            documentOpenCount += 1
+            return try encodedResponse(TerminalArtifactScanResult(
+                generation: DemoContent.fileFeatureScanGeneration + documentOpenCount,
+                artifacts: [DemoContent.documentReadmeArtifact(openCount: documentOpenCount)]
+            ))
+
+        case .surfaceBrowserCapture:
+            let request = try params.decode(SurfaceBrowserCaptureRequest.self)
+            guard request.surfaceId == DemoContent.browserSurfaceID else {
+                return errorResponse(code: .surfaceNotBrowser, message: "The surface is not a browser")
+            }
+            browserCaptureCount += 1
+            let jpeg = DemoBrowserCapture.jpegData(captureNumber: browserCaptureCount)
+            return try encodedResponse(SurfaceBrowserCaptureResult(
+                imageBase64: jpeg.base64EncodedString(),
+                mimeType: "image/jpeg",
+                width: DemoBrowserCapture.width,
+                height: DemoBrowserCapture.height,
+                sourceWidth: DemoBrowserCapture.sourceWidth,
+                sourceHeight: DemoBrowserCapture.sourceHeight,
+                url: DemoContent.browserURL,
+                title: "\(DemoContent.browserTitlePrefix)\(browserCaptureCount)",
+                capturedAt: Int64(Date().timeIntervalSince1970 * 1000)
+            ))
+
+        case .feedPendingList, .feedReply:
+            return try feedResponse(method: method, params: params)
+
+        case .claudeSessionsList, .claudeTranscriptPage:
+            return try transcriptResponse(method: method, params: params)
+
+        case .relayInfo, .relayUpdateStart:
+            return try relayResponse(method: method)
 
         case .uploadBegin:
             let request = try params.decode(ChunkUploadBeginRequest.self)
@@ -450,11 +529,15 @@ public actor DemoRPCDispatch: RPCDispatch {
                 image.revision = activeImageRevision
                 var document = DemoContent.fileFeatureDocumentArtifact
                 document.revision = fixtureRevision(document.revision)
+                var artifacts = [image, document]
+                if artifactScenario == "documents" {
+                    artifacts.append(DemoContent.documentNotesArtifact)
+                }
                 let response = try encodedResponse(TerminalArtifactScanResult(
                     generation: replacement
                         ? DemoContent.fileFeatureScanGeneration + 1
                         : DemoContent.fileFeatureScanGeneration,
-                    artifacts: [image, document]
+                    artifacts: artifacts
                 ))
                 if staleFeatureResponseGateEnabled,
                    request.surfaceId == DemoContent.fileFeatureHappySurfaceID
@@ -541,6 +624,19 @@ public actor DemoRPCDispatch: RPCDispatch {
 
         case .artifactFetch:
             let request = try params.decode(TerminalArtifactFetchRequest.self)
+            if let document = DemoContent.documentFixture(artifactID: request.artifactId) {
+                guard request.offset <= document.data.count else {
+                    return errorResponse(code: .invalidOffset, message: "The deterministic document offset is invalid")
+                }
+                return try encodedResponse(TerminalArtifactFetchResult(
+                    artifactId: request.artifactId,
+                    offset: request.offset,
+                    totalBytes: document.data.count,
+                    revision: document.revision,
+                    dataBase64: Data(document.data.dropFirst(request.offset)).base64EncodedString(),
+                    eof: true
+                ))
+            }
             if let artifact = committedArtifacts[request.artifactId],
                request.offset <= artifact.data.count
             {
@@ -593,6 +689,171 @@ public actor DemoRPCDispatch: RPCDispatch {
         return "/Users/demo/Drop/\(ordinal)-it's \(filename)"
     }
 
+    /// Like cmux, fixture requests leave the list after ``FeedPendingWindow/expectedSeconds``;
+    /// these extra seconds keep the expired card on screen long enough for UI tests to see it.
+    private static let feedFixtureDropDelaySeconds: Int64 = 4
+
+    /// Scenarios: `pending` answers replies once (a second reply is not pending),
+    /// `already-handled` treats every reply as answered on the Mac first,
+    /// `expiring` adds a request about to time out, and
+    /// `method-not-found` advertises `feed.v1` but answers like a relay without it.
+    private func feedResponse(method: RemoteRPCMethod, params: JSONValue) throws -> RPCResponse {
+        guard let feedScenario, feedScenario != "method-not-found" else {
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+        let nowMilliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+        var items = feedItems ?? DemoFeedFixtures.pendingItems(
+            nowMilliseconds: nowMilliseconds,
+            includeExpiring: feedScenario == "expiring"
+        )
+        let windowMilliseconds = (Int64(FeedPendingWindow.expectedSeconds) + Self.feedFixtureDropDelaySeconds) * 1_000
+        items.removeAll { ($0.createdAt ?? nowMilliseconds) + windowMilliseconds <= nowMilliseconds }
+        defer { feedItems = items }
+        switch method {
+        case .feedPendingList:
+            return try encodedResponse(FeedPendingListResult(items: items, truncated: false))
+        case .feedReply:
+            let request = try params.decode(FeedReplyRequest.self)
+            guard let index = items.firstIndex(where: { $0.requestId == request.requestId }) else {
+                return errorResponse(code: .feedRequestNotPending, message: "The request is no longer pending")
+            }
+            items.remove(at: index)
+            if feedScenario == "already-handled" {
+                return errorResponse(code: .feedRequestNotPending, message: "The request is no longer pending")
+            }
+            return try encodedResponse(FeedReplyResult(requestId: request.requestId, kind: request.kind))
+        default:
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+    }
+
+    /// Scenarios: `sessions` serves ``DemoClaudeTranscriptFixtures``; every newest-page request
+    /// after the first for the live session adds one entry, like a session that keeps writing.
+    /// `method-not-found` advertises `claude.transcript.v1` but answers like a relay without it.
+    private func transcriptResponse(method: RemoteRPCMethod, params: JSONValue) throws -> RPCResponse {
+        guard let transcriptScenario, transcriptScenario != "method-not-found" else {
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+        let nowMilliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+        switch method {
+        case .claudeSessionsList:
+            return try encodedResponse(ClaudeSessionListResult(
+                sessions: DemoClaudeTranscriptFixtures.sessions(nowMilliseconds: nowMilliseconds)
+            ))
+        case .claudeTranscriptPage:
+            let request = try params.decode(ClaudeTranscriptPageRequest.self)
+            let known = DemoClaudeTranscriptFixtures.sessions(nowMilliseconds: nowMilliseconds).map(\.sessionId)
+            guard known.contains(request.sessionId),
+                  request.sessionId != DemoClaudeTranscriptFixtures.missingSessionID
+            else {
+                return RPCResponse(id: "demo", ok: false, error: RPCError(
+                    code: RemoteErrorCode.claudeSessionNotFound.rawValue,
+                    message: "Claude session not found",
+                    data: .object(["field": .string("session_id")])
+                ))
+            }
+            var extraEntries = 0
+            if request.sessionId == DemoClaudeTranscriptFixtures.liveSessionID {
+                let latestRequests = transcriptLatestRequests[request.sessionId, default: 0]
+                if request.before == nil { transcriptLatestRequests[request.sessionId] = latestRequests + 1 }
+                extraEntries = max(0, transcriptLatestRequests[request.sessionId, default: 0] - 1)
+            }
+            let fileSize = Int64(DemoClaudeTranscriptFixtures.entryCount + extraEntries) * DemoClaudeTranscriptFixtures.bytesPerEntry
+            if let before = request.before, before > fileSize || before % DemoClaudeTranscriptFixtures.bytesPerEntry != 0 {
+                return RPCResponse(id: "demo", ok: false, error: RPCError(
+                    code: RemoteErrorCode.invalidField.rawValue,
+                    message: "Invalid field",
+                    data: .object(["field": .string("before")])
+                ))
+            }
+            return try encodedResponse(DemoClaudeTranscriptFixtures.page(
+                sessionID: request.sessionId,
+                before: request.before,
+                maxEntries: request.maxEntries,
+                extraEntries: extraEntries,
+                nowMilliseconds: nowMilliseconds
+            ))
+        default:
+            return errorResponse(code: .methodNotFound, message: "Claude features are unavailable")
+        }
+    }
+
+    private var relayIsLegacy: Bool { relayScenario == "legacy" }
+
+    private var relayCapabilities: [String] {
+        relayIsLegacy ? [] : [HostCapabilities.relayInfoV1, HostCapabilities.relayUpdateV1]
+    }
+
+    /// Scenarios: the default is an up-to-date relay whose update request checks for two
+    /// polls and returns to idle; `staged` has 2.0.1 ready on an ad-hoc signed relay, and its
+    /// request applies for two polls and then reports 2.0.1; `legacy` advertises neither
+    /// capability and answers both methods like a relay from before 2.0.
+    private func relayResponse(method: RemoteRPCMethod) throws -> RPCResponse {
+        guard !relayIsLegacy else {
+            return errorResponse(code: .methodNotFound, message: "Method not found")
+        }
+        let nowMilliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+        let staged = relayScenario == "staged"
+        switch method {
+        case .relayUpdateStart:
+            relayUpdateRequested = true
+            relayInfoCallsSinceRequest = 0
+            return try encodedResponse(RelayUpdateStatus(
+                autoUpdateEnabled: true,
+                state: staged ? .applying : .checking,
+                latestVersion: staged ? "2.0.1" : relayVersion,
+                lastCheckedAt: nowMilliseconds - (staged ? 3 : 12) * 60_000,
+                restartPending: staged,
+                adhocSigning: staged
+            ))
+        case .relayInfo:
+            let update: RelayUpdateStatus
+            if relayUpdateRequested {
+                relayInfoCallsSinceRequest += 1
+                if relayInfoCallsSinceRequest <= 2 {
+                    update = RelayUpdateStatus(
+                        autoUpdateEnabled: true,
+                        state: staged ? .applying : .checking,
+                        latestVersion: staged ? "2.0.1" : relayVersion,
+                        lastCheckedAt: nowMilliseconds - (staged ? 3 : 12) * 60_000,
+                        restartPending: staged,
+                        adhocSigning: staged
+                    )
+                } else {
+                    relayUpdateRequested = false
+                    if staged { relayVersion = "2.0.1" }
+                    update = RelayUpdateStatus(
+                        autoUpdateEnabled: true,
+                        state: .idle,
+                        latestVersion: relayVersion,
+                        lastCheckedAt: nowMilliseconds,
+                        adhocSigning: staged
+                    )
+                }
+            } else if staged, relayVersion == CmuxRemoteVersion.marketing {
+                update = RelayUpdateStatus(
+                    autoUpdateEnabled: true,
+                    state: .staged,
+                    latestVersion: "2.0.1",
+                    lastCheckedAt: nowMilliseconds - 3 * 60_000,
+                    restartPending: true,
+                    adhocSigning: true
+                )
+            } else {
+                update = RelayUpdateStatus(
+                    autoUpdateEnabled: true,
+                    state: .idle,
+                    latestVersion: relayVersion,
+                    lastCheckedAt: nowMilliseconds - 12 * 60_000,
+                    adhocSigning: staged
+                )
+            }
+            return try encodedResponse(RelayInfoResult(version: relayVersion, update: update))
+        default:
+            return errorResponse(code: .methodNotFound, message: "Method not found")
+        }
+    }
+
     private func encodedResponse<Value: Encodable>(_ value: Value) throws -> RPCResponse {
         let data = try SharedKitJSON.snakeCaseEncoder.encode(value)
         let result = try JSONDecoder().decode(JSONValue.self, from: data)
@@ -604,6 +865,14 @@ public actor DemoRPCDispatch: RPCDispatch {
             id: "demo",
             ok: false,
             error: RPCError(code: code.rawValue, message: message)
+        )
+    }
+
+    private func notTerminalResponse() -> RPCResponse {
+        RPCResponse(
+            id: "demo",
+            ok: false,
+            error: RPCError(code: "surface_not_terminal", message: "Surface is not a terminal")
         )
     }
 

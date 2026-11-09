@@ -59,7 +59,9 @@ Logs land in `~/.cmuxremote/log/`.
 curl -s http://$(tailscale ip -4):4399/v1/health
 ```
 
-`{"ok":true,"version":"0.1.0"}` means the **relay is healthy**.
+`{"ok":true}` means the **relay is healthy**.
+
+The health response carries no version. Check the relay version in the app's Settings or with `~/.cmuxremote/bin/cmux-relay --version` on the Mac.
 
 Confirm it also attached to the cmux socket:
 
@@ -258,14 +260,21 @@ This app connects over **Tailscale**, not Wi-Fi. Both ends must be signed
 into Tailscale, and the app needs the IP from `tailscale ip -4`.
 
 **Q. No notifications.**
-Notifications are currently *local*: they only arrive while the app is
-open or alive in the background. If you fully quit the app, none arrive
-(real push is planned for v1.1).
+By default notifications are *local*: they only arrive while the app is
+open or alive in the background. To receive them after fully quitting the
+app, add an `apns` block to `~/.cmuxremote/relay.json` on the Mac
+(see [Configuration in the README](../README.en.md#configuration)). The
+push carries the notification's title, subtitle, and body and goes from
+your Mac's relay through Apple's push servers to your device
+([PRIVACY.md](../PRIVACY.md)).
 
 **Q. Do I have to start it manually each time?**
 No. The relay is a launchd service, so it **auto-starts on Mac login** and
 respawns if it dies. You do, however, need to **launch the cmux app**
 yourself.
+
+**Q. How do I update the relay?**
+Starting with 2.0.0 the relay follows the official GitHub release tags (`vX.Y.Z`) and updates itself, restarting only when no phone is connected. **[ UPDATE NOW ]** in the app's Settings applies an update at once, even with phones connected. A 1.x relay needs **one** manual update: run `git pull` in the repository, then `./scripts/install-launchd.sh`. To turn auto-update off, use `./scripts/install-launchd.sh --no-auto-update`. Check status in the app's Settings version section or with `tail ~/.cmuxremote/log/update.log`. Details: [Auto-update in the README](../README.en.md#auto-update).
 
 **Q. The ⌥↓ button doesn't jump Claude Code to the bottom.**
 The ⌥↓ button only sends the `alt+down` key. Claude Code's fullscreen view

@@ -34,7 +34,7 @@ struct ScreenFidelityManualDriverTests {
         )
         let geometryAfter = try ScreenFidelityTests.screen(columns: 13, revision: 3)
         let invisibleCursor = try ScreenFidelityTests.screen(cursorVisible: false).cursor
-        let droppedCursor = try ScreenFidelityTests.screen(
+        let largeViewportTopCursor = try ScreenFidelityTests.screen(
             columns: 8,
             rows: 121,
             cursorRow: 0,
@@ -70,7 +70,7 @@ struct ScreenFidelityManualDriverTests {
         print("geometryFullReset=\(geometryOps.first == .clear)")
         print("retainedLines=\(retained.rows.count)")
         print("invisibleCursor=x=\(invisibleCursor.x),y=\(invisibleCursor.y)")
-        print("droppedCursor=x=\(droppedCursor.x),y=\(droppedCursor.y)")
+        print("largeViewportTopCursor=x=\(largeViewportTopCursor.x),y=\(largeViewportTopCursor.y)")
         print("caseOnlyThemeIdentityReset=\(caseOps.first == .clear)")
         print("styledChecksum=\(styledChecksum) styledRowsIdentical=\(checksumRowsAreStyled) plainFallbackUsed=false")
 
@@ -80,9 +80,9 @@ struct ScreenFidelityManualDriverTests {
         #expect(styleOps == [.row(y: 0, text: styleAfter.rows[0])])
         #expect(epochOps.first == .clear)
         #expect(geometryOps.first == .clear)
-        #expect(retained.rows.count == 120)
+        #expect(retained.rows.count == 127)
         #expect(invisibleCursor == .hidden)
-        #expect(droppedCursor == .hidden)
+        #expect(largeViewportTopCursor == CursorPos(x: 0, y: 0))
         #expect(caseOps.isEmpty)
         #expect(checksumRowsAreStyled)
     }

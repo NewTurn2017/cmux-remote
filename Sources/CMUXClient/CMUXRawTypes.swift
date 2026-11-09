@@ -54,9 +54,11 @@ struct CMUXSurfaceRaw: Decodable {
     let id: String
     let title: String
     let index: Int
+    /// cmux surface kind (`terminal`, `browser`, `markdown`, ...); absent on older daemons.
+    let type: String?
 
     func toSurface() -> Surface {
-        Surface(id: id, title: title, index: index)
+        Surface(id: id, title: title, index: index, type: type)
     }
 }
 
@@ -67,8 +69,10 @@ struct CMUXSurfaceRaw: Decodable {
 /// A validated render grid is authoritative when present. Legacy responses keep
 /// their original newline splitting, column derivation, and stub cursor behavior.
 struct CMUXReadTextRaw: Decodable {
-    /// Relay-local retention policy applied after decoding daemon replay depth.
-    static let retainedLineLimit = 120
+    /// Relay-local scrollback retention applied after decoding daemon replay depth.
+    ///
+    /// The full viewport is always kept; at most this many scrollback rows precede it.
+    static let retainedScrollbackLimit = 240
 
     let text: String
     let renderGrid: CMUXRenderGrid?
@@ -87,7 +91,8 @@ struct CMUXReadTextRaw: Decodable {
     func toScreen(rev: Int) -> Screen {
         if let renderGrid {
             let allRows = renderGrid.canonicalANSIRows()
-            let retainedRows = Array(allRows.suffix(Self.retainedLineLimit))
+            let retainedCount = renderGrid.rows + min(renderGrid.scrollbackRows, Self.retainedScrollbackLimit)
+            let retainedRows = Array(allRows.suffix(retainedCount))
             let droppedRows = allRows.count - retainedRows.count
             let cursor: CursorPos
             if let sourceCursor = renderGrid.cursor, sourceCursor.visible {
@@ -111,7 +116,8 @@ struct CMUXReadTextRaw: Decodable {
                     terminalForeground: renderGrid.resolvedTerminalForeground,
                     terminalBackground: renderGrid.resolvedTerminalBackground,
                     terminalThemeRevision: renderGrid.terminalThemeRevision
-                )
+                ),
+                activeScreen: renderGrid.activeScreen.rawValue
             )
         }
 

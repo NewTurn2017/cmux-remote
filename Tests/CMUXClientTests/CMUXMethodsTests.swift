@@ -91,7 +91,25 @@ final class CMUXMethodsTests: XCTestCase {
         XCTAssertEqual(surfaces[0].id, "SF-1")
         XCTAssertEqual(surfaces[0].title, "shell")
         XCTAssertEqual(surfaces[0].index, 0)
+        XCTAssertEqual(surfaces[0].type, "terminal")
         XCTAssertEqual(surfaces[1].title, "vim main.swift")
+    }
+
+    /// cmux 0.65.2 reports non-terminal kinds; daemons without the field stay `nil`.
+    func testSurfaceListRawCarriesTypeWhenPresentAndNilWhenAbsent() throws {
+        let json = #"""
+        {"surfaces":[
+          {"id":"SF-1","index":0,"title":"docs","type":"browser"},
+          {"id":"SF-2","index":1,"title":"README.md","type":"markdown"},
+          {"id":"SF-3","index":2,"title":"legacy"}
+        ]}
+        """#
+        let raw = try SharedKitJSON.snakeCaseDecoder.decode(CMUXSurfaceListRaw.self,
+                                                           from: Data(json.utf8))
+        let surfaces = raw.surfaces.map { $0.toSurface() }
+
+        XCTAssertEqual(surfaces.map(\.type), ["browser", "markdown", nil])
+        XCTAssertEqual(surfaces.map(\.isTerminal), [false, false, true])
     }
 
     /// `surface.read_text` returns flat newline-joined `text` plus a base64

@@ -20,6 +20,22 @@ public enum RemoteRPCMethod: String, Codable, Sendable, Equatable {
     case artifactFetch = "terminal.artifact.fetch"
     /// Generates a bounded thumbnail for an authorized artifact.
     case artifactThumbnail = "terminal.artifact.thumbnail"
+    /// Authorizes the file behind a cmux document surface for artifact fetches.
+    case surfaceDocumentOpen = "surface.document.open"
+    /// Captures the current page image of a cmux browser surface.
+    case surfaceBrowserCapture = "surface.browser.capture"
+    /// Lists cmux feed requests that can be answered (questions, permissions, plans).
+    case feedPendingList = "feed.pending.list"
+    /// Answers one pending cmux feed request.
+    case feedReply = "feed.reply"
+    /// Lists Claude sessions whose transcript the relay may read.
+    case claudeSessionsList = "claude.sessions.list"
+    /// Reads one page of a Claude session transcript, newest first.
+    case claudeTranscriptPage = "claude.transcript.page"
+    /// Reads the relay version and self-update status.
+    case relayInfo = "relay.info"
+    /// Asks the relay to check for, build, and apply a newer release now.
+    case relayUpdateStart = "relay.update.start"
 }
 
 /// Capability identifiers exchanged by ``HostCapabilitiesResult``.
@@ -28,6 +44,18 @@ public struct HostCapabilities: Codable, Sendable, Equatable {
     public static let chunkUploadV2 = "file.upload.v2"
     /// The capability identifier for relay-native terminal artifacts.
     public static let terminalArtifactsV1 = "terminal.artifact.v1"
+    /// The capability identifier for opening cmux document surfaces.
+    public static let surfaceDocumentV1 = "surface.document.v1"
+    /// The capability identifier for capturing cmux browser surfaces.
+    public static let surfaceBrowserV1 = "surface.browser.v1"
+    /// The capability identifier for listing and answering cmux feed requests.
+    public static let feedV1 = "feed.v1"
+    /// The capability identifier for reading Claude session transcripts.
+    public static let claudeTranscriptV1 = "claude.transcript.v1"
+    /// The capability identifier for `relay.info`.
+    public static let relayInfoV1 = "relay.info.v1"
+    /// The capability identifier for `relay.update.start`, advertised only when the relay's updater is installed.
+    public static let relayUpdateV1 = "relay.update.v1"
 }
 
 /// Empty parameters for `host.capabilities`.
@@ -45,6 +73,18 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     public static let chunkUploadV2Capability = HostCapabilities.chunkUploadV2
     /// The relay-native terminal-artifact capability identifier.
     public static let terminalArtifactsV1Capability = HostCapabilities.terminalArtifactsV1
+    /// The document-surface capability identifier.
+    public static let surfaceDocumentV1Capability = HostCapabilities.surfaceDocumentV1
+    /// The browser-surface capture capability identifier.
+    public static let surfaceBrowserV1Capability = HostCapabilities.surfaceBrowserV1
+    /// The cmux feed capability identifier.
+    public static let feedV1Capability = HostCapabilities.feedV1
+    /// The Claude transcript capability identifier.
+    public static let claudeTranscriptV1Capability = HostCapabilities.claudeTranscriptV1
+    /// The relay-info capability identifier.
+    public static let relayInfoV1Capability = HostCapabilities.relayInfoV1
+    /// The relay-update capability identifier.
+    public static let relayUpdateV1Capability = HostCapabilities.relayUpdateV1
 
     /// Creates a capability result.
     ///
@@ -61,6 +101,36 @@ public struct HostCapabilitiesResult: Codable, Sendable, Equatable {
     /// Whether relay-native terminal artifacts are supported.
     public var supportsTerminalArtifactsV1: Bool {
         capabilities.contains(Self.terminalArtifactsV1Capability)
+    }
+
+    /// Whether `surface.document.open` is supported.
+    public var supportsSurfaceDocumentV1: Bool {
+        capabilities.contains(Self.surfaceDocumentV1Capability)
+    }
+
+    /// Whether `surface.browser.capture` is supported.
+    public var supportsSurfaceBrowserV1: Bool {
+        capabilities.contains(Self.surfaceBrowserV1Capability)
+    }
+
+    /// Whether `feed.pending.list` and `feed.reply` are supported.
+    public var supportsFeedV1: Bool {
+        capabilities.contains(Self.feedV1Capability)
+    }
+
+    /// Whether `claude.sessions.list` and `claude.transcript.page` are supported.
+    public var supportsClaudeTranscriptV1: Bool {
+        capabilities.contains(Self.claudeTranscriptV1Capability)
+    }
+
+    /// Whether `relay.info` is supported.
+    public var supportsRelayInfoV1: Bool {
+        capabilities.contains(Self.relayInfoV1Capability)
+    }
+
+    /// Whether `relay.update.start` is supported.
+    public var supportsRelayUpdateV1: Bool {
+        capabilities.contains(Self.relayUpdateV1Capability)
     }
 }
 
@@ -116,6 +186,18 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
     case expired
     /// The requested media type is unsupported.
     case unsupportedMedia
+    /// The surface is not a document surface with a file path.
+    case surfaceNotDocument
+    /// The surface is not an open cmux browser surface.
+    case surfaceNotBrowser
+    /// The feed request was already answered, expired, or never pending.
+    case feedRequestNotPending
+    /// The Claude session is unknown or its transcript file is not allowed.
+    case claudeSessionNotFound
+    /// Relay auto-update is turned off on the Mac.
+    case updateDisabled
+    /// The relay install cannot update itself: no updater, no install record, or the updater did not start.
+    case updateUnavailable
     /// A code unknown to this client version.
     case unknown(String)
 
@@ -139,6 +221,12 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case .invalidHash: return "invalid_hash"
         case .expired: return "expired"
         case .unsupportedMedia: return "unsupported_media"
+        case .surfaceNotDocument: return "surface_not_document"
+        case .surfaceNotBrowser: return "surface_not_browser"
+        case .feedRequestNotPending: return "feed_request_not_pending"
+        case .claudeSessionNotFound: return "claude_session_not_found"
+        case .updateDisabled: return "update_disabled"
+        case .updateUnavailable: return "update_unavailable"
         case .unknown(let rawValue): return rawValue
         }
     }
@@ -165,6 +253,12 @@ public enum RemoteErrorCode: Sendable, Equatable, Codable {
         case "invalid_hash": self = .invalidHash
         case "expired": self = .expired
         case "unsupported_media": self = .unsupportedMedia
+        case "surface_not_document": self = .surfaceNotDocument
+        case "surface_not_browser": self = .surfaceNotBrowser
+        case "feed_request_not_pending": self = .feedRequestNotPending
+        case "claude_session_not_found": self = .claudeSessionNotFound
+        case "update_disabled": self = .updateDisabled
+        case "update_unavailable": self = .updateUnavailable
         default: self = .unknown(rawValue)
         }
     }

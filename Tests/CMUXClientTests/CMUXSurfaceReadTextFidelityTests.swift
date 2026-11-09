@@ -5,7 +5,7 @@ import SharedKit
 
 @Suite("CMUXSurfaceReadTextFidelityTests")
 struct CMUXSurfaceReadTextFidelityTests {
-    @Test func requested200StillRetainsOnly120CombinedRows() async throws {
+    @Test func requested200RetainsViewportPlusAllScrollbackUpTo240() async throws {
         let scrollbackSpans = (0..<125).map { row in
             "{\"row\":\(row),\"column\":0,\"style_id\":0,\"text\":\"history \(row)\"}"
         }.joined(separator: ",")
@@ -27,15 +27,39 @@ struct CMUXSurfaceReadTextFidelityTests {
             "lines": .int(200),
         ]))
         print("requestedLines=200 retainedCombinedRows=\(screen.rows.count) cursor=\(screen.cursor.x),\(screen.cursor.y)")
-        #expect(screen.rows.count == 120)
-        #expect(RenderGridTestSupport.visibleText(screen.rows[0]) == "history 7")
-        #expect(RenderGridTestSupport.visibleText(screen.rows[117]) == "history 124")
-        #expect(RenderGridTestSupport.visibleText(screen.rows[118]) == "viewport 0")
-        #expect(RenderGridTestSupport.visibleText(screen.rows[119]) == "viewport 1")
-        #expect(screen.cursor == CursorPos(x: 2, y: 119))
+        #expect(screen.rows.count == 127)
+        #expect(RenderGridTestSupport.visibleText(screen.rows[0]) == "history 0")
+        #expect(RenderGridTestSupport.visibleText(screen.rows[124]) == "history 124")
+        #expect(RenderGridTestSupport.visibleText(screen.rows[125]) == "viewport 0")
+        #expect(RenderGridTestSupport.visibleText(screen.rows[126]) == "viewport 1")
+        #expect(screen.cursor == CursorPos(x: 2, y: 126))
     }
 
-    @Test func requested200StillCapsViewportLargerThan120() async throws {
+    @Test func scrollbackBeyond240KeepsLatest240AndTranslatesCursor() async throws {
+        let scrollbackSpans = (0..<300).map { row in
+            "{\"row\":\(row),\"column\":0,\"style_id\":0,\"text\":\"history \(row)\"}"
+        }.joined(separator: ",")
+        let payload = RenderGridTestSupport.responseJSON(
+            columns: 16,
+            rows: 2,
+            cursorRow: 1,
+            cursorColumn: 2,
+            rowSpans: #"[{"row":0,"column":0,"style_id":0,"text":"viewport 0"},{"row":1,"column":0,"style_id":0,"text":"viewport 1"}]"#,
+            scrollbackRows: 300,
+            scrollbackSpans: "[\(scrollbackSpans)]"
+        )
+
+        let (screen, _) = try await Self.readScreen(lines: 200, payload: payload)
+
+        print("scrollbackRows=300 retainedCombinedRows=\(screen.rows.count) cursor=\(screen.cursor.x),\(screen.cursor.y)")
+        #expect(screen.rows.count == 242)
+        #expect(RenderGridTestSupport.visibleText(screen.rows[0]) == "history 60")
+        #expect(RenderGridTestSupport.visibleText(screen.rows[239]) == "history 299")
+        #expect(RenderGridTestSupport.visibleText(screen.rows[240]) == "viewport 0")
+        #expect(screen.cursor == CursorPos(x: 2, y: 241))
+    }
+
+    @Test func requested200NeverTruncatesViewportLargerThan120() async throws {
         let payload = RenderGridTestSupport.responseJSON(
             columns: 8,
             rows: 121,
@@ -52,9 +76,9 @@ struct CMUXSurfaceReadTextFidelityTests {
             "lines": .int(200),
         ]))
         print("requestedLines=200 viewportRows=121 retainedRows=\(screen.rows.count) tailCursor=\(screen.cursor.x),\(screen.cursor.y)")
-        #expect(screen.rows.count == 120)
-        #expect(RenderGridTestSupport.visibleText(screen.rows[119]) == "tail")
-        #expect(screen.cursor == CursorPos(x: 3, y: 119))
+        #expect(screen.rows.count == 121)
+        #expect(RenderGridTestSupport.visibleText(screen.rows[120]) == "tail")
+        #expect(screen.cursor == CursorPos(x: 3, y: 120))
     }
 
     @Test func availableRowsBelowRetentionLimitAreNotSynthesized() async throws {

@@ -14,6 +14,14 @@ public actor SessionManager {
     private let renderRegistry: SurfaceRenderHubRegistry
     private var sessionsById: [ObjectIdentifier: Session] = [:]
     private var byDevice: [String: Set<ObjectIdentifier>] = [:]
+    private var activeSessionCountObserver: (@Sendable (Int) -> Void)?
+
+    /// Reports ``activeSessionCount`` after every attach and detach, in order.
+    ///
+    /// - Parameter observer: Called on this actor with the new count, so it must return quickly.
+    public func setActiveSessionCountObserver(_ observer: (@Sendable (Int) -> Void)?) {
+        activeSessionCountObserver = observer
+    }
 
     /// Creates a manager around the capability-aware production source seam.
     ///
@@ -125,6 +133,7 @@ public actor SessionManager {
             remaining.remove(key)
             byDevice[deviceId] = remaining.isEmpty ? nil : remaining
         }
+        activeSessionCountObserver?(sessionsById.count)
         await session.close()
     }
 
@@ -176,5 +185,6 @@ public actor SessionManager {
         let key = ObjectIdentifier(session)
         sessionsById[key] = session
         byDevice[session.deviceId, default: []].insert(key)
+        activeSessionCountObserver?(sessionsById.count)
     }
 }

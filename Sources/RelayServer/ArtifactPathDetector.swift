@@ -2,6 +2,15 @@ import Foundation
 
 /// Extracts path-shaped tokens from untrusted visible terminal text.
 struct ArtifactPathDetector: Sendable {
+    /// Maximum distinct bare relative candidates (`docs/plan.md`, `README.md`) returned per text.
+    static let bareRelativeLimit = 64
+    /// Extensions that make a slash-free bare token a path candidate.
+    static let bareRelativeExtensions: Set<String> = [
+        "md", "markdown", "txt", "log", "json", "yaml", "yml", "toml", "swift", "py", "js", "ts",
+        "tsx", "jsx", "sh", "csv", "go", "rs", "c", "h", "cpp", "m", "java", "kt", "rb", "sql",
+        "html", "css", "xml", "diff", "patch", "png", "jpg", "jpeg", "gif", "webp", "heic", "pdf",
+    ]
+
     private enum EscapeState {
         case text
         case escape
@@ -15,6 +24,7 @@ struct ArtifactPathDetector: Sendable {
     func paths(in terminalText: String) -> [String] {
         let visible = strippingTerminalControls(from: terminalText)
         var result: [String] = []
+        var bareSeen: Set<String> = []
         var token = ""
         var quote: Unicode.Scalar?
         var escaping = false
@@ -22,7 +32,11 @@ struct ArtifactPathDetector: Sendable {
         func appendToken() {
             defer { token.removeAll(keepingCapacity: true) }
             guard let candidate = normalizedCandidate(token) else { return }
-            result.append(candidate)
+            if candidate.isBare {
+                guard bareSeen.count < Self.bareRelativeLimit,
+                      bareSeen.insert(candidate.path).inserted else { return }
+            }
+            result.append(candidate.path)
         }
 
         for scalar in visible.unicodeScalars {
@@ -58,7 +72,7 @@ struct ArtifactPathDetector: Sendable {
         return result
     }
 
-    private func normalizedCandidate(_ raw: String) -> String? {
+    private func normalizedCandidate(_ raw: String) -> (path: String, isBare: Bool)? {
         var candidate = raw.trimmingCharacters(in: CharacterSet(charactersIn: "`([{<"))
         let trailing = CharacterSet(charactersIn: "`)]}>,;!?")
         while let scalar = candidate.unicodeScalars.last,
@@ -78,13 +92,34 @@ struct ArtifactPathDetector: Sendable {
                   url.host == nil || url.host == "" || url.host == "localhost" else { return nil }
             candidate = url.path
         }
-        guard candidate.hasPrefix("/") || candidate.hasPrefix("./") || candidate.hasPrefix("../"),
-              candidate != "/",
+        guard candidate != "/",
               !candidate.isEmpty,
               candidate.utf8.count <= 4_096,
               !candidate.unicodeScalars.contains(where: { $0.value == 0 || $0.value < 0x20 || $0.value == 0x7F })
         else { return nil }
-        return candidate
+        if candidate.hasPrefix("/") || candidate.hasPrefix("./") || candidate.hasPrefix("../") {
+            return (candidate, false)
+        }
+        return isBareRelativePath(candidate) ? (candidate, true) : nil
+    }
+
+    /// Accepts `docs/plan.md` or `README.md` shapes and rejects URLs, options, versions, domains, and emails.
+    private func isBareRelativePath(_ candidate: String) -> Bool {
+        guard !candidate.contains("://"), !candidate.hasPrefix("-"), !candidate.hasPrefix("~") else {
+            return false
+        }
+        let hasSlash = candidate.contains("/")
+        if !hasSlash && candidate.contains("@") { return false }
+        let components = candidate.split(separator: "/", omittingEmptySubsequences: true)
+        guard !components.isEmpty,
+              components.contains(where: { $0.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) }) })
+        else { return false }
+        if candidate.range(of: #"^[vV]?[0-9]+(\.[0-9]+)+$"#, options: .regularExpression) != nil {
+            return false
+        }
+        if hasSlash { return true }
+        let pathExtension = (candidate as NSString).pathExtension.lowercased()
+        return Self.bareRelativeExtensions.contains(pathExtension)
     }
 
     private func strippingCompilerLocation(from candidate: String) -> String {

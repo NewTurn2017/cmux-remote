@@ -3,6 +3,7 @@ import Crypto
 import Darwin
 import Foundation
 import ImageIO
+import Logging
 import SharedKit
 import UniformTypeIdentifiers
 
@@ -11,11 +12,18 @@ actor TerminalArtifactService {
     typealias Scope = ArtifactAuthorizationStore.Scope
     typealias Source = ArtifactAuthorizationStore.Source
 
-    static let minimumFetchBytes = 1 * 1_024 * 1_024
-    static let maximumFetchBytes = 3 * 1_024 * 1_024
+    /// Raw bytes per fetch chunk or thumbnail, so one base64 response frame stays under the
+    /// 1 MiB WebSocket message limit of every shipped app (same budget as browser capture).
+    static let maximumResponsePayloadBytes = 737_280
+    static let maximumFetchBytes = maximumResponsePayloadBytes
     static let maximumImageBytes: Int64 = 32 * 1_024 * 1_024
     static let maximumImagePixels: Int64 = 40_000_000
-    static let maximumThumbnailBytes = 4 * 1_024 * 1_024
+    static let maximumThumbnailBytes = maximumResponsePayloadBytes
+    /// cmux's own thumbnail is only compared with the relay's, never sent, so it keeps the old bound.
+    static let maximumNativeThumbnailBytes = 4 * 1_024 * 1_024
+    static let maximumDocumentBytes: Int64 = 16 * 1_024 * 1_024
+
+    private static let documentLogger = Logger(label: "cmux-relay.document")
 
     enum Error: Swift.Error, Sendable, Equatable {
         case forbidden
@@ -24,7 +32,19 @@ actor TerminalArtifactService {
         case fileNotFound
         case invalidParams
         case unsupportedMedia
+        case surfaceNotDocument
+        case sizeLimitExceeded
         case native(String)
+    }
+
+    /// Why a surface could not be opened as a document; raw values are path-free log reasons.
+    private enum DocumentRefusal: String, Swift.Error {
+        case workspaceListUnsupported = "workspace_list_unsupported"
+        case workspaceListMalformed = "workspace_list_malformed"
+        case workspaceMissing = "workspace_missing"
+        case surfaceMissing = "surface_missing"
+        case notMarkdown = "not_markdown"
+        case filePathMissing = "file_path_missing"
     }
 
     enum NativeResult: Sendable, Equatable {
@@ -532,6 +552,76 @@ actor TerminalArtifactService {
         )
     }
 
+    /// Authorizes the file behind one cmux markdown surface. The path comes only from cmux.
+    func openDocument(
+        scope: Scope,
+        maximumBytes: Int64 = TerminalArtifactService.maximumDocumentBytes
+    ) async throws -> ScanResult {
+        let listing: JSONValue
+        switch await dispatchNative("mobile.workspace.list", .object([:])) {
+        case .success(let value):
+            listing = value
+        case .failure(let code) where code == "method_not_found":
+            throw refuseDocument(.workspaceListUnsupported)
+        case .failure(let code):
+            throw Error.native(code)
+        }
+        let path: String
+        switch Self.documentPath(in: listing, scope: scope) {
+        case .success(let found): path = found
+        case .failure(let refusal): throw refuseDocument(refusal)
+        }
+        let inspected: FileSystem.Inspected
+        do {
+            inspected = try await inspect(path: path, cwd: nil)
+        } catch {
+            throw mapFileSystemFailure(error, changedAfterAuthorization: false)
+        }
+        guard inspected.identity.size <= maximumBytes else { throw Error.sizeLimitExceeded }
+        return await record(
+            scope: scope,
+            candidates: [candidate(from: inspected, source: .surfaceDocument)],
+            source: .surfaceDocument
+        )
+    }
+
+    private func refuseDocument(_ refusal: DocumentRefusal) -> Error {
+        Self.documentLogger.notice("surface.document.open refused: \(refusal.rawValue)")
+        return .surfaceNotDocument
+    }
+
+    private static func documentPath(
+        in listing: JSONValue,
+        scope: Scope
+    ) -> Result<String, DocumentRefusal> {
+        guard case .object(let root) = listing,
+              case .array(let workspaces)? = root["workspaces"] else {
+            return .failure(.workspaceListMalformed)
+        }
+        let workspace = workspaces.lazy.compactMap { value -> [String: JSONValue]? in
+            guard case .object(let fields) = value,
+                  case .string(let id)? = fields["id"],
+                  id.caseInsensitiveCompare(scope.workspaceID) == .orderedSame else { return nil }
+            return fields
+        }.first
+        guard let workspace else { return .failure(.workspaceMissing) }
+        guard case .array(let surfaces)? = workspace["surfaces"] else {
+            return .failure(.workspaceListMalformed)
+        }
+        let surface = surfaces.lazy.compactMap { value -> [String: JSONValue]? in
+            guard case .object(let fields) = value,
+                  case .string(let id)? = fields["surface_id"],
+                  id.caseInsensitiveCompare(scope.surfaceID) == .orderedSame else { return nil }
+            return fields
+        }.first
+        guard let surface else { return .failure(.surfaceMissing) }
+        guard case .string("markdown")? = surface["kind"] else { return .failure(.notMarkdown) }
+        guard case .string(let path)? = surface["file_path"], path.hasPrefix("/") else {
+            return .failure(.filePathMissing)
+        }
+        return .success(path)
+    }
+
     func stat(deviceID: String, artifactID: String) async throws -> StatResult {
         let located = try await locate(deviceID: deviceID, artifactID: artifactID)
         return try await stat(
@@ -594,9 +684,8 @@ actor TerminalArtifactService {
         offset: Int64,
         length: Int
     ) async throws -> FetchChunk {
-        guard length >= Self.minimumFetchBytes, length <= Self.maximumFetchBytes, offset >= 0 else {
-            throw Error.invalidParams
-        }
+        guard length > 0, offset >= 0 else { throw Error.invalidParams }
+        let length = min(length, Self.maximumFetchBytes)
         let authorization = try await resolveAndRevalidate(
             scope: scope, generation: generation, artifactID: artifactID, revision: revision
         )
@@ -950,7 +1039,7 @@ actor TerminalArtifactService {
         }
         guard case .string(let encoded)? = fields["data_b64"],
               let data = Data(base64Encoded: encoded), data.base64EncodedString() == encoded,
-              data.count <= Self.maximumThumbnailBytes,
+              data.count <= Self.maximumNativeThumbnailBytes,
               data.starts(with: [0xFF, 0xD8]),
               case .int(let width)? = fields["pixel_width"], width > 0, width <= 1_024,
               case .int(let height)? = fields["pixel_height"], height > 0, height <= 1_024,

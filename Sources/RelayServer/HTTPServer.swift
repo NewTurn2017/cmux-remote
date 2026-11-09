@@ -36,6 +36,10 @@ public final class HTTPServer: @unchecked Sendable {
     public let cmux: CMUXFacade
     private let uploadService: ChunkedFileUploadService
     private let artifactService: TerminalArtifactService
+    private let browserCaptureService: BrowserCaptureService
+    private let feedService: FeedService
+    private let claudeTranscriptService: ClaudeTranscriptService
+    private let relayUpdateService: RelayUpdateService
     public let logger = Logger(label: "HTTPServer")
 
     public init(group: MultiThreadedEventLoopGroup,
@@ -61,6 +65,10 @@ public final class HTTPServer: @unchecked Sendable {
                 return .failure(code: "internal_error")
             }
         })
+        self.browserCaptureService = BrowserCaptureService(cmux: cmux)
+        self.feedService = FeedService(cmux: cmux)
+        self.claudeTranscriptService = ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = .unavailable()
     }
 
     init(group: MultiThreadedEventLoopGroup,
@@ -70,7 +78,11 @@ public final class HTTPServer: @unchecked Sendable {
          sessionManager: SessionManager,
          cmux: CMUXFacade,
          uploadService: ChunkedFileUploadService,
-         artifactService: TerminalArtifactService)
+         artifactService: TerminalArtifactService,
+         browserCaptureService: BrowserCaptureService? = nil,
+         feedService: FeedService? = nil,
+         claudeTranscriptService: ClaudeTranscriptService? = nil,
+         relayUpdateService: RelayUpdateService? = nil)
     {
         self.group = group
         self.routes = routes
@@ -80,6 +92,10 @@ public final class HTTPServer: @unchecked Sendable {
         self.cmux = cmux
         self.uploadService = uploadService
         self.artifactService = artifactService
+        self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
+        self.feedService = feedService ?? FeedService(cmux: cmux)
+        self.claudeTranscriptService = claudeTranscriptService ?? ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = relayUpdateService ?? .unavailable()
     }
 
     /// Bind the server and return the listening channel. The caller is
@@ -98,6 +114,10 @@ public final class HTTPServer: @unchecked Sendable {
         )
         let uploadService = self.uploadService
         let artifactService = self.artifactService
+        let browserCaptureService = self.browserCaptureService
+        let feedService = self.feedService
+        let claudeTranscriptService = self.claudeTranscriptService
+        let relayUpdateService = self.relayUpdateService
 
         let bs = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
@@ -149,7 +169,11 @@ public final class HTTPServer: @unchecked Sendable {
                                 sessionManager: manager,
                                 cmuxClient: cmux,
                                 uploadService: uploadService,
-                                artifactService: artifactService
+                                artifactService: artifactService,
+                                browserCaptureService: browserCaptureService,
+                                feedService: feedService,
+                                claudeTranscriptService: claudeTranscriptService,
+                                relayUpdateService: relayUpdateService
                             )
                             return channel.pipeline.addHandler(handler)
                         }

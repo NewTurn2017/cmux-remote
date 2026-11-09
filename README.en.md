@@ -16,21 +16,24 @@ cmux exclusively over a documented JSON-RPC protocol.
 
 ---
 
-## What's new — v1.0.8
+## What's new — v2.0.0
 
 <p align="center">
   <img src="docs/launch-assets/source/cmux-remote-brandmark-transparent.png" alt="cmux Remote brandmark" width="320">
 </p>
 
-New or changed since v1.0.5:
+New or changed since v1.1.4:
 
-- 🔔 **Native push notifications (APNs)** — the relay delivers cmux events and Claude/Codex-style `needs input` prompts over APNs. Configure an `apns` block on the relay and banners arrive even when the app is backgrounded or killed; leave it unset and it falls back to the existing local notifications.
-- ⌨️ **Ctrl-C shortcut** — a dedicated Ctrl-C key on the terminal keyboard bar to interrupt a running command.
-- 🖼️ **All five App Store screenshots refreshed** — latest workspace, terminal, keyboard, Inbox, and settings screens.
-- 🔕 **Quieter notifications** — a new setting raises an iOS banner only for events that need your input; everything else still lands in the Inbox with unread badges.
-- 🇰🇷 **Korean/CJK overlap fix** — wide Hangul glyphs no longer bleed into neighboring cells on wide panes; runs are laid out from measured font metrics and clipped per cell ([#13](https://github.com/NewTurn2017/cmux-remote/issues/13)).
-- ➖ **`--` input protection** — the command composer disables iOS smart punctuation, so `--` flags reach the terminal verbatim instead of becoming an em dash ([#4](https://github.com/NewTurn2017/cmux-remote/issues/4)).
-- 🛠️ **(relay) Setup compatibility** — cmux 0.64+ `socket-control-password` XDG state path support, GUI Tailscale.app CLI PATH fallback, and connection-guide password fixes. Update the relay with `git pull` then rerun `./scripts/install-launchd.sh`.
+- 📝 **Markdown and text documents** — open cmux markdown tabs and text files on your phone as documents (refresh button, no live updates). Bare relative paths printed in the terminal open too.
+- 🌐 **Browser tab view** — see a cmux browser tab on your phone as a screenshot, refreshed about every 2 seconds while it is on screen. Read-only: no clicks, scrolling, or navigation.
+- 🤖 **AGENTS tab** — answer the questions, permission requests, and plan approvals that Claude and other agents on your Mac are waiting on (with time-left and expiry hints), and read Claude session conversations, read-only.
+- 🔔 **Notification text** — notification titles and bodies show in the Inbox and in banners, and clearing notifications on your Mac clears the cards on your phone. With an `apns` block on the relay, pushes (APNs) also carry the title and body and pass through Apple's push servers ([PRIVACY.md](PRIVACY.md)).
+- 📜 **Page through fullscreen terminals** — on screens with no scrollback, such as Claude Code's fullscreen view, pulling past the top or bottom edge sends Page Up / Page Down. Tabs that are not terminals open in a view that fits their kind, or an info card, instead of an empty terminal.
+- 🛠️ **(relay) Reliability** — fixed repeated full-screen frames, file work that stalled the WebSocket, and images or documents over about 750 KB that failed to open or dropped the connection. Slow RPCs are logged, and `CMUX_RELAY_TRACE_RPC=1` traces every one.
+- 🔄 **Relay auto-update** — the Mac relay follows only official GitHub release tags (`vX.Y.Z`) and, when a new one appears, downloads, builds, signs, and installs it by itself. It restarts only when no phone is connected (tapping [ UPDATE NOW ] in Settings applies it right away). A relay coming from 1.x needs one manual update first, and `./scripts/install-launchd.sh --no-auto-update` turns it off ([Auto-update](#auto-update)).
+- 🏷️ **Version display and update notice** — the Settings version section shows the app version (`2.0.0 (22)` format) and the relay version and update state. When a newer version is on the App Store, the Settings tab shows a dot and an [ OPEN APP STORE ] button. The app checks once a day by sending Apple only the bundle ID and country ([PRIVACY.md](PRIVACY.md)).
+- 🌐 **Korean/English text review** — the app follows the iOS system language (there is no in-app language picker). 49 strings that had no Korean translation are now translated, and one Korean demo string that leaked into English is fixed. Design labels such as tab names stay in English.
+- 🧭 **Tab row stays visible** — tapping the command field and raising the keyboard no longer hides the surface tab row (terminal, browser, markdown) at the top of the workspace.
 
 <table>
   <tr>
@@ -42,18 +45,18 @@ New or changed since v1.0.5:
   </tr>
 </table>
 
-> For changes in v1.0.5 and earlier, see the **Changelog** below.
+> For changes in v1.1.4 and earlier, see the **Changelog** below.
 
 ---
 
 ## Status
 
-**Early preview (v1.0.9).** It can:
+**Early preview (v2.0.0).** It can:
 
 - list, open, create, rename, and close cmux workspaces and surfaces
-- mirror any terminal surface in near real-time (15 Hz diff polling, 120-line bounded history)
+- mirror any terminal surface in near real-time (15 Hz diff polling, screen height + 240 lines of scrollback)
 - send keystrokes, key combinations, raw text, command lines, and live per-character input, with a dedicated Ctrl-C shortcut
-- surface cmux notifications in the Inbox as iOS local notifications, or
+- surface cmux notifications (with title and body) in the Inbox as iOS local notifications, or
   as APNs push when the relay has an `apns` block configured
 - paste iOS device clipboard text into the command composer
 - attach iOS device photos by saving them to the Mac under
@@ -62,16 +65,24 @@ New or changed since v1.0.5:
 - surface Claude/Codex-style `needs input` events in the Inbox
 - keep the terminal input panel flush with the bottom edge and add extra scroll room so hidden terminal rows can be revealed
 - pin cmux pane focus on every send
+- tell surface kinds apart (terminal, browser, markdown); on screens with no scrollback, pulling past the top or bottom edge sends Page Up / Page Down
+- read cmux markdown tabs and text files, and view browser tabs as screenshots (read-only)
+- AGENTS tab: answer questions, permission requests, and plan approvals from Claude and other agents; read Claude conversations (read-only)
+- follow official GitHub release tags with the Mac relay and update itself (restarts only when no phone is connected, can be turned off)
+- show the app and relay versions and update state in Settings, and notify when a newer version is on the App Store
 
 Smoke-tested against macOS 14 + iOS 17 on both LAN and across a Tailnet
 (Tailscale 1.84+), on simulator and a physical iPhone.
 
 > **Notification delivery** — as of 1.0.6, configuring an `apns` block on
 > the relay delivers banners over APNs even when the app is killed or
-> long-backgrounded. Without APNs configured, notifications behave as
-> before: local banners that only fire while the app is foregrounded, or
-> while it's still alive in the background with an open WebSocket. (See the
-> `apns` block under **Configuration**.)
+> long-backgrounded. The push carries the notification's title, subtitle,
+> and body, and goes from your Mac's relay through Apple's push servers to
+> your device (the developer runs no server); see [PRIVACY.md](PRIVACY.md).
+> Without APNs configured, notifications behave as before: local banners
+> that only fire while the app is foregrounded, or while it's still alive in
+> the background with an open WebSocket. (See the `apns` block under
+> **Configuration**.)
 
 ---
 
@@ -81,7 +92,14 @@ Smoke-tested against macOS 14 + iOS 17 on both LAN and across a Tailnet
 > Scopes — `app` (iOS app) · `relay` (Mac daemon) · `setup` (install/docs).
 > Per-version App Store notes live in
 > [`docs/launch-assets/release-notes/`](docs/launch-assets/release-notes/).
+> Dates for 1.1.x are the App Store submission dates recorded in the release notes.
 
+- **2026-11-09 · v2.0.0 (app + relay)** — app: markdown and text documents, browser tab view (screenshots, read-only), AGENTS tab (answer Claude questions, permissions, and plans; read Claude conversations), notification title and body in the Inbox with cards removed when you clear notifications on the Mac, Page Up / Page Down pull gesture in fullscreen terminals, surface kinds, Settings app and relay version display with [ UPDATE NOW ], App Store new-version notice (once a day, bundle ID and country only), text review (49 Korean strings), surface tab row stays visible with the keyboard up. relay: auto-update (official `vX.Y.Z` tags only, restarts only when no phone is connected, `--no-auto-update` turns it off), `relay.info` and `relay.update.start`, surface kinds and active screen, scrollback of screen height + 240 lines, document / browser / feed / Claude transcript services, notification title and body in pushes (when `apns` is configured), fixes for repeated frames, stalled file work, and large-file transfers, slow-RPC logging.
+- **2026-10-27 · v1.1.4 (app)** — Option + Down Arrow shortcut. To jump to the latest output in Claude Code's fullscreen view, add `"alt+down": "scroll:bottom"` to the Scroll context in `~/.claude/keybindings.json` on your Mac.
+- **2026-10-15 · v1.1.3 (app + relay)** — app: switching terminals or workspaces no longer shows the previous screen, explains why a terminal can't be opened, reconnects automatically while the relay or Tailscale is still starting, clearer connection and pairing messages. relay: pairing is bound to the Tailscale device (kept across node-key rotation) and Host/Origin checks block cross-site and DNS-rebinding requests. The relay ships from `main`, not the App Store.
+- **2026-10-05 · v1.1.2 (app)** — Option + Up Arrow shortcut in the bottom row; Space label replaced with a symbol.
+- **v1.1.1 (app)** — ANSI truecolor on an opaque-black viewport, long-press drag selection with one-tap copy, photo and document upload to `Downloads/cmux-remote`, recent uploads and terminal files with thumbnails and a full-screen viewer, scroll-to-bottom control moved into the command deck, Settings guidance and notification copy localized in English and Korean.
+- **v1.0.9 (app)** — native tablet workspace (full window, two-row landscape deck, full-width terminal, large touch targets, all four orientations).
 - **2026-07-23 · v1.0.8 (app + relay)** — app: fixed Korean/CJK wide-glyph overlap in the terminal mirror (measured font metrics + per-run clipping, geometry regression tests, #13), disabled smart punctuation in the command composer so `--` survives verbatim (#4), notification noise controls (banners only for needs-input events), release-build type-check stall fix (#11). relay: cmux 0.64+ `socket-control-password` XDG state path support (#8, #14), GUI Tailscale.app CLI PATH fallback (#14), connection-guide password fixes.
 - **2026-06-23 · v1.0.6 (app + relay)** — Native APNs push notifications (banners reach a killed app when an `apns` block is configured on the relay; local-notification fallback otherwise), a dedicated Ctrl-C shortcut on the terminal keyboard bar, and all five App Store 6.9" screenshots refreshed. *Never released on the App Store — folded into v1.0.8.*
 - **2026-06-06 · relay** — Track cmux's relocated socket after cmux 1.0.5 moved its Unix socket from `~/Library/Application Support/cmux` to `~/.local/state/cmux`. `cmuxSocketPath()` now follows the markers newest-convention-first (`/tmp/cmux-last-socket-path` → `~/.local/state/cmux/last-socket-path` → legacy Application Support), falling back to `~/.local/state/cmux/cmux.sock`. **No iOS app change → no App Store resubmission.**
@@ -150,17 +168,19 @@ client that talks to cmux over a documented JSON-RPC schema.
 - Auto re-subscribe and bottom-pin on workspace / surface switch
 - First-RPC gate (`CMUXClient.awaitReady`) so the inbound bridge is
   installed before any call goes out
+- The relay carries each surface's kind (terminal, browser, markdown). Tabs that are not terminals are marked and open in a view that fits their kind (or an info card) instead of an empty terminal
 
 ### Terminal mirror
 
 - 15 Hz diff polling, full-text fallback, checksum-based reconcile
-- 120-line bounded history to avoid abrupt 24-line refreshes on surface switch / reload
+- The relay keeps screen height + 240 lines of scrollback to avoid abrupt 24-line refreshes on surface switch / reload
 - Extra five-row bottom scroll padding so rows behind the input accessory can be pulled fully into view
 - Cached render rows and style runs, drawn through Canvas in run-sized batches for faster scroll and zoom
 - Tokyo Night Storm palette, ANSI 256-color / true-color rendering groundwork, plus a CRT scanline shader
 - Correct East-Asian wide-glyph cell width
 - Suppresses iOS auto-promotion of glyphs like ● ⏺ ✔ ▶ to color emoji
   (Variation Selector-15 plus a small substitution table)
+- On screens with no scrollback (the alternate screen, such as Claude Code's fullscreen view), pulling past the top or bottom edge sends one Page Up / Page Down (56 pt threshold, 0.35 s between keys in the same direction)
 
 ### Input
 
@@ -186,6 +206,21 @@ client that talks to cmux over a documented JSON-RPC schema.
   re-pins `surface.focus` first. iPhone keys land on the surface you
   intended even after focus moved at the Mac.
 
+### Documents / browser
+
+- Render cmux markdown tabs and text files on the phone as documents (refresh button, no live updates)
+- The relay reads the file path from cmux — the phone sends only workspace and surface ids
+- Open bare relative file paths printed in the terminal
+- View cmux browser tabs as screenshots — refreshed about every 2 seconds while on screen, read-only (no clicks, scrolling, or navigation), manual refresh, pinch zoom, title and URL shown
+- Large images and documents are fetched in 720 KiB chunks (relay frames stay under 1 MiB, the app accepts up to 4 MiB)
+
+### AGENTS tab
+
+- See and answer the questions, permission requests, and plan approvals that Claude and other agents on your Mac are waiting on (permissions: allow, always allow, deny; plans: approve, auto-accept, reject)
+- Time left and an expiry notice for each open request (cmux's hook expires after about 125 seconds)
+- Read Claude sessions and conversations, read-only — newest page first, scroll to the top for older pages
+- The relay reads only `.jsonl` session files inside `~/.claude/projects`, and never sends file paths or resume commands to the phone
+
 ### Notifications
 
 - Surfaces cmux `events.stream` notifications as iOS local
@@ -198,12 +233,21 @@ client that talks to cmux over a documented JSON-RPC schema.
 - Claude/Codex-style `needs input`, `needs attention`, and approval events are promoted into the same Inbox stream
 - With an `apns` block configured, cmux events / `needs input` are
   delivered as APNs push (reaching a killed app); without it, the Inbox
-  falls back to local notifications
+  falls back to local notifications. The push carries the notification's
+  title, subtitle, and body and passes through Apple's push servers (no
+  developer server; [PRIVACY.md](PRIVACY.md))
 - Deep link `cmux://surface/<id>` (payload-driven deep-link auto-open is
   planned for v1.1)
 - `SEND TEST NOTIFICATION` button in Settings: a local inject for
   immediate Inbox/banner confirmation, plus a separate status line for
   the relay→cmux→events.stream round-trip
+- Inbox cards show the notification title and body (the relay fills in the text cmux redacts from the event stream), every new notification raises a local banner while connected, and clearing notifications on the Mac removes the cards on the phone
+
+### Settings screen (version / update)
+
+- **Version section** — shows the app version (`2.0.0 (22)` format), the relay version, the update state (up to date, new version available, checking / downloading / building, ready, applying, or the failure reason), whether auto-update is on, and when it last checked. If the relay is older than 2.0, the version reads "Unknown (before 2.0)" with a hint to run `git pull` and `./scripts/install-launchd.sh`.
+- **[ UPDATE NOW ]** — a button shown when the relay is 2.0 or newer and auto-update isn't turned off. After a confirmation it starts checking, downloading, and building right away, and applies the update as soon as it is ready, even with phones connected (the connection drops briefly and reconnects automatically).
+- **App Store new-version notice** — when a version newer than the installed app exists, the Settings tab shows a dot and the version section shows a notice with an [ OPEN APP STORE ] button.
 
 ### Mac relay
 
@@ -221,17 +265,28 @@ client that talks to cmux over a documented JSON-RPC schema.
 - iPhone photo uploads saved only under `~/Downloads/cmux-remote/` via `file.upload`
 - Dedicated cmux UDS channel for the events stream (the subscribed
   channel becomes push-only and won't accept further RPC responses)
-- APNs push fanout (`APNsProvider`) — per-device-token delivery, disabled
-  when no `apns` block is configured
+- APNs push fanout (`APNsProvider`) — per-device-token delivery (title, subtitle,
+  and body included), disabled when no `apns` block is configured
+- Document (`surface.document.open`), browser screenshot (`surface.browser.capture`), feed reply (`feed.reply`), and Claude transcript (`claude.transcript.page`) services; file and thumbnail frames stay under 1 MiB
+- Auto-update (launchd job `com.genie.cmuxremote.updater`, `relay-update.sh`) — official tags only, restarts only when no phone is connected, rolls back to the previous binary on failure ([Auto-update](#auto-update))
+- `relay.info` (version, update state) and `relay.update.start` (update now) RPCs, with capability flags `relay.info.v1` and `relay.update.v1`
 
 ### Security
 
 - Relay binds to `0.0.0.0` but refuses non-Tailscale source addresses
   at the application layer (`EndpointPolicy`)
 - Per-device tokens with menu-bar revoke
-- Notification payloads never contain terminal contents — only a
-  workspace/surface id and a short title
-- No telemetry, no analytics, no third-party network calls
+- Pushes (APNs) carry the notification's title, subtitle, and body plus a
+  workspace/surface id. The terminal screen itself is not sent, but the body is
+  whatever text the cmux notification carries, so words written by programs
+  running in your terminal can appear in it. Pushes are sent only when the
+  relay has an `apns` block
+- No telemetry, no analytics, and no developer-run server. Traffic that leaves
+  your tailnet is limited to the following: push notifications (Mac relay →
+  Apple's push servers), the App Store version check (app → Apple, bundle ID
+  and country only, once a day), and the relay's GitHub tag check and download
+  (Mac → GitHub, turned off with `--no-auto-update`). See
+  [PRIVACY.md](PRIVACY.md)
 
 ---
 
@@ -304,12 +359,14 @@ service. Logs land in `~/.cmuxremote/log/`.
 ```bash
 # Health check — hit your own Tailscale IP from the Mac
 curl -s http://$(tailscale ip -4):4399/v1/health
-# {"ok":true,"version":"0.1.0"}   ← this means the relay is healthy
+# {"ok":true}   ← this means the relay is healthy
 
 # Confirm it also attached to the cmux socket
 ./scripts/cmux-probe.sh
 # {"id":"probe-1","result":{...}}
 ```
+
+The health response is open without authentication, so it carries no version. Check the relay version in the app's Settings or with `~/.cmuxremote/bin/cmux-relay --version` on the Mac.
 
 No response or something off? Check the log first:
 
@@ -415,7 +472,9 @@ the relay to whatever socket happened to be live at install time.
 
 > **APNs push (`apns` block).** Add an `apns` block to `relay.json` and
 > cmux notifications are delivered over APNs, reaching the app even when
-> it's killed. Without the block, notifications are local-only.
+> it's killed. The push carries the notification's title, subtitle, and body
+> and passes through Apple's push servers ([PRIVACY.md](PRIVACY.md)). Without
+> the block, notifications are local-only.
 >
 > ```json
 > {
@@ -430,6 +489,8 @@ the relay to whatever socket happened to be live at install time.
 > ```
 >
 > Set `env` to `"sandbox"` for dev/sideload builds, `"prod"` for App Store / release builds.
+
+Auto-update settings are stored in `~/.cmuxremote/update/config.json`, and you change them with the installer options `--no-auto-update` and `--auto-update` ([Auto-update](#auto-update)).
 
 ---
 
@@ -461,6 +522,44 @@ re-renders the plist, and bootstraps + kickstarts in one shot:
 ./scripts/install-launchd.sh            # includes swift build -c release
 ./scripts/uninstall-launchd.sh          # bootout + remove plist
 ```
+
+By default the relay keeps the ad-hoc signature from `swift build`. That
+signature changes with every build, so macOS treats each reinstall as a new
+app and asks again for access to the Downloads folder. Phone uploads and
+terminal attachments live there. Until someone clicks Allow on the Mac, those
+requests answer `temporarily_unavailable` after about 4 seconds. The screen
+and typing are not blocked, though input can arrive a few seconds late right
+after you open a terminal. If you have a signing identity, pass it once.
+The installer remembers it in `~/.cmuxremote/codesign-identity`:
+
+```bash
+security find-identity -v -p codesigning     # list identities
+./scripts/install-launchd.sh --sign "Developer ID Application: Your Name (TEAMID)"
+./scripts/install-launchd.sh --sign adhoc    # back to ad-hoc
+```
+
+The first install with the new identity asks for Downloads access once.
+Later reinstalls keep it.
+
+### Auto-update
+
+Starting with 2.0.0 the relay updates itself by following **only official release tags (`vX.Y.Z`)** of the GitHub repository `https://github.com/NewTurn2017/cmux-remote`. It never looks at the `main` branch or arbitrary commits, and it ignores suffixed tags such as `-rc`. If you run a development branch build, install with `./scripts/install-launchd.sh --no-auto-update`, because a new tag would overwrite it.
+
+- **Who does it** — a launchd job that runs separately from the relay, `com.genie.cmuxremote.updater` (`~/.cmuxremote/libexec/relay-update.sh`), wakes every 5 minutes and checks whether a check is due. It never touches the checkout you installed from; it downloads and builds only in a managed clone at `~/.cmuxremote/src/cmux-remote`.
+- **When it checks** — the first check comes about 15 to 20 minutes after installation, then at most once an hour. If there is a `vX.Y.Z` tag newer than the installed version and its commit is part of `origin/main`, it downloads, builds, signs, and installs it.
+- **When it restarts** — only after no phone has been connected for 2 minutes (120 seconds). [ UPDATE NOW ] in the app applies the update at once, even with phones connected (the connection drops briefly while the relay restarts and reconnects automatically).
+- **If it fails** — if the new relay isn't up as the new version within 60 seconds and still alive 15 seconds later, the previous relay is restored and that tag is not retried automatically. A tag whose build failed is not rebuilt automatically either (it is retried when the toolchain changes or when you ask).
+- **Signing** — it signs with the remembered `~/.cmuxremote/codesign-identity`. If signing fails it does not fall back to ad-hoc; it records the failure and lengthens the retry interval. Without an identity the build is ad-hoc signed, and macOS may ask again for Downloads access after an update (Settings and `update.log` carry a warning).
+- **Checking status** — the version section in the app's Settings, or `tail ~/.cmuxremote/log/update.log` on the Mac. If something is wrong, also look at `~/.cmuxremote/update/last-git.log` and `~/.cmuxremote/log/updater.stderr.log`. Logs hold only tags, commits, states, and times, and shorten home paths to `~`.
+- **What it needs** — `git` and a Swift toolchain on the Mac. The managed clone and build cache use disk (about 0.8 GB, an estimate and not a measurement), and no update starts when less than 2 GiB is free before the build.
+- **Dependency versions** — `Package.resolved` is not tracked in the repository, so an update fetches the newest compatible SwiftPM dependencies and builds can differ between users. If a new dependency version breaks the build, that tag is remembered as `build_failed` and is not installed.
+- **Following another repository** — `./scripts/install-launchd.sh --update-origin <https git URL>` (the default is the GitHub repository above).
+
+**Turning it off and on** — `./scripts/install-launchd.sh --no-auto-update` turns it off by not installing (or by removing) the updater job, and the choice is remembered. While it is off, the relay makes no GitHub request at all, and the app's Settings says auto-update is turned off on the Mac. Run `./scripts/install-launchd.sh --auto-update` to turn it back on.
+
+**Moving up from 1.x the first time** — a 1.x relay has no updater, so update it by hand once. Run `git pull` in the repository to get 2.0.0 or newer, then `./scripts/install-launchd.sh` (your signing identity is remembered). That installs relay 2.0.0 and the updater together, and updates are automatic from then on. If the app's Settings shows the relay version as "Unknown (before 2.0)", it is still a 1.x relay.
+
+**Uninstalling** — `./scripts/uninstall-launchd.sh` removes the relay and updater jobs and plists, the updater script in `~/.cmuxremote/libexec`, the `update/` state, and the managed clone. Add `--keep-update-cache` to keep the clone (the build cache). `relay.json`, `devices.json`, `codesign-identity`, and `bin/` stay.
 
 ---
 
@@ -524,11 +623,12 @@ the fastest way to re-attach after a socket rotation is
 - [x] v1.0.5 — LIVE input mode, Hangul IME guard, bottom-flush input panel, five-row terminal scroll padding, Claude/Codex Inbox regression coverage
 - [x] v1.0.6 — native APNs push (reaches a killed app), Ctrl-C shortcut, all five App Store screenshots refreshed (never released — folded into 1.0.8)
 - [x] v1.0.8 — Korean/CJK overlap rendering fix, `--` smart-punctuation input protection, notification noise controls, cmux 0.64+ setup compatibility (relay)
+- [x] v2.0.0 — surface kinds and fullscreen Page Up / Page Down, markdown / text document and browser tab viewing, AGENTS tab (feed replies, Claude conversations), notification text, relay auto-update, Settings app and relay version display with an App Store new-version notice, text review, tab row stays visible with the keyboard up, relay reliability fixes
 - [ ] **v1.1 — push follow-ups** — payload-driven deep-link auto-open to the surface, delivery reliability / retries
 - [x] Native iPad landscape layout
 - [ ] v1.2 — External keyboard polish
 - [ ] v1.3 — file preview for cmux's "open in pane" intents
-- [ ] v2.0 — byte-stream RPC for high-rate TUIs (vim, htop, k9s)
+- [ ] v2.x and later — byte-stream RPC for high-rate TUIs (vim, htop, k9s)
 - [ ] Maybe — Android client (PRs welcome, see `docs/specs/`)
 
 Explicit non-goals: public-internet exposure (Tailscale Funnel),
@@ -639,9 +739,18 @@ open a discussion or drop a design doc under `docs/specs/` first.
 - Per-device tokens can be revoked individually from the relay CLI.
 - Registration and caller identity lookups are coalesced and briefly cached,
   including unavailable results, to bound local Tailscale process load.
-- Notification payloads never contain terminal contents — only a
-  workspace/surface id and a short title.
-- No telemetry. No analytics. No third-party network calls.
+- Pushes (APNs) carry the notification's title, subtitle, and body plus a
+  workspace/surface id. The terminal screen itself is not sent, but the body is
+  whatever text the cmux notification carries, so words written by programs
+  running in your terminal can appear in it. Pushes are sent only when the
+  relay has an `apns` block, and go from your Mac's relay through Apple's push
+  servers to your device.
+- No telemetry. No analytics. No developer-run server. Traffic that leaves your
+  tailnet is limited to the following: push notifications (Mac relay → Apple's
+  push servers), the App Store version check (app → Apple, bundle ID and
+  country only, once a day), and the relay's GitHub tag check and download
+  (Mac → GitHub, turned off with `--no-auto-update`). See
+  [PRIVACY.md](PRIVACY.md).
 
 If you find a security issue, please email the maintainer (see
 `SECURITY.md`) instead of filing a public issue.

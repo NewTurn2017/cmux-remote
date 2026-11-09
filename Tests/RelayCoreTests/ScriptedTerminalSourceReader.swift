@@ -69,6 +69,8 @@ actor ScriptedTerminalSourceReader: TerminalSourceReader {
             return outcome
         case .failure(let description):
             throw ScriptedTerminalSourceError.failure(description)
+        case .notTerminal:
+            throw CMUXTerminalSourceError.surfaceNotTerminal
         case .suspended(let outcome):
             let id = UUID()
             return try await withTaskCancellationHandler {

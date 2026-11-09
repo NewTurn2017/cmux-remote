@@ -42,7 +42,12 @@ public actor WSProtocolMachine {
     private let authenticatedDeviceID: String
     private let uploadService: ChunkedFileUploadService
     private let artifactService: TerminalArtifactService
+    private let browserCaptureService: BrowserCaptureService
+    private let feedService: FeedService
+    private let claudeTranscriptService: ClaudeTranscriptService
+    private let relayUpdateService: RelayUpdateService
     private let uploadIDSource: @Sendable () -> UUID
+    private let relayOwnedTimeout: Duration
     private var helloed = false
 
     public init(cmux: CMUXFacade) {
@@ -54,7 +59,12 @@ public actor WSProtocolMachine {
                 await Self.dispatchNative(cmux: cmux, method: method, params: params)
             }
         )
+        self.browserCaptureService = BrowserCaptureService(cmux: cmux)
+        self.feedService = FeedService(cmux: cmux)
+        self.claudeTranscriptService = ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = .unavailable()
         self.uploadIDSource = { UUID() }
+        self.relayOwnedTimeout = BoundedRelayWork.defaultTimeout
     }
 
     init(
@@ -62,13 +72,23 @@ public actor WSProtocolMachine {
         authenticatedDeviceID: String,
         uploadService: ChunkedFileUploadService,
         artifactService: TerminalArtifactService,
-        uploadIDSource: @escaping @Sendable () -> UUID = { UUID() }
+        browserCaptureService: BrowserCaptureService? = nil,
+        feedService: FeedService? = nil,
+        claudeTranscriptService: ClaudeTranscriptService? = nil,
+        relayUpdateService: RelayUpdateService? = nil,
+        uploadIDSource: @escaping @Sendable () -> UUID = { UUID() },
+        relayOwnedTimeout: Duration = BoundedRelayWork.defaultTimeout
     ) {
         self.cmux = cmux
         self.authenticatedDeviceID = authenticatedDeviceID
         self.uploadService = uploadService
         self.artifactService = artifactService
+        self.browserCaptureService = browserCaptureService ?? BrowserCaptureService(cmux: cmux)
+        self.feedService = feedService ?? FeedService(cmux: cmux)
+        self.claudeTranscriptService = claudeTranscriptService ?? ClaudeTranscriptService(cmux: cmux)
+        self.relayUpdateService = relayUpdateService ?? .unavailable()
         self.uploadIDSource = uploadIDSource
+        self.relayOwnedTimeout = relayOwnedTimeout
     }
 
     public var hasHelloed: Bool { helloed }
@@ -91,6 +111,11 @@ public actor WSProtocolMachine {
         if let immediate = Self.synchronousRelayOwnedResponse(for: req) {
             return [.sendText(immediate)]
         }
+        if req.method == "file.upload" {
+            return [.sendText(await bounded(req) {
+                await BoundedRelayWork.offCooperativePool { Self.legacyUploadResponse(for: req) }
+            })]
+        }
         if let response = await relayOwnedResponse(for: req) {
             return [.sendText(response)]
         }
@@ -99,7 +124,10 @@ public actor WSProtocolMachine {
         }
 
         do {
-            let result = try await cmux.dispatch(method: req.method, params: req.params)
+            let result = try await cmux.dispatch(
+                method: req.method,
+                params: Self.daemonCompatibleParams(for: req)
+            )
             let resp = RPCResponse(id: req.id, ok: true, result: result, error: nil)
             var actions: [Action] = [.sendText(Self.encode(resp))]
             if Self.isSuccessfulInput(req),
@@ -133,20 +161,73 @@ public actor WSProtocolMachine {
         switch req.method {
         case "host.battery":
             return encode(RPCResponse(id: req.id, ok: true, result: HostBatteryService.snapshot().json, error: nil))
-        case "file.upload":
-            do {
-                let uploaded = try RelayFileUploadService.save(params: req.params)
-                return encode(RPCResponse(id: req.id, ok: true, result: uploaded.json, error: nil))
-            } catch {
-                return encode(errorResponse(id: req.id, code: "upload_failed", message: String(describing: error)))
-            }
         default:
             return nil
         }
     }
 
+    /// Saves one legacy single-frame upload. Runs off this actor because the write can block.
+    private static func legacyUploadResponse(for req: RPCRequest) -> String {
+        do {
+            let uploaded = try RelayFileUploadService.save(params: req.params)
+            return encode(RPCResponse(id: req.id, ok: true, result: uploaded.json, error: nil))
+        } catch {
+            return encode(errorResponse(id: req.id, code: "upload_failed", message: String(describing: error)))
+        }
+    }
+
+    /// Stable code for relay-owned file work that missed its deadline.
+    static let temporarilyUnavailableCode = "temporarily_unavailable"
+
+    /// Answers a relay-owned RPC by its deadline so the frames queued behind it still run.
+    private func bounded(
+        _ req: RPCRequest,
+        timeoutMessage: String = "Mac file access did not finish in time; check for a pending privacy prompt on the Mac",
+        _ work: @escaping @Sendable () async -> String
+    ) async -> String {
+        switch await BoundedRelayWork.run(timeout: relayOwnedTimeout, work) {
+        case .finished(let response):
+            return response
+        case .timedOut:
+            return Self.encode(Self.errorResponse(
+                id: req.id,
+                code: Self.temporarilyUnavailableCode,
+                message: timeoutMessage
+            ))
+        }
+    }
+
     private func relayOwnedResponse(for req: RPCRequest) async -> String? {
         guard let method = RemoteRPCMethod(rawValue: req.method) else { return nil }
+        guard method != .hostCapabilities else {
+            return await relayOwnedResponseBody(method: method, req: req)
+        }
+        if method == .surfaceBrowserCapture {
+            return await bounded(req, timeoutMessage: "Browser capture did not finish in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
+        }
+        if method == .feedPendingList || method == .feedReply {
+            return await bounded(req, timeoutMessage: "cmux feed did not answer in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
+        }
+        if method == .claudeSessionsList || method == .claudeTranscriptPage {
+            return await bounded(req, timeoutMessage: "Claude transcript did not load in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
+        }
+        if method == .relayInfo || method == .relayUpdateStart {
+            return await bounded(req, timeoutMessage: "Relay update status did not answer in time") { [self] in
+                await self.relayOwnedResponseBody(method: method, req: req)
+            }
+        }
+        return await bounded(req) { [self] in
+            await self.relayOwnedResponseBody(method: method, req: req)
+        }
+    }
+
+    private func relayOwnedResponseBody(method: RemoteRPCMethod, req: RPCRequest) async -> String {
         do {
             let result: JSONValue
             switch method {
@@ -156,7 +237,11 @@ public actor WSProtocolMachine {
                     HostCapabilitiesResult(capabilities: [
                         HostCapabilitiesResult.chunkUploadV2Capability,
                         HostCapabilitiesResult.terminalArtifactsV1Capability,
-                    ])
+                        HostCapabilitiesResult.surfaceDocumentV1Capability,
+                        HostCapabilitiesResult.surfaceBrowserV1Capability,
+                        HostCapabilitiesResult.feedV1Capability,
+                        HostCapabilitiesResult.claudeTranscriptV1Capability,
+                    ] + (await relayUpdateService.capabilities()))
                 )
 
             case .uploadBegin:
@@ -234,19 +319,7 @@ public actor WSProtocolMachine {
                     workspaceID: request.workspaceId,
                     surfaceID: request.surfaceId
                 ), trustedUploadedPaths: recentUploads.map(\.path))
-                result = try Self.jsonValue(TerminalArtifactScanResult(
-                    generation: scan.generation,
-                    artifacts: scan.artifacts.map {
-                        TerminalArtifact(
-                            artifactId: $0.id,
-                            filename: $0.displayName,
-                            mimeType: $0.mimeType ?? "application/octet-stream",
-                            bytes: Int($0.size),
-                            revision: $0.revision,
-                            isImage: $0.kind == "image"
-                        )
-                    }
-                ))
+                result = try Self.scanResultValue(scan)
 
             case .artifactStat:
                 let request = try Self.decode(TerminalArtifactStatRequest.self, from: req.params)
@@ -297,6 +370,62 @@ public actor WSProtocolMachine {
                     mimeType: "image/jpeg",
                     dataBase64: thumbnail.data.base64EncodedString()
                 ))
+
+            case .surfaceDocumentOpen:
+                let request = try Self.decode(SurfaceDocumentOpenRequest.self, from: req.params)
+                guard !request.workspaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("workspace_id")
+                }
+                guard !request.surfaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("surface_id")
+                }
+                let document = try await artifactService.openDocument(scope: .init(
+                    deviceID: authenticatedDeviceID,
+                    workspaceID: request.workspaceId,
+                    surfaceID: request.surfaceId
+                ))
+                result = try Self.scanResultValue(document)
+
+            case .surfaceBrowserCapture:
+                let request = try Self.decode(SurfaceBrowserCaptureRequest.self, from: req.params)
+                guard !request.workspaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("workspace_id")
+                }
+                guard !request.surfaceId.isEmpty else {
+                    throw RemoteProtocolError.invalidField("surface_id")
+                }
+                result = try Self.jsonValue(try await browserCaptureService.capture(
+                    workspaceID: request.workspaceId,
+                    surfaceID: request.surfaceId
+                ))
+
+            case .feedPendingList:
+                let request = try Self.decode(FeedPendingListRequest.self, from: req.params)
+                result = try Self.jsonValue(try await feedService.pending(
+                    limit: request.limit ?? FeedLimits.defaultListLimit
+                ))
+
+            case .feedReply:
+                let request = try Self.decode(FeedReplyRequest.self, from: req.params)
+                result = try Self.jsonValue(try await feedService.reply(request))
+
+            case .claudeSessionsList:
+                let request = try Self.decode(ClaudeSessionListRequest.self, from: req.params)
+                result = try Self.jsonValue(try await claudeTranscriptService.sessions(
+                    limit: request.limit ?? ClaudeTranscriptLimits.defaultSessionLimit
+                ))
+
+            case .claudeTranscriptPage:
+                let request = try Self.decode(ClaudeTranscriptPageRequest.self, from: req.params)
+                result = try Self.jsonValue(try await claudeTranscriptService.page(request))
+
+            case .relayInfo:
+                _ = try Self.decode(RelayInfoRequest.self, from: req.params)
+                result = try Self.jsonValue(await relayUpdateService.info())
+
+            case .relayUpdateStart:
+                _ = try Self.decode(RelayUpdateStartRequest.self, from: req.params)
+                result = try Self.jsonValue(try await relayUpdateService.start())
             }
             return Self.encode(RPCResponse(id: req.id, ok: true, result: result))
         } catch let error as RemoteProtocolError {
@@ -305,6 +434,14 @@ public actor WSProtocolMachine {
             return Self.encode(Self.uploadErrorResponse(id: req.id, error: error))
         } catch let error as TerminalArtifactService.Error {
             return Self.encode(Self.artifactErrorResponse(id: req.id, error: error))
+        } catch let error as BrowserCaptureService.Error {
+            return Self.encode(Self.browserCaptureErrorResponse(id: req.id, error: error))
+        } catch let error as FeedService.Error {
+            return Self.encode(Self.feedErrorResponse(id: req.id, error: error))
+        } catch let error as ClaudeTranscriptService.Error {
+            return Self.encode(Self.claudeTranscriptErrorResponse(id: req.id, error: error))
+        } catch let error as RelayUpdateService.Error {
+            return Self.encode(Self.relayUpdateErrorResponse(id: req.id, error: error))
         } catch {
             return Self.encode(Self.errorResponse(
                 id: req.id,
@@ -321,6 +458,22 @@ public actor WSProtocolMachine {
     ) throws -> Value {
         let data = try JSONEncoder().encode(params)
         return try SharedKitJSON.snakeCaseDecoder.decode(type, from: data)
+    }
+
+    private static func scanResultValue(_ scan: TerminalArtifactService.ScanResult) throws -> JSONValue {
+        try jsonValue(TerminalArtifactScanResult(
+            generation: scan.generation,
+            artifacts: scan.artifacts.map {
+                TerminalArtifact(
+                    artifactId: $0.id,
+                    filename: $0.displayName,
+                    mimeType: $0.mimeType ?? "application/octet-stream",
+                    bytes: Int($0.size),
+                    revision: $0.revision,
+                    isImage: $0.kind == "image"
+                )
+            }
+        ))
     }
 
     private static func jsonValue<Value: Encodable>(_ value: Value) throws -> JSONValue {
@@ -391,6 +544,23 @@ public actor WSProtocolMachine {
             return errorResponse(id: id, code: "invalid_field", message: "Artifact request parameters are invalid")
         case .unsupportedMedia:
             return errorResponse(id: id, code: "unsupported_media", message: "Artifact media is unsupported", field: "artifact_id")
+        case .surfaceNotDocument:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.surfaceNotDocument.rawValue,
+                message: "Surface is not an open document",
+                field: "surface_id"
+            )
+        case .sizeLimitExceeded:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.sizeLimitExceeded.rawValue,
+                message: "Document exceeds the relay size limit",
+                data: .object([
+                    "field": .string("bytes"),
+                    "max_bytes": .int(TerminalArtifactService.maximumDocumentBytes),
+                ])
+            )
         case .native(let code):
             let mapped: String
             switch code {
@@ -399,6 +569,77 @@ public actor WSProtocolMachine {
             default: mapped = code
             }
             return errorResponse(id: id, code: mapped, message: "cmux artifact operation failed")
+        }
+    }
+
+    private static func browserCaptureErrorResponse(
+        id: String,
+        error: BrowserCaptureService.Error
+    ) -> RPCResponse {
+        switch error {
+        case .surfaceNotBrowser:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.surfaceNotBrowser.rawValue,
+                message: "Surface is not an open browser",
+                field: "surface_id"
+            )
+        case .sizeLimitExceeded:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.sizeLimitExceeded.rawValue,
+                message: "Browser capture exceeds the relay size limit",
+                data: .object([
+                    "field": .string("image_base64"),
+                    "max_bytes": .int(Int64(SurfaceBrowserCaptureLimits.maxImageBytes)),
+                ])
+            )
+        case .unsupportedImage:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.unsupportedMedia.rawValue,
+                message: "Browser capture image is unsupported"
+            )
+        case .native(let code):
+            return errorResponse(id: id, code: code, message: "cmux browser capture failed")
+        }
+    }
+
+    private static func feedErrorResponse(id: String, error: FeedService.Error) -> RPCResponse {
+        switch error {
+        case .notPending:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.feedRequestNotPending.rawValue,
+                message: "Feed request is no longer pending",
+                field: "request_id"
+            )
+        case .invalidField(let field):
+            return errorResponse(id: id, code: RemoteErrorCode.invalidField.rawValue, message: "Invalid field", field: field)
+        case .malformed:
+            return errorResponse(id: id, code: "internal_error", message: "cmux feed response malformed")
+        case .native(let code):
+            return errorResponse(id: id, code: code, message: "cmux feed request failed")
+        }
+    }
+
+    private static func claudeTranscriptErrorResponse(id: String, error: ClaudeTranscriptService.Error) -> RPCResponse {
+        switch error {
+        case .sessionNotFound:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.claudeSessionNotFound.rawValue,
+                message: "Claude session not found",
+                field: "session_id"
+            )
+        case .invalidField(let field):
+            return errorResponse(id: id, code: RemoteErrorCode.invalidField.rawValue, message: "Invalid field", field: field)
+        case .fileChanged:
+            return errorResponse(id: id, code: temporarilyUnavailableCode, message: "Claude transcript changed while reading")
+        case .malformed:
+            return errorResponse(id: id, code: "internal_error", message: "cmux vault response malformed")
+        case .native(let code):
+            return errorResponse(id: id, code: code, message: "cmux vault request failed")
         }
     }
 
@@ -447,8 +688,40 @@ public actor WSProtocolMachine {
         }
     }
 
+    /// Rewrites legacy page-key names from older apps to the names cmux accepts.
+    ///
+    /// Only unmodified `pgup`/`pgdn`/`pagedown` style names that decode to a page key are
+    /// changed; every other request passes through untouched.
+    static func daemonCompatibleParams(for request: RPCRequest) -> JSONValue {
+        guard request.method == "surface.send_key",
+              case .object(var params) = request.params,
+              case .string(let key)? = params["key"],
+              let decoded = KeyEncoder.decode(key),
+              decoded == .pageUp || decoded == .pageDown
+        else { return request.params }
+        params["key"] = .string(KeyEncoder.encode(decoded))
+        return .object(params)
+    }
+
     private static func isSuccessfulInput(_ request: RPCRequest) -> Bool {
         request.method == "surface.send_text" || request.method == "surface.send_key"
+    }
+
+    private static func relayUpdateErrorResponse(id: String, error: RelayUpdateService.Error) -> RPCResponse {
+        switch error {
+        case .disabled:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.updateDisabled.rawValue,
+                message: "Relay auto-update is turned off on the Mac"
+            )
+        case .unavailable:
+            return errorResponse(
+                id: id,
+                code: RemoteErrorCode.updateUnavailable.rawValue,
+                message: "This relay cannot update itself"
+            )
+        }
     }
 
     private static func okResponse(id: String) -> RPCResponse {
@@ -552,6 +825,10 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         cmuxClient: CMUXFacade,
         uploadService: ChunkedFileUploadService,
         artifactService: TerminalArtifactService,
+        browserCaptureService: BrowserCaptureService? = nil,
+        feedService: FeedService? = nil,
+        claudeTranscriptService: ClaudeTranscriptService? = nil,
+        relayUpdateService: RelayUpdateService? = nil,
         maximumQueuedOutputBytes: Int = WebSocketHandler.defaultMaximumQueuedOutputBytes,
         maximumOutstandingInboundActions: Int = WebSocketHandler.defaultMaximumOutstandingInboundActions,
         maximumOutstandingInboundBytes: Int = WebSocketHandler.defaultMaximumOutstandingInboundBytes
@@ -564,7 +841,11 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
                 cmux: cmuxClient,
                 authenticatedDeviceID: deviceId,
                 uploadService: uploadService,
-                artifactService: artifactService
+                artifactService: artifactService,
+                browserCaptureService: browserCaptureService,
+                feedService: feedService,
+                claudeTranscriptService: claudeTranscriptService,
+                relayUpdateService: relayUpdateService
             ),
             maximumQueuedOutputBytes: maximumQueuedOutputBytes,
             maximumOutstandingInboundActions: maximumOutstandingInboundActions,
@@ -630,16 +911,31 @@ public final class WebSocketHandler: ChannelInboundHandler, @unchecked Sendable 
         guard let text = buffer.getString(
             at: buffer.readerIndex,
             length: buffer.readableBytes
-        ), let actionQueue,
-           let sessionLifecycle,
-           let generation = sessionLifecycle.activeGeneration
-        else { return }
+        ) else { return }
+        guard let actionQueue,
+              let sessionLifecycle,
+              let generation = sessionLifecycle.activeGeneration
+        else {
+            // Previously silent: a client would only see its RPC time out.
+            logger.warning("rpc dropped: no active session method=\(InboundRPCTrace.method(of: text)) device=\(deviceId.prefix(8))")
+            return
+        }
 
         let machine = self.machine
+        let trace = InboundRPCTrace(text: text, deviceId: deviceId, receivedAt: .now)
+        let logger = self.logger
         guard actionQueue.enqueue(retainedByteCount: text.utf8.count, { [weak sessionLifecycle] in
+            let startedAt = ContinuousClock.now
             let actions = await machine.processText(text)
             guard !Task.isCancelled else { return }
             await sessionLifecycle?.apply(actions: actions, generation: generation)
+            if let line = trace.line(
+                startedAt: startedAt,
+                finishedAt: .now,
+                traceAll: InboundRPCTrace.traceAll
+            ) {
+                logger.info("\(line)")
+            }
         }) else {
             logger.warning("Closing WebSocket after inbound action queue overflow")
             invalidate(context: context, closeChannel: true)

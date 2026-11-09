@@ -165,6 +165,148 @@ struct RemoteFileProtocolTests {
         #expect(RemoteRPCMethod.artifactThumbnail.rawValue == "terminal.artifact.thumbnail")
     }
 
+    @Test func surfaceDocumentContractRoundTripsWithoutPathFields() throws {
+        let request = SurfaceDocumentOpenRequest(
+            workspaceId: "56D5FC9A-0897-418B-8811-82FB5388B38F",
+            surfaceId: "FB3FCE15-51F7-4606-860D-22AFAFEC6C3B"
+        )
+        let envelope = try RPCRequest(id: "doc", method: RemoteRPCMethod.surfaceDocumentOpen.rawValue, payload: request)
+
+        #expect(RemoteRPCMethod.surfaceDocumentOpen.rawValue == "surface.document.open")
+        #expect(RemoteRPCMethod(rawValue: "surface.document.open") == .surfaceDocumentOpen)
+        #expect(envelope.params == .object([
+            "workspace_id": .string("56D5FC9A-0897-418B-8811-82FB5388B38F"),
+            "surface_id": .string("FB3FCE15-51F7-4606-860D-22AFAFEC6C3B"),
+        ]))
+        let snakeData = try SharedKitJSON.snakeCaseEncoder.encode(request)
+        #expect(try SharedKitJSON.snakeCaseDecoder.decode(SurfaceDocumentOpenRequest.self, from: snakeData) == request)
+        #expect(try JSONDecoder().decode(SurfaceDocumentOpenRequest.self, from: JSONEncoder().encode(request)) == request)
+
+        let withClientPath = Data(#"{"workspace_id":"w","surface_id":"s","path":"/etc/hosts","file_path":"/etc/hosts","filename":"hosts"}"#.utf8)
+        let decoded = try SharedKitJSON.snakeCaseDecoder.decode(SurfaceDocumentOpenRequest.self, from: withClientPath)
+        #expect(decoded == SurfaceDocumentOpenRequest(workspaceId: "w", surfaceId: "s"))
+        let reencoded = try JSONSerialization.jsonObject(with: SharedKitJSON.snakeCaseEncoder.encode(decoded)) as? [String: Any]
+        #expect(Set(reencoded?.keys.map { $0 } ?? []) == ["workspace_id", "surface_id"])
+
+        #expect(HostCapabilities.surfaceDocumentV1 == "surface.document.v1")
+        #expect(HostCapabilitiesResult.surfaceDocumentV1Capability == "surface.document.v1")
+        #expect(HostCapabilitiesResult(capabilities: ["surface.document.v1"]).supportsSurfaceDocumentV1)
+        #expect(!HostCapabilitiesResult(capabilities: ["terminal.artifact.v1"]).supportsSurfaceDocumentV1)
+
+        #expect(RemoteErrorCode.surfaceNotDocument.rawValue == "surface_not_document")
+        #expect(RemoteErrorCode(rawValue: "surface_not_document") == .surfaceNotDocument)
+        let encodedCode = try JSONEncoder().encode(RemoteErrorCode.surfaceNotDocument)
+        #expect(String(decoding: encodedCode, as: UTF8.self) == #""surface_not_document""#)
+        #expect(try JSONDecoder().decode(RemoteErrorCode.self, from: encodedCode) == .surfaceNotDocument)
+    }
+
+    @Test func surfaceBrowserContractRoundTripsWithoutPathFields() throws {
+        let request = SurfaceBrowserCaptureRequest(
+            workspaceId: "2DA27856-DDA7-4D11-B985-D07CAC87864F",
+            surfaceId: "67DA7B9E-B834-4DBF-980F-3971E14B2F60"
+        )
+        let envelope = try RPCRequest(id: "cap", method: RemoteRPCMethod.surfaceBrowserCapture.rawValue, payload: request)
+
+        #expect(RemoteRPCMethod.surfaceBrowserCapture.rawValue == "surface.browser.capture")
+        #expect(RemoteRPCMethod(rawValue: "surface.browser.capture") == .surfaceBrowserCapture)
+        #expect(envelope.params == .object([
+            "workspace_id": .string("2DA27856-DDA7-4D11-B985-D07CAC87864F"),
+            "surface_id": .string("67DA7B9E-B834-4DBF-980F-3971E14B2F60"),
+        ]))
+        let snakeData = try SharedKitJSON.snakeCaseEncoder.encode(request)
+        #expect(try SharedKitJSON.snakeCaseDecoder.decode(SurfaceBrowserCaptureRequest.self, from: snakeData) == request)
+        #expect(try JSONDecoder().decode(SurfaceBrowserCaptureRequest.self, from: JSONEncoder().encode(request)) == request)
+
+        let withClientPath = Data(#"{"workspace_id":"w","surface_id":"s","path":"/tmp/x.png","url":"https://example.com/"}"#.utf8)
+        let decoded = try SharedKitJSON.snakeCaseDecoder.decode(SurfaceBrowserCaptureRequest.self, from: withClientPath)
+        #expect(decoded == SurfaceBrowserCaptureRequest(workspaceId: "w", surfaceId: "s"))
+        let reencoded = try JSONSerialization.jsonObject(with: SharedKitJSON.snakeCaseEncoder.encode(decoded)) as? [String: Any]
+        #expect(Set(reencoded?.keys.map { $0 } ?? []) == ["workspace_id", "surface_id"])
+
+        #expect(HostCapabilities.surfaceBrowserV1 == "surface.browser.v1")
+        #expect(HostCapabilitiesResult.surfaceBrowserV1Capability == "surface.browser.v1")
+        #expect(HostCapabilitiesResult(capabilities: ["surface.browser.v1"]).supportsSurfaceBrowserV1)
+        #expect(!HostCapabilitiesResult(capabilities: ["surface.document.v1"]).supportsSurfaceBrowserV1)
+
+        #expect(RemoteErrorCode.surfaceNotBrowser.rawValue == "surface_not_browser")
+        #expect(RemoteErrorCode(rawValue: "surface_not_browser") == .surfaceNotBrowser)
+        let encodedCode = try JSONEncoder().encode(RemoteErrorCode.surfaceNotBrowser)
+        #expect(String(decoding: encodedCode, as: UTF8.self) == #""surface_not_browser""#)
+        #expect(try JSONDecoder().decode(RemoteErrorCode.self, from: encodedCode) == .surfaceNotBrowser)
+
+        #expect(SurfaceBrowserCaptureLimits.maxDimension == 1600)
+        #expect(SurfaceBrowserCaptureLimits.maxImageBytes == 737_280)
+        #expect(SurfaceBrowserCaptureLimits.recommendedRefreshSeconds == 2)
+    }
+
+    @Test func surfaceBrowserResultRoundTripsAndOmitsMissingOptionals() throws {
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0xFF, 0xD9])
+        let full = SurfaceBrowserCaptureResult(
+            imageBase64: jpeg.base64EncodedString(), mimeType: "image/jpeg", width: 1405, height: 1600,
+            sourceWidth: 2318, sourceHeight: 2640, url: "https://example.com/", title: "Example Domain",
+            capturedAt: 1_794_240_000_000
+        )
+        let fullData = try SharedKitJSON.snakeCaseEncoder.encode(full)
+        let fullKeys = try JSONSerialization.jsonObject(with: fullData) as? [String: Any]
+        #expect(Set(fullKeys?.keys.map { $0 } ?? []) == [
+            "image_base64", "mime_type", "width", "height", "source_width", "source_height",
+            "url", "title", "captured_at",
+        ])
+        #expect(fullKeys?["captured_at"] as? Int64 == 1_794_240_000_000)
+        #expect(try SharedKitJSON.snakeCaseDecoder.decode(SurfaceBrowserCaptureResult.self, from: fullData) == full)
+        #expect(try JSONDecoder().decode(SurfaceBrowserCaptureResult.self, from: JSONEncoder().encode(full)) == full)
+        #expect(try full.decodedImage() == jpeg)
+
+        var bare = full
+        bare.url = nil
+        bare.title = nil
+        let bareData = try SharedKitJSON.snakeCaseEncoder.encode(bare)
+        let bareKeys = try JSONSerialization.jsonObject(with: bareData) as? [String: Any]
+        #expect(Set(bareKeys?.keys.map { $0 } ?? []) == [
+            "image_base64", "mime_type", "width", "height", "source_width", "source_height", "captured_at",
+        ])
+        #expect(try SharedKitJSON.snakeCaseDecoder.decode(SurfaceBrowserCaptureResult.self, from: bareData) == bare)
+
+        let response = RPCResponse(id: "cap", ok: true, result: try JSONDecoder().decode(JSONValue.self, from: fullData))
+        #expect(try response.decodeResult(SurfaceBrowserCaptureResult.self) == full)
+    }
+
+    @Test(arguments: [
+        (#"{"mime_type":"image/jpeg","width":10,"height":10,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.missingField("image_base64")),
+        (#"{"image_base64":"","mime_type":"image/jpeg","width":10,"height":10,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.missingField("image_base64")),
+        (#"{"image_base64":"AA==","width":10,"height":10,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.missingField("mime_type")),
+        (#"{"image_base64":"AA==","mime_type":"image/png","width":10,"height":10,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.invalidField("mime_type")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":0,"height":10,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.invalidField("width")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":1601,"height":10,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.invalidField("width")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":10,"height":1601,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.invalidField("height")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":10,"height":-1,"source_width":10,"source_height":10,"captured_at":1}"#, RemoteProtocolError.invalidField("height")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":10,"height":10,"source_width":0,"source_height":10,"captured_at":1}"#, RemoteProtocolError.invalidField("source_width")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":10,"height":10,"source_width":10,"source_height":0,"captured_at":1}"#, RemoteProtocolError.invalidField("source_height")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":10,"height":10,"source_width":10,"source_height":10}"#, RemoteProtocolError.invalidField("captured_at")),
+        (#"{"image_base64":"AA==","mime_type":"image/jpeg","width":10,"height":10,"source_width":10,"source_height":10,"captured_at":"2026-11-09T00:00:00Z"}"#, RemoteProtocolError.invalidField("captured_at")),
+    ])
+    func surfaceBrowserResultRejectsInvalidPayloads(json: String, expected: RemoteProtocolError) {
+        #expect(throws: expected) {
+            try SharedKitJSON.snakeCaseDecoder.decode(SurfaceBrowserCaptureResult.self, from: Data(json.utf8))
+        }
+    }
+
+    @Test func surfaceBrowserResultImageRejectsNonCanonicalAndOversizedBase64() {
+        let base = SurfaceBrowserCaptureResult(
+            imageBase64: "A A==", mimeType: "image/jpeg", width: 10, height: 10,
+            sourceWidth: 10, sourceHeight: 10, url: nil, title: nil, capturedAt: 1
+        )
+        #expect(throws: RemoteProtocolError.invalidBase64) { try base.decodedImage() }
+
+        var oversized = base
+        oversized.imageBase64 = Data(count: SurfaceBrowserCaptureLimits.maxImageBytes + 1).base64EncodedString()
+        #expect(throws: RemoteProtocolError.chunkTooLarge(maxBytes: 737_280)) { try oversized.decodedImage() }
+
+        var atLimit = base
+        atLimit.imageBase64 = Data(count: SurfaceBrowserCaptureLimits.maxImageBytes).base64EncodedString()
+        #expect((try? atLimit.decodedImage().count) == 737_280)
+    }
+
     @Test func lockedBoundaryConstantsAreExact() {
         #expect(ChunkUploadLimits.rawChunkBytes == 512 * 1024)
         #expect(ChunkUploadLimits.maxFileBytes == 100 * 1024 * 1024)

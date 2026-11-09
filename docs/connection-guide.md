@@ -59,7 +59,9 @@ cd cmux-remote
 curl -s http://$(tailscale ip -4):4399/v1/health
 ```
 
-`{"ok":true,"version":"0.1.0"}` 가 나오면 **relay 정상**입니다.
+`{"ok":true}` 가 나오면 **relay 정상**입니다.
+
+헬스 응답에는 버전이 들어 있지 않습니다. relay 버전은 앱 설정 화면이나 Mac의 `~/.cmuxremote/bin/cmux-relay --version`으로 확인하세요.
 
 cmux 소켓에도 붙었는지 한 번 더 확인:
 
@@ -257,13 +259,19 @@ launchctl kickstart -k "gui/$(id -u)/com.genie.cmuxremote"
 로그인돼 있어야 하고, 앱에는 `tailscale ip -4`로 나온 IP를 넣어야 합니다.
 
 **Q. 알림이 안 와요.**
-현재 알림은 *로컬* 알림이라 앱이 켜져 있거나 백그라운드에서 연결이
-살아있을 때만 도착합니다. 앱을 완전히 종료하면 알림이 오지 않습니다
-(진짜 푸시는 v1.1 예정).
+기본 알림은 *로컬* 알림이라 앱이 켜져 있거나 백그라운드에서 연결이
+살아있을 때만 도착합니다. 앱을 완전히 종료한 뒤에도 받으려면 Mac의
+`~/.cmuxremote/relay.json`에 `apns` 블록을 설정하세요
+([README의 설정](../README.md#설정)). 푸시에는 알림의 제목·부제·본문이
+들어가며 Mac relay에서 Apple 푸시 서버를 거쳐 기기로 갑니다
+([PRIVACY.md](../PRIVACY.md)).
 
 **Q. 매번 직접 켜야 하나요?**
 아니요. relay는 launchd 서비스라 **Mac 로그인 시 자동 시작**되고 죽으면
 다시 뜹니다. 단, **cmux 앱은 직접 실행**해야 합니다.
+
+**Q. relay는 어떻게 업데이트하나요?**
+2.0.0부터 relay가 GitHub의 정식 릴리스 태그(`vX.Y.Z`)를 따라 스스로 업데이트하고, 재시작은 연결된 폰이 없을 때만 합니다. 앱 설정의 **[ UPDATE NOW ]**를 누르면 폰이 연결돼 있어도 바로 적용합니다. 1.x relay에서는 **한 번만** 직접 올려야 합니다: 저장소에서 `git pull` 후 `./scripts/install-launchd.sh`. 자동 업데이트를 끄려면 `./scripts/install-launchd.sh --no-auto-update`입니다. 상태는 앱 설정의 version 섹션이나 `tail ~/.cmuxremote/log/update.log`로 봅니다. 자세한 내용은 [README의 자동 업데이트](../README.md#자동-업데이트).
 
 **Q. ⌥↓ 버튼을 눌러도 Claude Code가 맨 아래로 안 내려가요.**
 ⌥↓ 버튼은 `alt+down` 키만 보냅니다. Claude Code fullscreen 화면에는 이

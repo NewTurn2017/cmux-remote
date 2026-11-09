@@ -48,6 +48,10 @@ public final class NotificationStore {
         recomputeUnread()
     }
 
+    public func isUnread(_ id: String) -> Bool {
+        !readIds.contains(id)
+    }
+
     private func recomputeUnread() {
         unreadByWorkspace = WorkspaceNotificationTally.unreadCounts(records: items, readIds: readIds)
         unreadCount = unreadByWorkspace.values.reduce(0, +)
@@ -55,8 +59,40 @@ public final class NotificationStore {
 
     public func ingest(_ frame: PushFrame) {
         guard case .event(let event) = frame else { return }
-        guard let notification = InboxNotification.record(from: event) else { return }
-        append(notification, deliveryPolicy: NotificationDeliveryPolicy(event: event))
+        switch InboxNotification.effect(for: event) {
+        case .card(let card):
+            apply(card)
+        case .markRead(let ids):
+            readIds.formUnion(ids.filter { id in items.contains { $0.id == id } })
+            recomputeUnread()
+        case .remove(let ids):
+            remove(ids)
+        case .ignore:
+            return
+        }
+    }
+
+    /// A cmux notification keeps one card per id: a repeat updates it in place without a
+    /// second banner. Agent needs-input cards keep the append behavior.
+    private func apply(_ card: InboxCard) {
+        remove(card.replacedIds)
+        let id = card.record.id
+        if card.isRead { readIds.insert(id) }
+        if card.isCmuxNotification, let index = items.firstIndex(where: { $0.id == id }) {
+            items[index] = card.record
+            recomputeUnread()
+            return
+        }
+        append(card.record, deliveryPolicy: NotificationDeliveryPolicy(card: card))
+    }
+
+    /// Removed ids stay in `seenIds` so a late repeat cannot raise a banner again.
+    private func remove(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let removed = Set(ids)
+        items.removeAll { removed.contains($0.id) }
+        readIds.subtract(removed)
+        recomputeUnread()
     }
 }
 
@@ -64,17 +100,28 @@ public enum NotificationDeliveryPolicy: Equatable {
     case inboxOnly
     case userInputRequired
     case userInitiatedTest
+    case cmuxNotification
 
     var shouldPostLocalNotification: Bool {
         switch self {
         case .inboxOnly:
             return false
-        case .userInputRequired, .userInitiatedTest:
+        case .userInputRequired, .userInitiatedTest, .cmuxNotification:
             return true
         }
     }
 
     init(event: EventFrame) {
         self = InboxNotification.requiresUserInput(event) ? .userInputRequired : .inboxOnly
+    }
+
+    init(card: InboxCard) {
+        if card.isRead {
+            self = .inboxOnly
+        } else if card.requiresUserInput {
+            self = .userInputRequired
+        } else {
+            self = card.isCmuxNotification ? .cmuxNotification : .inboxOnly
+        }
     }
 }

@@ -4,12 +4,15 @@ import SharedKit
 struct ContentView: View {
     @State private var selectedTab: AppTab = .workspaces
     @State private var requestedSurfaceId: String?
+    @State private var agentsSection: AgentsSection = .pending
+    @Environment(\.scenePhase) private var scenePhase
 
     let workspaceStore: WorkspaceStore
     let surfaceStore: SurfaceStore
     let notifStore: NotificationStore
     let hostStatusStore: HostStatusStore
     let remoteFiles: RemoteFileFeatureCoordinator
+    let appStoreUpdates: AppStoreUpdateStore
     let onDisconnect: () -> Void
     let onReconnect: () -> Void
     let onTriggerTestNotification: @MainActor () -> TestNotificationResult
@@ -32,6 +35,16 @@ struct ContentView: View {
                     preferredSurfaceId: $requestedSurfaceId,
                     onBack: { selectedTab = .workspaces }
                 )
+            case .agents:
+                AgentsView(
+                    feed: remoteFiles.feed,
+                    transcripts: remoteFiles.transcripts,
+                    feedEnabled: remoteFiles.feedEnabled,
+                    transcriptEnabled: remoteFiles.transcriptEnabled,
+                    isConnected: isConnected,
+                    hostGeneration: remoteFiles.hostGeneration,
+                    section: $agentsSection
+                )
             case .inbox:
                 NotificationCenterView(store: notifStore) { notification in
                     open(notification: notification)
@@ -39,6 +52,8 @@ struct ContentView: View {
             case .settings:
                 SettingsView(
                     store: workspaceStore,
+                    appStoreUpdates: appStoreUpdates,
+                    remoteFiles: remoteFiles,
                     onDisconnect: onDisconnect,
                     onReconnect: onReconnect,
                     onTriggerTestNotification: onTriggerTestNotification
@@ -48,10 +63,37 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cmuxRemoteNotificationResponse)) { notification in
             openNotificationUserInfo(notification.userInfo)
         }
+        .task(id: feedLoopKey) {
+            guard remoteFiles.feedEnabled, tabBarVisible else { return }
+            await remoteFiles.feed.runRefreshLoop(
+                intervalSeconds: feedListVisible
+                    ? FeedRefreshPolicy.listIntervalSeconds
+                    : FeedRefreshPolicy.badgeIntervalSeconds,
+                isConnected: isConnected,
+                isActive: scenePhase == .active
+            )
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, !tabBarVisible, remoteFiles.feedEnabled, isConnected else { return }
+            Task { await remoteFiles.feed.refresh() }
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await appStoreUpdates.checkIfDue()
+        }
+        .onChange(of: remoteFiles.agentsEnabled) { _, enabled in
+            if !enabled, selectedTab == .agents { selectedTab = .workspaces }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedTab != .active {
-                FloatingTabBar(selectedTab: $selectedTab, inboxCount: notifStore.unreadCount)
+            if tabBarVisible {
+                FloatingTabBar(
+                    tabs: visibleTabs,
+                    selectedTab: $selectedTab,
+                    inboxCount: notifStore.unreadCount,
+                    agentsPendingCount: remoteFiles.feed.pendingCount,
+                    settingsUpdateAvailable: appStoreUpdates.showsBadge
+                )
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 0)
@@ -60,6 +102,30 @@ struct ContentView: View {
             }
         }
         .background(CmuxTheme.canvas.ignoresSafeArea())
+    }
+
+    private var tabBarVisible: Bool { selectedTab != .active }
+
+    private var isConnected: Bool { workspaceStore.connection == .connected }
+
+    private var visibleTabs: [AppTab] {
+        AppTab.allCases.filter { $0 != .agents || remoteFiles.agentsEnabled }
+    }
+
+    private var feedListVisible: Bool {
+        selectedTab == .agents && (agentsSection == .pending || !remoteFiles.transcriptEnabled)
+    }
+
+    /// Restarting on any change also gives the immediate list when the app returns to the foreground.
+    private var feedLoopKey: String {
+        [
+            String(remoteFiles.hostGeneration),
+            remoteFiles.feedEnabled ? "feed" : "no-feed",
+            isConnected ? "connected" : "offline",
+            scenePhase == .active ? "active" : "inactive",
+            tabBarVisible ? "tab-bar" : "no-tab-bar",
+            feedListVisible ? "list" : "badge",
+        ].joined(separator: "|")
     }
 
     private func open(notification: NotificationRecord) {
@@ -95,6 +161,7 @@ struct ContentView: View {
 private enum AppTab: String, CaseIterable, Hashable {
     case workspaces = "Workspaces"
     case active = "Active"
+    case agents = "Agents"
     case inbox = "Inbox"
     case settings = "Settings"
 
@@ -102,6 +169,7 @@ private enum AppTab: String, CaseIterable, Hashable {
         switch self {
         case .workspaces: return "rectangle.stack.fill"
         case .active: return "terminal.fill"
+        case .agents: return "bubble.left.and.text.bubble.right.fill"
         case .inbox: return "bell.fill"
         case .settings: return "gearshape.fill"
         }
@@ -109,12 +177,15 @@ private enum AppTab: String, CaseIterable, Hashable {
 }
 
 private struct FloatingTabBar: View {
+    let tabs: [AppTab]
     @Binding var selectedTab: AppTab
     let inboxCount: Int
+    let agentsPendingCount: Int
+    let settingsUpdateAvailable: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(AppTab.allCases, id: \.self) { tab in
+            ForEach(tabs, id: \.self) { tab in
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         selectedTab = tab
@@ -126,9 +197,11 @@ private struct FloatingTabBar: View {
                                 .font(.system(size: 18, weight: .semibold))
                             Text(tab.rawValue.uppercased())
                                 .cmuxDisplay(9)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
                         }
                         .foregroundStyle(selectedTab == tab ? CmuxTheme.accentGreen : CmuxTheme.muted)
-                        .frame(maxWidth: .infinity)
+                        .frame(minWidth: 0, maxWidth: .infinity)
                         .frame(height: 58)
                         .background {
                             if selectedTab == tab {
@@ -149,7 +222,42 @@ private struct FloatingTabBar: View {
                                 .padding(.top, 4)
                                 .padding(.trailing, 10)
                                 .accessibilityIdentifier("InboxUnreadBadge")
-                                .accessibilityLabel("\(inboxCount) unread inbox notifications")
+                                .accessibilityLabel(String(
+                                    localized: "tabbar.inbox.unread",
+                                    defaultValue: "\(inboxCount) unread inbox notifications"
+                                ))
+                        }
+
+                        if tab == .agents, agentsPendingCount > 0 {
+                            Text(agentsPendingCount > 99 ? "99+" : "\(agentsPendingCount)")
+                                .cmuxDisplay(9)
+                                .foregroundStyle(CmuxTheme.canvas)
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 18, minHeight: 18)
+                                .background(CmuxTheme.accentRed)
+                                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                                .padding(.top, 4)
+                                .padding(.trailing, 10)
+                                .accessibilityIdentifier("AgentsFeedPendingBadge")
+                                .accessibilityLabel(String(
+                                    localized: "tabbar.agents.pending",
+                                    defaultValue: "\(agentsPendingCount) pending agent requests"
+                                ))
+                                .accessibilityValue("\(agentsPendingCount)")
+                        }
+
+                        if tab == .settings, settingsUpdateAvailable {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(CmuxTheme.accentYellow)
+                                .frame(width: 8, height: 8)
+                                .padding(.top, 8)
+                                .padding(.trailing, 14)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityIdentifier("SettingsUpdateBadge")
+                                .accessibilityLabel(String(
+                                    localized: "tabbar.settings.update_available",
+                                    defaultValue: "App update available"
+                                ))
                         }
                     }
                 }
@@ -165,6 +273,8 @@ private struct FloatingTabBar: View {
                 .strokeBorder(CmuxTheme.divider, lineWidth: 1)
         }
         .shadow(color: CmuxTheme.hardShadow, radius: 24, x: 0, y: 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("FloatingTabBar")
     }
 
     @Namespace private var namespace

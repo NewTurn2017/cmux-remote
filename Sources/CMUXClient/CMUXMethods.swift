@@ -113,11 +113,16 @@ extension CMUXClient {
 
         switch sourceMode {
         case .legacyText:
-            let screen = try await surfaceReadText(
-                workspaceId: workspaceId,
-                surfaceId: surfaceId,
-                lines: lines
-            )
+            let screen: Screen
+            do {
+                screen = try await surfaceReadText(
+                    workspaceId: workspaceId,
+                    surfaceId: surfaceId,
+                    lines: lines
+                )
+            } catch CMUXClientError.rpc(let error) where Self.isSurfaceNotTerminal(error) {
+                throw CMUXTerminalSourceError.surfaceNotTerminal
+            }
             return .updated(CMUXTerminalReadUpdate(
                 screen: screen,
                 sourceMode: .legacyText,
@@ -125,7 +130,17 @@ extension CMUXClient {
             ))
 
         case .renderGrid:
-            let replay = try await terminalReplay(surfaceId: surfaceId)
+            let replay: CMUXTerminalReplayRaw
+            do {
+                replay = try await terminalReplay(surfaceId: surfaceId)
+            } catch CMUXClientError.rpc(let error) where error.code == "not_found" {
+                // cmux answers replay of browser/markdown surfaces and of closed or unknown
+                // surfaces with the same `not_found`; one typed list lookup tells them apart.
+                if try await confirmsSurfaceIsNotTerminal(workspaceId: workspaceId, surfaceId: surfaceId) {
+                    throw CMUXTerminalSourceError.surfaceNotTerminal
+                }
+                throw CMUXClientError.rpc(error)
+            }
             try replay.validate(workspaceId: workspaceId, surfaceId: surfaceId)
             let identity = replay.identity
             let continuityKey = CMUXTerminalContinuityState.key(
@@ -154,15 +169,43 @@ extension CMUXClient {
     ///   - workspaceId: Workspace containing the released surface.
     ///   - surfaceId: Surface whose replay identity should be forgotten.
     public func releaseTerminalSource(workspaceId: String, surfaceId: String) {
-        terminalContinuityState.release(key: CMUXTerminalContinuityState.key(
+        let key = CMUXTerminalContinuityState.key(
             workspaceId: workspaceId,
             surfaceId: surfaceId
-        ))
+        )
+        terminalContinuityState.release(key: key)
+        nonTerminalProbeKeys.remove(key)
     }
 
     /// Resets all retained terminal replay identities while preserving capability negotiation.
     public func resetTerminalSources() {
         terminalContinuityState.reset()
+        nonTerminalProbeKeys.removeAll(keepingCapacity: false)
+    }
+
+    /// Whether a daemon error is the documented `surface.read_text` non-terminal rejection.
+    static func isSurfaceNotTerminal(_ error: RPCError) -> Bool {
+        error.code == "invalid_params" && error.message.lowercased().contains("not a terminal")
+    }
+
+    /// Checks once per retained surface source whether a replay `not_found` names a live
+    /// non-terminal surface rather than a closed or unknown one.
+    ///
+    /// Later `not_found` replays for the same surface skip the lookup until the source is
+    /// released or reset, so a closed tab costs at most one extra rate-limited call.
+    private func confirmsSurfaceIsNotTerminal(workspaceId: String, surfaceId: String) async throws -> Bool {
+        let key = CMUXTerminalContinuityState.key(workspaceId: workspaceId, surfaceId: surfaceId)
+        guard nonTerminalProbeKeys.insert(key).inserted else { return false }
+        let surfaces: [Surface]
+        do {
+            surfaces = try await surfaceList(workspaceId: workspaceId)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return false
+        }
+        guard let surface = surfaces.first(where: { $0.id == surfaceId }) else { return false }
+        return !surface.isTerminal
     }
 
     /// Resolves and caches one capability-selected terminal source mode per client lifetime.

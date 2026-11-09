@@ -20,8 +20,8 @@ public enum Key: Sendable, Equatable {
         case .right:     return "right"
         case .home:      return "home"
         case .end:       return "end"
-        case .pageUp:    return "pgup"
-        case .pageDown:  return "pgdn"
+        case .pageUp:    return "page_up"
+        case .pageDown:  return "page_down"
         case .backspace: return "backspace"
         case .delete:    return "delete"
         case .named(let n, _): return n
@@ -63,8 +63,8 @@ public enum KeyEncoder {
             case "right": return .right
             case "home":  return .home
             case "end":   return .end
-            case "pgup":  return .pageUp
-            case "pgdn":  return .pageDown
+            case "page_up", "pgup":               return .pageUp
+            case "page_down", "pagedown", "pgdn": return .pageDown
             case "backspace": return .backspace
             case "delete":    return .delete
             default:      return .named(name, modifiers: [])

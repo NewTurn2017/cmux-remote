@@ -20,9 +20,13 @@ public struct ScreenFull: Codable, Sendable, Equatable {
     public var cols: Int
     public var rowsCount: Int
     public var cursor: CursorPos
-    public init(surfaceId: String, rev: Int, rows: [String], cols: Int, rowsCount: Int, cursor: CursorPos) {
+    /// Source terminal screen (`primary` or `alternate`); `nil` when unknown and omitted from the wire.
+    public var activeScreen: String?
+    public init(surfaceId: String, rev: Int, rows: [String], cols: Int, rowsCount: Int, cursor: CursorPos,
+                activeScreen: String? = nil) {
         self.surfaceId = surfaceId; self.rev = rev; self.rows = rows
         self.cols = cols; self.rowsCount = rowsCount; self.cursor = cursor
+        self.activeScreen = activeScreen
     }
 
     /// Creates a full wire frame from an authoritative terminal snapshot.
@@ -37,12 +41,13 @@ public struct ScreenFull: Codable, Sendable, Equatable {
             rows: screen.rows,
             cols: screen.cols,
             rowsCount: screen.rows.count,
-            cursor: screen.cursor
+            cursor: screen.cursor,
+            activeScreen: screen.activeScreen
         )
     }
 
     enum CodingKeys: String, CodingKey {
-        case surfaceId = "surface_id", rev, rows, cols, rowsCount, cursor
+        case surfaceId = "surface_id", rev, rows, cols, rowsCount, cursor, activeScreen
     }
 }
 

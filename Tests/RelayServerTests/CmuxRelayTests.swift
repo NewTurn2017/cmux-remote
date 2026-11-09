@@ -1,5 +1,6 @@
 import XCTest
 import ArgumentParser
+import SharedKit
 @testable import RelayServer
 
 /// Argument-parsing surface for the `cmux-relay` CLI. Business logic
@@ -7,6 +8,14 @@ import ArgumentParser
 /// exercised by the M3.13 live smoke; here we only assert the parser
 /// produces the right subcommand with the right fields.
 final class CmuxRelayTests: XCTestCase {
+
+    func testVersionFlagPrintsSharedMarketingVersion() {
+        XCTAssertEqual(CmuxRelay.configuration.version, CmuxRemoteVersion.marketing)
+        XCTAssertThrowsError(try CmuxRelay.parseAsRoot(["--version"])) { error in
+            XCTAssertEqual(CmuxRelay.message(for: error), CmuxRemoteVersion.marketing)
+            XCTAssertEqual(CmuxRelay.exitCode(for: error), .success)
+        }
+    }
 
     func testServeIsDefaultSubcommand() throws {
         let cmd = try CmuxRelay.parseAsRoot([])

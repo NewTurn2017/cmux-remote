@@ -117,6 +117,37 @@ struct TerminalArtifactStoreTests {
     }
 
     @Test @MainActor
+    func testImageFetchJoinsRelayBudgetChunksUntilEOF() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let chunkBytes = 737_280
+        let total = 2 * chunkBytes + 125_440
+        let payload = Data((0..<total).map { UInt8($0 % 251) })
+        await fixture.rpc.enqueue(.response(Self.scanResponse(revision: "r1", bytes: total)), for: "terminal.artifact.scan")
+        await fixture.rpc.enqueue(.response(Self.statResponse(revision: "r1", bytes: total, width: 1, height: 1)), for: "terminal.artifact.stat")
+        for offset in stride(from: 0, to: total, by: chunkBytes) {
+            let end = min(offset + chunkBytes, total)
+            await fixture.rpc.enqueue(.response(Self.fetchResponse(
+                offset: offset, total: total, revision: "r1", data: payload.subdata(in: offset..<end), eof: end == total
+            )), for: "terminal.artifact.fetch")
+        }
+        let store = fixture.makeStore()
+        await store.activate(identity: Self.identity())
+        let artifact = try #require(store.artifacts.first)
+
+        let url = try await store.openViewer(for: artifact)
+
+        #expect(try Data(contentsOf: url) == payload)
+        #expect(await fixture.cache.partialFileCount() == 0)
+        #expect(await fixture.cache.fullEntryCount() == 1)
+        let offsets = await fixture.rpc.recordedCalls(method: "terminal.artifact.fetch").map { call -> Int64? in
+            if case .object(let object) = call.params, case .int(let offset)? = object["offset"] { return offset }
+            return nil
+        }
+        #expect(offsets == [0, 737_280, 1_474_560])
+    }
+
+    @Test @MainActor
     func testRejectsMalformedFetchStreams() async throws {
         for malformed in MalformedFetchCase.allCases {
             let fixture = try StoreFixture()
@@ -394,6 +425,45 @@ struct TerminalArtifactStoreTests {
         #expect(await fixture.rpc.callCount(method: "terminal.artifact.thumbnail") == 0)
         #expect(await fixture.rpc.callCount(method: "terminal.artifact.stat") == 0)
         #expect(await fixture.rpc.callCount(method: "terminal.artifact.fetch") == 0)
+    }
+
+    @Test @MainActor
+    func testLoadTextUsesActiveContextAndSkipsDiskCache() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let text = Data("# Notes\n".utf8)
+        let notes = TerminalArtifact(artifactId: "notes", filename: "notes.md", mimeType: "text/markdown", bytes: text.count, revision: "n1", isImage: false)
+        await fixture.rpc.enqueue(.response(RPCResponse(id: "scan", result: .object([
+            "generation": .int(3),
+            "artifacts": .array([.object([
+                "artifact_id": .string("notes"), "filename": .string("notes.md"), "mime_type": .string("text/markdown"),
+                "bytes": .int(Int64(text.count)), "revision": .string("n1"), "is_image": .bool(false),
+            ])]),
+        ]))), for: "terminal.artifact.scan")
+        await fixture.rpc.enqueue(.response(RPCResponse(id: "fetch", result: .object([
+            "artifact_id": .string("notes"), "offset": .int(0), "total_bytes": .int(Int64(text.count)),
+            "revision": .string("n1"), "data_base64": .string(text.base64EncodedString()), "eof": .bool(true),
+        ]))), for: "terminal.artifact.fetch")
+        let store = fixture.makeStore()
+
+        let stranger = TerminalArtifact(artifactId: "other", filename: "x.md", mimeType: "text/markdown", bytes: 1, revision: "x", isImage: false)
+        await #expect(throws: TerminalArtifactStoreError.inactive) {
+            _ = try await store.loadText(for: stranger)
+        }
+
+        await store.activate(identity: Self.identity())
+        let entriesBefore = (FileManager.default.subpaths(atPath: fixture.root.path) ?? []).sorted()
+        await #expect(throws: TerminalArtifactStoreError.artifactChanged) {
+            _ = try await store.loadText(for: stranger)
+        }
+
+        let document = try await store.loadText(for: notes)
+
+        #expect(document.text == "# Notes\n")
+        #expect(await fixture.rpc.callCount(method: "terminal.artifact.stat") == 0)
+        #expect(await fixture.rpc.callCount(method: "terminal.artifact.fetch") == 1)
+        #expect((FileManager.default.subpaths(atPath: fixture.root.path) ?? []).sorted() == entriesBefore)
+        #expect(store.viewerURL == nil)
     }
 
     private static let pngBytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!

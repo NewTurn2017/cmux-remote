@@ -42,7 +42,10 @@ struct NotificationCenterView: View {
                         Text("[ no events ]")
                             .cmuxDisplay(13)
                             .foregroundStyle(CmuxTheme.muted)
-                        Text("cmux relay events will appear here")
+                        Text(String(
+                            localized: "inbox.empty.detail",
+                            defaultValue: "cmux relay events will appear here"
+                        ))
                             .cmuxMono(11)
                             .foregroundStyle(CmuxTheme.muted)
                     }
@@ -66,15 +69,24 @@ struct NotificationCenterView: View {
                                         Text(notification.title)
                                             .cmuxMono(14, weight: .medium)
                                             .foregroundStyle(CmuxTheme.ink)
+                                        Spacer(minLength: 0)
+                                        if store.isUnread(notification.id) {
+                                            Circle()
+                                                .fill(CmuxTheme.accentBlue)
+                                                .frame(width: 8, height: 8)
+                                                .accessibilityHidden(true)
+                                        }
                                     }
                                     if let subtitle = notification.subtitle {
                                         Text(subtitle)
                                             .cmuxDisplay(10)
                                             .foregroundStyle(CmuxTheme.accentBlue)
                                     }
-                                    Text(notification.body)
-                                        .cmuxMono(12)
-                                        .foregroundStyle(CmuxTheme.inkDim)
+                                    if !notification.body.isEmpty, notification.body != notification.title {
+                                        Text(notification.body)
+                                            .cmuxMono(12)
+                                            .foregroundStyle(CmuxTheme.inkDim)
+                                    }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 14)

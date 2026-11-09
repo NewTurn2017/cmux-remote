@@ -16,6 +16,10 @@ struct FeatureCompositionTests {
         #expect(capabilities.capabilities == [
             HostCapabilities.chunkUploadV2,
             HostCapabilities.terminalArtifactsV1,
+            HostCapabilities.surfaceDocumentV1,
+            HostCapabilities.surfaceBrowserV1,
+            HostCapabilities.relayInfoV1,
+            HostCapabilities.relayUpdateV1,
         ])
 
         let batchID = "00000000-0000-4000-8000-000000000008"
@@ -162,6 +166,135 @@ struct FeatureCompositionTests {
         #expect(throws: (any Error).self) {
             _ = try malformed.decodeResult(TerminalArtifactScanResult.self)
         }
+    }
+
+    @Test
+    func demoRelayServesSurfaceDocumentForMarkdownTab() async throws {
+        let rpc = DemoRPCDispatch(fileFeatureFixturesEnabled: true)
+
+        let open = try await rpc.call(
+            method: RemoteRPCMethod.surfaceDocumentOpen.rawValue,
+            params: .object(["workspace_id": .string("WS-DEMO-TABS"), "surface_id": .string("SF-DEMO-TABS-MD")])
+        ).decodeResult(TerminalArtifactScanResult.self)
+        #expect(open.artifacts.count == 1)
+        let artifact = try #require(open.artifacts.first)
+        #expect(artifact.filename == "README.md")
+        #expect(artifact.isImage == false)
+
+        let document = try await TextArtifactLoader(rpc: rpc).load(artifact)
+        #expect(document.text.hasPrefix("# cmux Remote demo"))
+        #expect(document.totalBytes == artifact.bytes)
+        #expect(!document.isTruncated)
+
+        let refreshed = try await rpc.call(
+            method: RemoteRPCMethod.surfaceDocumentOpen.rawValue,
+            params: .object(["workspace_id": .string("WS-DEMO-TABS"), "surface_id": .string("SF-DEMO-TABS-MD")])
+        ).decodeResult(TerminalArtifactScanResult.self)
+        #expect(refreshed.artifacts.first?.revision != artifact.revision)
+
+        let terminal = try await rpc.call(
+            method: RemoteRPCMethod.surfaceDocumentOpen.rawValue,
+            params: .object(["workspace_id": .string("WS-DEMO-TABS"), "surface_id": .string("SF-DEMO-TABS-SH")])
+        )
+        #expect(terminal.error?.code == RemoteErrorCode.surfaceNotDocument.rawValue)
+    }
+
+    @Test
+    func demoRelayServesBrowserCaptureOnlyForBrowserSurface() async throws {
+        let rpc = DemoRPCDispatch(fileFeatureFixturesEnabled: true)
+        let browserParams: JSONValue = .object(["workspace_id": .string("WS-DEMO-TABS"), "surface_id": .string("SF-DEMO-TABS-WEB")])
+
+        let first = try await rpc.call(method: RemoteRPCMethod.surfaceBrowserCapture.rawValue, params: browserParams)
+            .decodeResult(SurfaceBrowserCaptureResult.self)
+        #expect(first.title == "cmux Remote demo · #1")
+        #expect(first.url == "http://localhost:3000/")
+        #expect(first.mimeType == "image/jpeg")
+        #expect(first.width == 1200)
+        #expect(first.height == 1500)
+        let jpeg = try first.decodedImage()
+        #expect(jpeg.count <= SurfaceBrowserCaptureLimits.maxImageBytes)
+        let image = try ImageIOBrowserCaptureDecoder().decode(first)
+        #expect(image.size == CGSize(width: 1200, height: 1500))
+
+        let second = try await rpc.call(method: RemoteRPCMethod.surfaceBrowserCapture.rawValue, params: browserParams)
+            .decodeResult(SurfaceBrowserCaptureResult.self)
+        #expect(second.title == "cmux Remote demo · #2")
+
+        let terminal = try await rpc.call(
+            method: RemoteRPCMethod.surfaceBrowserCapture.rawValue,
+            params: .object(["workspace_id": .string("WS-DEMO-TABS"), "surface_id": .string("SF-DEMO-TABS-SH")])
+        )
+        #expect(terminal.error?.code == RemoteErrorCode.surfaceNotBrowser.rawValue)
+    }
+
+    @Test @MainActor
+    func coordinatorEnablesBrowserRoutingOnlyWhenRelayAdvertisesIt() async throws {
+        let cacheRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("feature-browsers-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+        let routingRPC = OfflineRPCDispatch()
+        let coordinator = RemoteFileFeatureCoordinator(
+            routingRPC: routingRPC,
+            attachments: AttachmentCoordinator(
+                store: AttachmentStore(rpc: routingRPC),
+                photoStager: TestAttachmentPhotoStager()
+            ),
+            terminalArtifacts: TerminalArtifactStore(rpc: routingRPC, cache: TerminalArtifactCache(rootURL: cacheRoot))
+        )
+        let browser = Surface(id: "SF-DEMO-TABS-WEB", title: "localhost:3000", index: 0, type: "browser")
+        #expect(coordinator.browsers.baseIntervalSeconds == Double(SurfaceBrowserCaptureLimits.recommendedRefreshSeconds))
+
+        await coordinator.connect(rpc: DemoRPCDispatch(), hostID: "old-relay", accountScope: "account")
+        #expect(!coordinator.capabilities.supportsSurfaceBrowserV1)
+        #expect(!coordinator.browserRoutingEnabled)
+        #expect(!SurfaceSelectionPolicy.showsBrowser(for: browser, browsersEnabled: coordinator.browserRoutingEnabled))
+
+        await coordinator.connect(rpc: DemoRPCDispatch(fileFeatureFixturesEnabled: true), hostID: "new-relay", accountScope: "account")
+        #expect(coordinator.browserRoutingEnabled)
+        #expect(SurfaceSelectionPolicy.showsBrowser(for: browser, browsersEnabled: coordinator.browserRoutingEnabled))
+
+        await coordinator.browsers.refreshNow(workspaceID: "WS-DEMO-TABS", surfaceID: browser.id, isConnected: true)?.value
+        #expect(coordinator.browsers.state.lastCapture?.title == "cmux Remote demo · #1")
+
+        await coordinator.deactivate(purgeAccountCache: false)
+        #expect(coordinator.browserRoutingEnabled)
+        #expect(coordinator.browsers.state == .idle)
+
+        await coordinator.deactivate(purgeAccountCache: true)
+        #expect(!coordinator.browserRoutingEnabled)
+    }
+
+    @Test @MainActor
+    func coordinatorEnablesDocumentRoutingOnlyWhenRelayAdvertisesIt() async throws {
+        let cacheRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("feature-documents-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+        let routingRPC = OfflineRPCDispatch()
+        let coordinator = RemoteFileFeatureCoordinator(
+            routingRPC: routingRPC,
+            attachments: AttachmentCoordinator(
+                store: AttachmentStore(rpc: routingRPC),
+                photoStager: TestAttachmentPhotoStager()
+            ),
+            terminalArtifacts: TerminalArtifactStore(rpc: routingRPC, cache: TerminalArtifactCache(rootURL: cacheRoot))
+        )
+        let markdown = Surface(id: "SF-DEMO-TABS-MD", title: "README.md", index: 0, type: "markdown")
+
+        await coordinator.connect(rpc: DemoRPCDispatch(), hostID: "old-relay", accountScope: "account")
+        #expect(!coordinator.capabilities.supportsSurfaceDocumentV1)
+        #expect(!coordinator.documentRoutingEnabled)
+        #expect(!SurfaceSelectionPolicy.showsDocument(for: markdown, documentsEnabled: coordinator.documentRoutingEnabled))
+
+        await coordinator.connect(rpc: DemoRPCDispatch(fileFeatureFixturesEnabled: true), hostID: "new-relay", accountScope: "account")
+        #expect(coordinator.documentRoutingEnabled)
+        #expect(SurfaceSelectionPolicy.showsDocument(for: markdown, documentsEnabled: coordinator.documentRoutingEnabled))
+
+        await coordinator.deactivate(purgeAccountCache: false)
+        #expect(coordinator.documentRoutingEnabled)
+        #expect(coordinator.documents.state == .idle)
+
+        await coordinator.deactivate(purgeAccountCache: true)
+        #expect(!coordinator.documentRoutingEnabled)
     }
 
     @Test @MainActor

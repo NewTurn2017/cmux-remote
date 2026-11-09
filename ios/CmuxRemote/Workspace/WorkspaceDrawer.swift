@@ -14,9 +14,10 @@ struct WorkspaceDrawer: View {
                             ForEach(store.surfaces(for: workspace.id)) { surface in
                                 Button { onPick(workspace.id, surface.id) } label: {
                                     HStack(spacing: 10) {
-                                        Text("▶")
-                                            .cmuxDisplay(11)
+                                        Image(systemName: SurfaceKind(surface).systemImage)
+                                            .font(.system(size: 12, weight: .semibold))
                                             .foregroundStyle(CmuxTheme.accentGreen)
+                                            .accessibilityLabel(SurfaceKind(surface).accessibilityName)
                                         Text(surface.title)
                                             .cmuxMono(14, weight: .medium)
                                             .foregroundStyle(CmuxTheme.ink)

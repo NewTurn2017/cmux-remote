@@ -351,6 +351,7 @@ final class SmokeUITests: XCTestCase {
         app.launchArguments.append("NO")
         app.launchArguments.append("-cmux.localNotificationsEnabled")
         app.launchArguments.append("NO")
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         return app
     }

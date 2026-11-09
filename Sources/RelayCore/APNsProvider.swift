@@ -148,19 +148,20 @@ public final class APNsProviderClient: APNsSending, @unchecked Sendable {
         }
         let token = try providerToken(config: config)
         let body = try payloadData(for: push.notification)
-        guard body.count <= 4096 else { throw APNsProviderError.payloadTooLarge }
+        guard body.count <= Self.maximumPayloadBytes else { throw APNsProviderError.payloadTooLarge }
 
-        return APNsPreparedRequest(
-            url: url,
-            headers: [
-                "authorization": "bearer \(token)",
-                "apns-topic": config.topic,
-                "apns-push-type": "alert",
-                "apns-priority": "10",
-                "content-type": "application/json",
-            ],
-            body: body
-        )
+        var headers = [
+            "authorization": "bearer \(token)",
+            "apns-topic": config.topic,
+            "apns-push-type": "alert",
+            "apns-priority": "10",
+            "content-type": "application/json",
+        ]
+        let notificationId = push.notification.id
+        if !notificationId.isEmpty, notificationId.utf8.count <= Self.maximumCollapseIdBytes {
+            headers["apns-collapse-id"] = notificationId
+        }
+        return APNsPreparedRequest(url: url, headers: headers, body: body)
     }
 
     private func isEnabled(_ config: RelayConfig.APNs) -> Bool {
@@ -226,13 +227,52 @@ public final class APNsProviderClient: APNsSending, @unchecked Sendable {
             .replacingOccurrences(of: "=", with: "")
     }
 
+    public static let maximumPayloadBytes = 4_096
+    public static let maximumCollapseIdBytes = 64
+    public static let alertTitleLimit = 128
+    public static let alertSubtitleLimit = 128
+    public static let alertBodyLimit = 1_024
+    public static let genericAlertTitle = "cmux needs attention"
+    public static let genericAlertBody = "Open cmux Remote to review this inbox item."
+
+    /// The alert shows the notification's own title, subtitle and body. A notification whose
+    /// content never arrived (empty or fallback title) gets the generic alert instead.
+    public static func alert(for notification: NotificationRecord, bodyLimit: Int = alertBodyLimit) -> [String: String] {
+        let title = notification.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title != InboxNotification.fallbackTitle else {
+            return ["title": genericAlertTitle, "body": genericAlertBody]
+        }
+        var alert = ["title": capped(title, limit: alertTitleLimit)]
+        if let subtitle = notification.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !subtitle.isEmpty
+        {
+            alert["subtitle"] = capped(subtitle, limit: alertSubtitleLimit)
+        }
+        if bodyLimit > 0, !notification.body.isEmpty {
+            alert["body"] = capped(notification.body, limit: bodyLimit)
+        }
+        return alert
+    }
+
+    private static func capped(_ value: String, limit: Int) -> String {
+        guard value.count > limit else { return value }
+        return String(value.prefix(limit - 1)) + "…"
+    }
+
+    /// Halves the body until the whole payload fits the APNs size limit.
     private func payloadData(for notification: NotificationRecord) throws -> Data {
+        var bodyLimit = Self.alertBodyLimit
+        while true {
+            let data = try payloadData(for: notification, alert: Self.alert(for: notification, bodyLimit: bodyLimit))
+            if data.count <= Self.maximumPayloadBytes || bodyLimit == 0 { return data }
+            bodyLimit /= 2
+        }
+    }
+
+    private func payloadData(for notification: NotificationRecord, alert: [String: String]) throws -> Data {
         var payload: [String: Any] = [
             "aps": [
-                "alert": [
-                    "title": "cmux needs attention",
-                    "body": "Open cmux Remote to review this inbox item.",
-                ],
+                "alert": alert,
                 "sound": "default",
                 "thread-id": notification.threadId,
             ],

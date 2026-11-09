@@ -1,16 +1,102 @@
 import Foundation
 
+/// What one pushed event does to the inbox.
+public enum InboxEventEffect: Sendable, Equatable {
+    /// A new or updated inbox card.
+    case card(InboxCard)
+    /// Existing cards that became read.
+    case markRead(ids: [String])
+    /// Existing cards that went away.
+    case remove(ids: [String])
+    /// Not an inbox event (internal audit, state with no id, unrelated category).
+    case ignore
+}
+
+public struct InboxCard: Sendable, Equatable {
+    public var record: NotificationRecord
+    /// `true` for a cmux `notification.created` store notification.
+    public var isCmuxNotification: Bool
+    public var requiresUserInput: Bool
+    /// Cards this notification replaces (`replaced_notification_ids`).
+    public var replacedIds: [String]
+    public var isRead: Bool
+
+    public init(record: NotificationRecord, isCmuxNotification: Bool, requiresUserInput: Bool,
+                replacedIds: [String], isRead: Bool) {
+        self.record = record; self.isCmuxNotification = isCmuxNotification
+        self.requiresUserInput = requiresUserInput; self.replacedIds = replacedIds; self.isRead = isRead
+    }
+}
+
 public enum InboxNotification {
+    public static let createdEventName = "notification.created"
+    public static let readEventName = "notification.read"
+    public static let removedEventName = "notification.removed"
+    /// Sent after `notification.clear_requested` when the Mac clears notifications; its
+    /// `notification_ids` lists every card that went away.
+    public static let clearedEventName = "notification.cleared"
+    public static let requestedEventName = "notification.requested"
+    /// Title a cmux notification gets when its content was not available (still redacted).
+    public static let fallbackTitle = "cmux notification"
+
     public static func isInboxEvent(_ event: EventFrame) -> Bool {
-        event.isInboxEvent
+        if case .card = effect(for: event, now: 0) { return true }
+        return false
     }
 
     public static func requiresUserInput(_ event: EventFrame) -> Bool {
         event.isNeedsInputEvent
     }
 
+    /// Classifies an event. Only `notification.created` and the agent needs-input heuristic
+    /// make cards; `notification.read`/`notification.removed`/`notification.cleared` change
+    /// existing cards; every other `notification.*` event (the `notification.requested` socket
+    /// audit, `notification.clear_requested`, unknown names) is ignored.
+    public static func effect(
+        for event: EventFrame,
+        now: Int64 = Int64(Date().timeIntervalSince1970)
+    ) -> InboxEventEffect {
+        switch event.name {
+        case createdEventName:
+            guard let record = buildRecord(from: event, now: now) else { return .ignore }
+            let payload = event.payloadObject
+            return .card(InboxCard(
+                record: record,
+                isCmuxNotification: true,
+                requiresUserInput: event.isNeedsInputEvent,
+                replacedIds: payload?.stringArray(for: "replaced_notification_ids")
+                    .filter { $0 != record.id } ?? [],
+                isRead: payload?["is_read"] == .bool(true)
+            ))
+        case readEventName:
+            guard let id = event.payloadObject?.notificationId else { return .ignore }
+            return .markRead(ids: [id])
+        case removedEventName:
+            guard let id = event.payloadObject?.notificationId else { return .ignore }
+            return .remove(ids: [id])
+        case clearedEventName:
+            let ids = event.payloadObject?.stringArray(for: "notification_ids") ?? []
+            return ids.isEmpty ? .ignore : .remove(ids: ids)
+        default:
+            guard !event.name.hasPrefix("notification."), event.isNeedsInputEvent,
+                  let record = buildRecord(from: event, now: now)
+            else { return .ignore }
+            return .card(InboxCard(
+                record: record,
+                isCmuxNotification: false,
+                requiresUserInput: true,
+                replacedIds: [],
+                isRead: false
+            ))
+        }
+    }
+
     public static func record(from event: EventFrame, now: Int64 = Int64(Date().timeIntervalSince1970)) -> NotificationRecord? {
-        guard event.isInboxEvent else { return nil }
+        guard case .card(let card) = effect(for: event, now: now) else { return nil }
+        return card.record
+    }
+
+    private static func buildRecord(from event: EventFrame, now: Int64) -> NotificationRecord? {
         if let data = try? SharedKitJSON.deterministicEncoder.encode(event.payload),
            let decoded = try? SharedKitJSON.snakeCaseDecoder.decode(NotificationRecord.self, from: data)
         {
@@ -23,12 +109,14 @@ public enum InboxNotification {
         ]) ?? "unknown"
         let title = payload.firstStringValue(forAny: ["title", "headline"])
             ?? event.titleFallback
+        // A cmux store notification without content (still redacted) has no body to show;
+        // repeating the title would only duplicate it.
         let body = payload.firstStringValue(forAny: [
             "body", "message", "text", "summary", "reason", "status", "prompt",
         ])
             ?? payload.nestedStringValue(["details", "message"])
             ?? payload.nestedStringValue(["details", "body"])
-            ?? title
+            ?? (event.name == createdEventName ? "" : title)
         let surfaceId = payload.firstStringValue(forAny: [
             "surface_id", "surfaceId", "surfaceID", "surface",
         ])
@@ -52,6 +140,7 @@ public enum InboxNotification {
             title: title,
             subtitle: payload.firstStringValue(forAny: [
                 "subtitle", "workspace_title", "workspaceTitle", "surface_title", "surfaceTitle",
+                "tab_title",
             ]),
             body: body,
             ts: payload.intValue(for: "ts") ?? now,
@@ -62,12 +151,9 @@ public enum InboxNotification {
 }
 
 private extension EventFrame {
-    var isInboxEvent: Bool {
-        isNotificationEvent || isNeedsInputEvent
-    }
-
-    var isNotificationEvent: Bool {
-        category == .notification || name == "notification.created"
+    var payloadObject: [String: JSONValue]? {
+        guard case .object(let object) = payload else { return nil }
+        return object
     }
 
     var isNeedsInputEvent: Bool {
@@ -122,7 +208,7 @@ private extension EventFrame {
     var titleFallback: String {
         if isNeedsInputEvent { return "\(needsInputSourceName) needs input" }
         switch name {
-        case "notification.created": return "cmux notification"
+        case InboxNotification.createdEventName: return InboxNotification.fallbackTitle
         default: return name
         }
     }
@@ -169,6 +255,18 @@ private extension Dictionary where Key == String, Value == JSONValue {
             if let value = stringValue(for: key) { return value }
         }
         return nil
+    }
+
+    var notificationId: String? {
+        firstStringValue(forAny: ["notification_id", "notificationId", "id"])
+    }
+
+    func stringArray(for key: String) -> [String] {
+        guard case .array(let values)? = self[key] else { return [] }
+        return values.compactMap { value in
+            guard case .string(let string) = value, !string.isEmpty else { return nil }
+            return string
+        }
     }
 
     func intValue(for key: String) -> Int64? {

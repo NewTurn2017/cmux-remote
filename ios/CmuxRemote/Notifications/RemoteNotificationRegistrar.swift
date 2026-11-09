@@ -54,6 +54,7 @@ private final class RemoteNotificationApplicationAdapter: RemoteNotificationAppl
 public final class RemoteNotificationRegistrar: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     private let notificationCenter: any RemoteNotificationAuthorizationCenter
     private let application: any RemoteNotificationApplication
+    private let ledger: NotificationBannerLedger
     private var authClient: AuthClient?
     private var pendingDeviceToken: Data?
     private var forwarding = false
@@ -61,15 +62,18 @@ public final class RemoteNotificationRegistrar: NSObject, UIApplicationDelegate,
     public override init() {
         self.notificationCenter = RemoteNotificationCenterAdapter(center: .current())
         self.application = RemoteNotificationApplicationAdapter(application: .shared)
+        self.ledger = .shared
         super.init()
     }
 
     init(
         notificationCenter: any RemoteNotificationAuthorizationCenter,
-        application: any RemoteNotificationApplication
+        application: any RemoteNotificationApplication,
+        ledger: NotificationBannerLedger = NotificationBannerLedger()
     ) {
         self.notificationCenter = notificationCenter
         self.application = application
+        self.ledger = ledger
         super.init()
     }
 
@@ -130,7 +134,11 @@ public final class RemoteNotificationRegistrar: NSObject, UIApplicationDelegate,
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound, .badge]
+        let request = notification.request
+        return ledger.presentationOptions(
+            isRemote: request.trigger is UNPushNotificationTrigger,
+            notificationId: request.content.userInfo["notification_id"] as? String
+        )
     }
 
     public func userNotificationCenter(

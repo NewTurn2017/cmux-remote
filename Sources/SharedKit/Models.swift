@@ -23,9 +23,16 @@ public struct Surface: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var title: String
     public var index: Int
-    public init(id: String, title: String, index: Int) {
-        self.id = id; self.title = title; self.index = index
+    /// cmux surface kind (`terminal`, `browser`, `markdown`, or a future value).
+    /// `nil` means the producer predates surface kinds; omitted from the wire when `nil`.
+    public var type: String?
+    public init(id: String, title: String, index: Int, type: String? = nil) {
+        self.id = id; self.title = title; self.index = index; self.type = type
     }
+
+    /// Whether the surface can be subscribed as a terminal. Unknown kinds from older
+    /// relays (`nil`) keep the historical terminal behavior.
+    public var isTerminal: Bool { type == nil || type == "terminal" }
 }
 
 public struct NotificationRecord: Codable, Sendable, Equatable, Identifiable {

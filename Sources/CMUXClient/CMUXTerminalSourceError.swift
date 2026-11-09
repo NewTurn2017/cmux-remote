@@ -36,4 +36,7 @@ public enum CMUXTerminalSourceError: Error, Equatable, Sendable {
 
     /// The verified replay omitted or malformed its producer epoch.
     case invalidEpoch(String)
+
+    /// The surface exists but is not a terminal (for example a browser or markdown tab).
+    case surfaceNotTerminal
 }

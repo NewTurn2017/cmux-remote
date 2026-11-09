@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var store: WorkspaceStore
+    let appStoreUpdates: AppStoreUpdateStore
+    let remoteFiles: RemoteFileFeatureCoordinator
     let onDisconnect: () -> Void
     let onReconnect: () -> Void
     var onTriggerTestNotification: (@MainActor () -> TestNotificationResult)? = nil
@@ -52,7 +54,10 @@ struct SettingsView: View {
                 section(title: "mac connection") {
                     VStack(alignment: .leading, spacing: 14) {
                         labelRow("host", color: CmuxTheme.muted)
-                        TextField("100.x.x.x or mac.tailnet.ts.net", text: $host)
+                        TextField(
+                            String(localized: "settings.host.placeholder", defaultValue: "100.x.x.x or mac.tailnet.ts.net"),
+                            text: $host
+                        )
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .cmuxMono(13)
@@ -101,6 +106,14 @@ struct SettingsView: View {
                     }
                 }
 
+                section(title: "version") {
+                    SettingsVersionSection(
+                        appStoreUpdates: appStoreUpdates,
+                        remoteFiles: remoteFiles,
+                        isConnected: store.connection == .connected
+                    )
+                }
+
                 section(title: "notifications") {
                     VStack(alignment: .leading, spacing: 10) {
                         Toggle(isOn: $localNotificationsEnabled) {
@@ -146,12 +159,18 @@ struct SettingsView: View {
                             .disabled(localStatus.isSending || roundTripStatus.isSending)
 
                             if let line = localStatus.label {
-                                Text("local: \(line)")
+                                Text(String(
+                                    localized: "settings.notifications.local_status",
+                                    defaultValue: "local: \(line)"
+                                ))
                                     .cmuxMono(11)
                                     .foregroundStyle(localStatus.color)
                             }
                             if let line = roundTripStatus.label {
-                                Text("round-trip: \(line)")
+                                Text(String(
+                                    localized: "settings.notifications.round_trip_status",
+                                    defaultValue: "round-trip: \(line)"
+                                ))
                                     .cmuxMono(11)
                                     .foregroundStyle(roundTripStatus.color)
                             }
@@ -275,15 +294,19 @@ struct SettingsView: View {
 
     private func label(_ state: ConnectionState) -> String {
         switch state {
-        case .connected: return "connected"
-        case .connecting: return "connecting…"
+        case .connected:
+            return String(localized: "connection.state.connected", defaultValue: "connected")
+        case .connecting:
+            return String(localized: "connection.state.connecting", defaultValue: "connecting…")
         case .recovering:
             return String(
                 localized: "connection.state.recovering",
                 defaultValue: "waiting for relay; retrying automatically"
             )
-        case .error(let message): return "error: \(message)"
-        case .disconnected: return "disconnected"
+        case .error(let message):
+            return String(localized: "connection.state.error", defaultValue: "error: \(message)")
+        case .disconnected:
+            return String(localized: "connection.state.disconnected", defaultValue: "disconnected")
         }
     }
 
@@ -292,7 +315,10 @@ struct SettingsView: View {
         let result = action()
         localStatus = result.localBannerRequested
             ? .sent
-            : .failed("local notifications disabled; Inbox only")
+            : .failed(String(
+                localized: "settings.notifications.local_disabled",
+                defaultValue: "local notifications disabled; Inbox only"
+            ))
         if let task = result.roundTrip {
             roundTripStatus = .sending
             Task { @MainActor in
@@ -304,7 +330,10 @@ struct SettingsView: View {
                 }
             }
         } else {
-            roundTripStatus = .failed("relay disconnected")
+            roundTripStatus = .failed(String(
+                localized: "settings.notifications.relay_disconnected",
+                defaultValue: "relay disconnected"
+            ))
         }
     }
 }
@@ -323,13 +352,15 @@ private enum TestNotificationStatus: Equatable {
     var label: String? {
         switch self {
         case .idle: return nil
-        case .sending: return "sending…"
+        case .sending:
+            return String(localized: "settings.notifications.sending", defaultValue: "sending…")
         case .sent:
             return String(
                 localized: "settings.notifications.test_sent",
                 defaultValue: "sent, arriving in Inbox shortly"
             )
-        case .failed(let message): return "failed: \(message)"
+        case .failed(let message):
+            return String(localized: "settings.notifications.failed", defaultValue: "failed: \(message)")
         }
     }
 

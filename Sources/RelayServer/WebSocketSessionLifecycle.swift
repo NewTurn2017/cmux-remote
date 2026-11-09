@@ -33,6 +33,27 @@ final class WebSocketSessionLifecycle: @unchecked Sendable {
         self.deviceId = deviceId
     }
 
+    /// Maps a rejected `surface.subscribe` to its client-facing RPC error.
+    ///
+    /// Known non-terminal surfaces use the stable `surface_not_terminal` code; every other
+    /// failure keeps the established `surface_subscription_failed` code.
+    static func subscriptionFailureResponse(id: String, error: any Error) -> RPCResponse {
+        let rpcError: RPCError
+        if case SurfaceRenderHubError.surfaceNotTerminal(let surfaceId) = error {
+            rpcError = RPCError(
+                code: Session.surfaceNotTerminalCode,
+                message: "Surface is not a terminal",
+                data: .object(["surface_id": .string(surfaceId)])
+            )
+        } else {
+            rpcError = RPCError(
+                code: "surface_subscription_failed",
+                message: String(describing: error)
+            )
+        }
+        return RPCResponse(id: id, ok: false, result: nil, error: rpcError)
+    }
+
     var activeGeneration: UInt64? {
         precondition(eventLoop.inEventLoop)
         return active ? generation : nil
@@ -141,15 +162,7 @@ final class WebSocketSessionLifecycle: @unchecked Sendable {
                 } catch {
                     guard !Task.isCancelled else { continue }
                     writeResponse(
-                        RPCResponse(
-                            id: responseId,
-                            ok: false,
-                            result: nil,
-                            error: RPCError(
-                                code: "surface_subscription_failed",
-                                message: String(describing: error)
-                            )
-                        ),
+                        Self.subscriptionFailureResponse(id: responseId, error: error),
                         generation: candidate
                     )
                 }

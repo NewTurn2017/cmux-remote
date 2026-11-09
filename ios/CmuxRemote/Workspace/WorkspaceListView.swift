@@ -71,7 +71,10 @@ struct WorkspaceListView: View {
                         Text("[ no workspaces ]")
                             .cmuxDisplay(13)
                             .foregroundStyle(CmuxTheme.muted)
-                        Text("pull to refresh; check relay connection")
+                        Text(String(
+                            localized: "workspaces.empty.detail",
+                            defaultValue: "pull to refresh; check relay connection"
+                        ))
                             .cmuxMono(11)
                             .foregroundStyle(CmuxTheme.muted)
                     }
@@ -85,19 +88,19 @@ struct WorkspaceListView: View {
         }
         .scrollContentBackground(.hidden)
         .background(CmuxTheme.canvas)
-        .alert("New Workspace", isPresented: $creating) {
-            TextField("name", text: $newName)
-            Button("Create") {
+        .alert(String(localized: "workspaces.create.title", defaultValue: "New Workspace"), isPresented: $creating) {
+            TextField(String(localized: "workspaces.name.placeholder", defaultValue: "name"), text: $newName)
+            Button(String(localized: "workspaces.create.confirm", defaultValue: "Create")) {
                 let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                 Task {
                     if !name.isEmpty { try? await store.create(name: name) }
                     newName = ""
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(String(localized: "common.cancel", defaultValue: "Cancel"), role: .cancel) {}
         }
         .alert(
-            "Rename Workspace",
+            String(localized: "workspaces.rename.title", defaultValue: "Rename Workspace"),
             isPresented: Binding(
                 get: { pendingRenameWorkspace != nil },
                 set: { isPresented in
@@ -108,8 +111,8 @@ struct WorkspaceListView: View {
                 }
             )
         ) {
-            TextField("name", text: $renameName)
-            Button("Rename") {
+            TextField(String(localized: "workspaces.name.placeholder", defaultValue: "name"), text: $renameName)
+            Button(String(localized: "workspaces.rename.confirm", defaultValue: "Rename")) {
                 guard let workspace = pendingRenameWorkspace else { return }
                 let title = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
                 pendingRenameWorkspace = nil
@@ -118,13 +121,13 @@ struct WorkspaceListView: View {
                     renameWorkspace(workspace, title: title)
                 }
             }
-            Button("Cancel", role: .cancel) {
+            Button(String(localized: "common.cancel", defaultValue: "Cancel"), role: .cancel) {
                 pendingRenameWorkspace = nil
                 renameName = ""
             }
         }
         .confirmationDialog(
-            "Close workspace?",
+            String(localized: "workspaces.close.title", defaultValue: "Close workspace?"),
             isPresented: Binding(
                 get: { pendingCloseWorkspace != nil },
                 set: { isPresented in
@@ -134,14 +137,17 @@ struct WorkspaceListView: View {
             titleVisibility: .visible
         ) {
             if let workspace = pendingCloseWorkspace {
-                Button("Close \(workspace.name)", role: .destructive) {
+                Button(
+                    String(localized: "common.close_named", defaultValue: "Close \(workspace.name)"),
+                    role: .destructive
+                ) {
                     pendingCloseWorkspace = nil
                     closeWorkspace(workspace)
                 }
             }
-            Button("Cancel", role: .cancel) { pendingCloseWorkspace = nil }
+            Button(String(localized: "common.cancel", defaultValue: "Cancel"), role: .cancel) { pendingCloseWorkspace = nil }
         } message: {
-            Text("This closes the workspace in cmux.")
+            Text(String(localized: "workspaces.close.message", defaultValue: "This closes the workspace in cmux."))
         }
         .task { await store.refresh() }
         .refreshable { await store.refresh() }
@@ -175,7 +181,7 @@ struct WorkspaceListView: View {
             Text("/")
                 .cmuxDisplay(14)
                 .foregroundStyle(CmuxTheme.accentGreen)
-            TextField("filter…", text: $searchText)
+            TextField(String(localized: "workspaces.filter.placeholder", defaultValue: "filter…"), text: $searchText)
                 .cmuxMono(14)
                 .foregroundStyle(CmuxTheme.ink)
                 .textInputAutocapitalization(.never)
@@ -199,15 +205,19 @@ struct WorkspaceListView: View {
 
     private var connectionSubtitle: String {
         switch store.connection {
-        case .connected:   return "relay connected"
-        case .connecting:  return "connecting…"
+        case .connected:
+            return String(localized: "connection.subtitle.connected", defaultValue: "relay connected")
+        case .connecting:
+            return String(localized: "connection.state.connecting", defaultValue: "connecting…")
         case .recovering:
             return String(
                 localized: "connection.state.recovering_short",
                 defaultValue: "retrying relay…"
             )
-        case .disconnected: return "offline"
-        case .error:       return "needs attention"
+        case .disconnected:
+            return String(localized: "connection.subtitle.offline", defaultValue: "offline")
+        case .error:
+            return String(localized: "connection.subtitle.error", defaultValue: "needs attention")
         }
     }
 
@@ -303,7 +313,10 @@ private struct WorkspaceCard: View {
                             .frame(minWidth: 18, minHeight: 18)
                             .background(CmuxTheme.accentRed)
                             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                            .accessibilityLabel("\(unreadCount) unread notifications")
+                            .accessibilityLabel(String(
+                                localized: "workspaces.card.unread",
+                                defaultValue: "\(unreadCount) unread notifications"
+                            ))
                     }
 
                     if isSelected {
@@ -324,7 +337,10 @@ private struct WorkspaceCard: View {
                 action: onRename
             )
             .disabled(isRenaming || isClosing)
-            .accessibilityLabel("Rename workspace \(workspace.name)")
+            .accessibilityLabel(String(
+                localized: "workspaces.card.rename",
+                defaultValue: "Rename workspace \(workspace.name)"
+            ))
 
             WorkspaceCardIconButton(
                 systemName: "xmark",
@@ -332,7 +348,10 @@ private struct WorkspaceCard: View {
                 action: onClose
             )
             .disabled(isClosing || isRenaming)
-            .accessibilityLabel("Close workspace \(workspace.name)")
+            .accessibilityLabel(String(
+                localized: "workspaces.card.close",
+                defaultValue: "Close workspace \(workspace.name)"
+            ))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

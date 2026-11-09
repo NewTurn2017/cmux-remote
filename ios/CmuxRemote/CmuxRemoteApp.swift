@@ -11,6 +11,7 @@ struct CmuxRemoteApp: App {
     @State private var hostStatusStore = HostStatusStore(rpc: OfflineRPCDispatch())
     @State private var remoteFiles: RemoteFileFeatureCoordinator
     @State private var notifPresenter = LocalNotificationPresenter()
+    @State private var appStoreUpdates = Self.makeAppStoreUpdates(ProcessInfo.processInfo)
     @State private var bootstrapped = false
     @State private var activeSession: LiveRelaySession?
     @State private var activeRPC: RPCClient?
@@ -37,8 +38,23 @@ struct CmuxRemoteApp: App {
         _remoteFiles = State(initialValue: RemoteFileFeatureCoordinator(
             routingRPC: routingRPC,
             attachments: attachments,
-            terminalArtifacts: terminalArtifacts
+            terminalArtifacts: terminalArtifacts,
+            browserRefreshSeconds: Self.browserRefreshSeconds()
         ))
+    }
+
+    /// UI tests may stretch the browser refresh interval so a manual refresh is observable on its own.
+    private static func browserRefreshSeconds() -> Double {
+        #if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["CMUX_UI_TEST_FILE_FEATURE_FIXTURES"] == "1",
+           let seconds = environment["CMUX_UI_TEST_BROWSER_REFRESH_SECONDS"].flatMap(Double.init),
+           seconds > 0
+        {
+            return seconds
+        }
+        #endif
+        return BrowserRefreshPolicy.defaultIntervalSeconds
     }
 
     var body: some Scene {
@@ -50,11 +66,13 @@ struct CmuxRemoteApp: App {
                     notifStore: notifStore,
                     hostStatusStore: hostStatusStore,
                     remoteFiles: remoteFiles,
+                    appStoreUpdates: appStoreUpdates,
                     onDisconnect: disconnect,
                     onReconnect: reconnect,
                     onTriggerTestNotification: triggerTestNotification
                 )
                 .modifier(TerminalArtifactDebugWidthHarness())
+                .modifier(UITestWidthHarness())
                 .task { await bootstrapOnce() }
                 .onOpenURL(perform: handleDeepLink(_:))
                 .onChange(of: localNotificationsEnabled) { _, enabled in
@@ -84,6 +102,44 @@ struct CmuxRemoteApp: App {
         let info = ProcessInfo.processInfo
         return info.environment["CMUX_SKIP_SPLASH"] == "1"
             || info.arguments.contains("--cmux-skip-splash")
+    }
+
+    /// Fake-relay and UI-test launches never reach the App Store; `CMUX_APPSTORE_FIXTURE` supplies a canned listing.
+    @MainActor
+    private static func makeAppStoreUpdates(_ info: ProcessInfo) -> AppStoreUpdateStore {
+        let installed = AppVersionInfo.current
+        let fixtureStoreURL = URL(string: "https://apps.apple.com/app/id6769380881")
+        let lookup: (any AppStoreLookup)?
+        var defaults = UserDefaults.standard
+        switch info.environment["CMUX_APPSTORE_FIXTURE"] {
+        case "newer":
+            lookup = FixtureAppStoreLookup(fixture: fixtureStoreURL.map {
+                AppStoreListing(version: "99.0.0", url: $0, minimumOSVersion: nil)
+            })
+            defaults = freshFixtureDefaults()
+        case "same":
+            lookup = FixtureAppStoreLookup(fixture: fixtureStoreURL.map {
+                AppStoreListing(version: installed.marketing, url: $0, minimumOSVersion: nil)
+            })
+            defaults = freshFixtureDefaults()
+        default:
+            lookup = shouldUseFakeRelay(info) ? nil : ITunesAppStoreLookup()
+        }
+        return AppStoreUpdateStore(
+            lookup: lookup,
+            installed: installed,
+            bundleID: Bundle.main.bundleIdentifier,
+            country: Locale.current.region?.identifier.lowercased(),
+            systemVersion: UIDevice.current.systemVersion,
+            defaults: defaults
+        )
+    }
+
+    private static func freshFixtureDefaults() -> UserDefaults {
+        let suiteName = "CmuxRemoteAppStoreFixture"
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return .standard }
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 
     private static func shouldUseFakeRelay(_ info: ProcessInfo) -> Bool {
@@ -159,6 +215,7 @@ struct CmuxRemoteApp: App {
             return
         }
 
+        remoteFiles.prepareHost(host)
         let session = LiveRelaySession(
             host: host,
             port: port,
@@ -219,7 +276,10 @@ struct CmuxRemoteApp: App {
             staleFeatureResponseGateEnabled: staleFeatureGate,
             attachmentScenario: processInfo.environment["CMUX_UI_TEST_ATTACHMENT_SCENARIO"],
             artifactScenario: processInfo.environment["CMUX_UI_TEST_ARTIFACT_SCENARIO"],
-            fileFeatureCacheNamespace: processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_CACHE_NAMESPACE"]
+            fileFeatureCacheNamespace: processInfo.environment["CMUX_UI_TEST_FILE_FEATURE_CACHE_NAMESPACE"],
+            feedScenario: processInfo.environment["CMUX_UI_TEST_FEED_SCENARIO"],
+            transcriptScenario: processInfo.environment["CMUX_UI_TEST_TRANSCRIPT_SCENARIO"],
+            relayScenario: processInfo.environment["CMUX_UI_TEST_RELAY_SCENARIO"]
         )
         #else
         let rpc = DemoRPCDispatch()
@@ -260,7 +320,9 @@ struct CmuxRemoteApp: App {
         // so the terminal mirror lights up just like the live path would.
         await rpc.setOnSubscribe { surfaceId in
             await MainActor.run {
-                if let frame = DemoContent.screenFull(for: surfaceId) {
+                if DemoContent.surface(for: surfaceId)?.reportsNotTerminal == true {
+                    liveSurfaceStore.ingest(.event(DemoContent.notTerminalEvent(surfaceId: surfaceId)))
+                } else if let frame = DemoContent.screenFull(for: surfaceId) {
                     liveSurfaceStore.ingest(.screenFull(frame))
                 }
             }

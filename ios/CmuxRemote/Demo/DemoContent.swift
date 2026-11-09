@@ -5,6 +5,86 @@ import SharedKit
 /// reviewers can't bring their own Tailscale-connected Mac, so this gives
 /// them a populated, navigable surface to evaluate the app against).
 enum DemoContent {
+    static let documentSurfaceID = "SF-DEMO-TABS-MD"
+    static let browserSurfaceID = "SF-DEMO-TABS-WEB"
+    static let browserURL = "http://localhost:3000/"
+    static let browserTitlePrefix = "cmux Remote demo · #"
+    static let documentReadmeArtifactPrefix = "demo-document-readme-"
+    static let documentNotesBytes = Data("""
+    # Release notes
+
+    - Markdown tabs open in the document viewer.
+    - Text files from **Terminal files** open here too.
+
+    ```sh
+    swift test
+    ```
+    """.utf8)
+    static let documentNotesArtifact = TerminalArtifact(
+        artifactId: "demo-document-notes",
+        filename: "notes.md",
+        mimeType: "text/markdown",
+        bytes: documentNotesBytes.count,
+        revision: "demo-notes-r1",
+        isImage: false
+    )
+
+    static func documentReadmeMarkdown(openCount: Int) -> String {
+        """
+        # cmux Remote demo
+
+        Loaded from the demo relay: open #\(openCount).
+
+        ## Features
+
+        - Read **markdown** tabs from your Mac
+          - Nested lists keep their depth
+          - Links like [cmux](https://cmux.dev) stay tappable
+        - Relative links such as [setup](docs/setup.md) stay plain text
+
+        1. Pick a markdown tab
+        2. Pull the latest copy with refresh
+
+        > Documents refresh only when you ask.
+
+        ```swift
+        let summary = "A long line of code scrolls sideways instead of wrapping, so the code keeps its shape on a phone."
+        ```
+
+        | Setting | Value |
+        | :-- | --: |
+        | Retained lines | 120 |
+        | Active polling | 15 Hz |
+
+        ![Architecture diagram](images/architecture.png)
+
+        ---
+
+        A long paragraph wraps to the width of the screen so you can read it without scrolling sideways, even on the smallest iPhone.
+        """
+    }
+
+    static func documentReadmeArtifact(openCount: Int) -> TerminalArtifact {
+        TerminalArtifact(
+            artifactId: "\(documentReadmeArtifactPrefix)\(openCount)",
+            filename: "README.md",
+            mimeType: "text/markdown",
+            bytes: Data(documentReadmeMarkdown(openCount: openCount).utf8).count,
+            revision: "demo-readme-r\(openCount)",
+            isImage: false
+        )
+    }
+
+    static func documentFixture(artifactID: String) -> (data: Data, revision: String)? {
+        if artifactID == documentNotesArtifact.artifactId {
+            return (documentNotesBytes, documentNotesArtifact.revision)
+        }
+        guard artifactID.hasPrefix(documentReadmeArtifactPrefix),
+              let openCount = Int(artifactID.dropFirst(documentReadmeArtifactPrefix.count))
+        else { return nil }
+        return (Data(documentReadmeMarkdown(openCount: openCount).utf8), "demo-readme-r\(openCount)")
+    }
+
     static let fileFeatureHappySurfaceID = "SF-DEMO-1A"
     static let fileFeatureReplacementSurfaceID = "SF-DEMO-1B"
     static let fileFeatureUnavailableSurfaceID = "SF-DEMO-1C"
@@ -109,7 +189,56 @@ enum DemoContent {
                 DemoSurface(id: "SF-DEMO-6B", title: "tmux", screen: tmuxSession),
             ]
         ),
+        DemoWorkspace(
+            id: tabTypesWorkspaceID,
+            title: String(localized: "demo.tabs.workspace.title", defaultValue: "Tab Types"),
+            surfaces: [
+                DemoSurface(id: "SF-DEMO-TABS-WEB", title: "localhost:3000", screen: [], type: "browser"),
+                DemoSurface(
+                    id: tabTypesAlternateSurfaceID,
+                    title: "claude-code",
+                    screen: claudeCodeFullscreen,
+                    activeScreen: "alternate"
+                ),
+                DemoSurface(id: "SF-DEMO-TABS-MD", title: "README.md", screen: [], type: "markdown"),
+                DemoSurface(
+                    id: tabTypesPrimarySurfaceID,
+                    title: "shell",
+                    screen: primaryShell,
+                    activeScreen: "primary"
+                ),
+                DemoSurface(
+                    id: tabTypesStaleSurfaceID,
+                    title: "old-list tab",
+                    screen: [],
+                    type: nil,
+                    reportsNotTerminal: true
+                ),
+            ]
+        ),
     ]
+
+    static let tabTypesWorkspaceID = "WS-DEMO-TABS"
+    static let tabTypesAlternateSurfaceID = "SF-DEMO-TABS-ALT"
+    static let tabTypesPrimarySurfaceID = "SF-DEMO-TABS-SH"
+    static let tabTypesStaleSurfaceID = "SF-DEMO-TABS-STALE"
+
+    static func workspaceID(forSurface id: String) -> String? {
+        workspaces.first { $0.surfaces.contains { $0.id == id } }?.id
+    }
+
+    /// The relay's `surface_not_terminal` push event, as described in the
+    /// relay contract notes.
+    static func notTerminalEvent(surfaceId: String) -> EventFrame {
+        var payload: [String: JSONValue] = [
+            "code": .string("surface_not_terminal"),
+            "surface_id": .string(surfaceId),
+        ]
+        if let workspaceId = workspaceID(forSurface: surfaceId) {
+            payload["workspace_id"] = .string(workspaceId)
+        }
+        return EventFrame(category: .surface, name: "surface_not_terminal", payload: .object(payload))
+    }
 
     static func surface(for id: String) -> DemoSurface? {
         for ws in workspaces {
@@ -130,7 +259,8 @@ enum DemoContent {
             rows: rows,
             cols: cols,
             rowsCount: rows.count,
-            cursor: CursorPos(x: 0, y: rows.count - 1)
+            cursor: CursorPos(x: 0, y: rows.count - 1),
+            activeScreen: surface.activeScreen
         )
     }
 
@@ -281,6 +411,30 @@ enum DemoContent {
         "[3] Skip tests",
         "",
         "› ",
+    ]
+
+    private static let claudeCodeFullscreen: [String] = [
+        "\u{1B}[38;2;217;119;87m╭─ Claude Code ────────────────────────╮\u{1B}[0m",
+        "│ fullscreen session (alternate screen) │",
+        "╰──────────────────────────────────────╯",
+        "",
+        "> Summarize the relay retention change",
+        "",
+        "● The relay now keeps the viewport plus up",
+        "  to 240 scrollback rows per screen.full.",
+        "",
+        "  Pull past the top to page up, past the",
+        "  bottom to page down.",
+        "",
+        "\u{1B}[2m? for shortcuts\u{1B}[0m",
+    ]
+
+    private static let primaryShell: [String] = [
+        "$ git status --short",
+        " M ios/CmuxRemote/Stores/SurfaceStore.swift",
+        "$ swift test --filter SharedKitTests",
+        "Test run with 61 tests passed",
+        "$",
     ]
 
     private static let codexAgentLab: [String] = [
@@ -652,4 +806,9 @@ struct DemoSurface {
     let id: String
     let title: String
     let screen: [String]
+    var type: String? = "terminal"
+    var activeScreen: String?
+    var reportsNotTerminal = false
+
+    var isTerminal: Bool { !reportsNotTerminal && (type == nil || type == "terminal") }
 }
